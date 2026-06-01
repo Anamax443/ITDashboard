@@ -280,8 +280,10 @@ export function stopCollector(): boolean {
 
 let scheduledTimer: NodeJS.Timeout | null = null;
 
-export function startCollectorSchedule(): void {
-  const intervalSec = Number(process.env.COLLECTOR_POLL_INTERVAL_SEC ?? 300);
+export async function startCollectorSchedule(): Promise<void> {
+  const { getSetting } = await import('./settings.js');
+  const dbVal = await getSetting('collector.interval_sec').catch(() => undefined);
+  const intervalSec = Number(dbVal ?? process.env.COLLECTOR_POLL_INTERVAL_SEC ?? 300);
   if (scheduledTimer) clearInterval(scheduledTimer);
   scheduledTimer = setInterval(() => {
     runCollectorOnce('scheduled').catch((err) => {
@@ -289,6 +291,14 @@ export function startCollectorSchedule(): void {
     });
   }, intervalSec * 1000);
   console.log(`Collector scheduled every ${intervalSec}s`);
+}
+
+export function rescheduleCollector(intervalSec: number): void {
+  if (scheduledTimer) clearInterval(scheduledTimer);
+  scheduledTimer = setInterval(() => {
+    runCollectorOnce('scheduled').catch((err) => console.error('Scheduled collector run failed:', err));
+  }, intervalSec * 1000);
+  console.log(`Collector rescheduled every ${intervalSec}s`);
 }
 
 export async function getCollectorStatus() {

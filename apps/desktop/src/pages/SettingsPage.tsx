@@ -48,6 +48,17 @@ export function SettingsPage() {
       </div>
       <div className="panel-body" style={{ padding: 24 }}>
 
+        <Section title="Collection intervals" description="How often each background task runs. Changes apply immediately, no service restart needed.">
+          <FieldGroup>
+            <Field label="Eventlog collector">
+              <IntervalInput v={value('collector.interval_sec', '300')} onChange={(v) => set('collector.interval_sec', v)} />
+            </Field>
+            <Field label="Disk scan">
+              <IntervalInput v={value('disk.interval_sec', '1800')} onChange={(v) => set('disk.interval_sec', v)} />
+            </Field>
+          </FieldGroup>
+        </Section>
+
         <Section title="Disk space thresholds" description="When a disk drops below these levels, it's flagged on the dashboard.">
           <Field label="Threshold mode">
             <select value={value('disk.threshold_mode', 'pct')} onChange={(e) => set('disk.threshold_mode', e.target.value)} style={fieldStyle}>
@@ -75,6 +86,35 @@ export function SettingsPage() {
         </Section>
 
       </div>
+    </div>
+  );
+}
+
+function IntervalInput({ v, onChange }: { v: string; onChange: (v: string) => void }) {
+  // Show as number + unit selector (minutes/hours/seconds)
+  const n = Number(v);
+  const [unit, setUnit] = React.useState<'sec' | 'min' | 'hour'>(
+    n >= 3600 && n % 3600 === 0 ? 'hour' : n >= 60 && n % 60 === 0 ? 'min' : 'sec'
+  );
+  const display =
+    unit === 'hour' ? String(n / 3600) :
+    unit === 'min' ? String(n / 60) :
+    String(n);
+  const onValueChange = (newDisplay: string) => {
+    const num = Number(newDisplay);
+    if (isNaN(num)) return;
+    const seconds = unit === 'hour' ? num * 3600 : unit === 'min' ? num * 60 : num;
+    onChange(String(Math.round(seconds)));
+  };
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <input type="number" value={display} onChange={(e) => onValueChange(e.target.value)} style={{ ...fieldStyle, minWidth: 80 }} step="1" min="0" />
+      <select value={unit} onChange={(e) => setUnit(e.target.value as 'sec' | 'min' | 'hour')} style={{ ...fieldStyle, minWidth: 80 }}>
+        <option value="sec">seconds</option>
+        <option value="min">minutes</option>
+        <option value="hour">hours</option>
+      </select>
+      <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>({v}s)</span>
     </div>
   );
 }

@@ -32,9 +32,9 @@ await registerVersionRoutes(app);
 await registerSettingsRoutes(app);
 await registerDisksRoutes(app);
 
-app.listen({ port: PORT, host: BIND }).then(() => {
-  startCollectorSchedule();
-  startDiskSchedule();
+app.listen({ port: PORT, host: BIND }).then(async () => {
+  await startCollectorSchedule();
+  await startDiskSchedule();
 }).catch((err) => {
   app.log.error(err);
   process.exit(1);

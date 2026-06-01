@@ -100,11 +100,21 @@ export async function runDiskCollectorOnce(): Promise<{ pcs: number; ok: number;
 }
 
 let diskTimer: NodeJS.Timeout | null = null;
-export function startDiskSchedule(): void {
-  const interval = Number(process.env.DISK_POLL_INTERVAL_SEC ?? 1800); // default 30min
+export async function startDiskSchedule(): Promise<void> {
+  const { getSetting } = await import('./settings.js');
+  const dbVal = await getSetting('disk.interval_sec').catch(() => undefined);
+  const interval = Number(dbVal ?? process.env.DISK_POLL_INTERVAL_SEC ?? 1800);
   if (diskTimer) clearInterval(diskTimer);
   diskTimer = setInterval(() => {
     runDiskCollectorOnce().catch((e) => console.error('Disk scan error', e));
   }, interval * 1000);
   console.log(`Disk collector scheduled every ${interval}s`);
+}
+
+export function rescheduleDisk(intervalSec: number): void {
+  if (diskTimer) clearInterval(diskTimer);
+  diskTimer = setInterval(() => {
+    runDiskCollectorOnce().catch((e) => console.error('Disk scan error', e));
+  }, intervalSec * 1000);
+  console.log(`Disk collector rescheduled every ${intervalSec}s`);
 }
