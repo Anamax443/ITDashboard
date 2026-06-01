@@ -41,33 +41,26 @@ interface InFlightProgress {
 let currentProgress: InFlightProgress | null = null;
 
 /**
- * Pulls events from a single PC via PS Remoting (WinRM). Runs under the API
- * service account (svc-itdashboard); the account needs Remote Management Users
- * + Event Log Readers on the target PC (typically granted via GPO).
+ * Pulls events from a single PC via Get-WinEvent -ComputerName (RPC over SMB),
+ * which is more widely available in domain environments than WinRM/PSRemoting.
+ * Runs under the API service account (svc-itdashboard); the account needs
+ * Event Log Readers membership on the target PC (typically granted via GPO).
  */
 async function collectFromPC(name: string, sinceUtc: Date): Promise<RawEvent[]> {
   const sinceIso = sinceUtc.toISOString();
   const ps = `
 $ErrorActionPreference = 'Stop'
-$session = New-PSSession -ComputerName '${name}' -ErrorAction Stop
-try {
-  Invoke-Command -Session $session -ScriptBlock {
-    param($since, $max)
-    $startTime = [DateTime]::Parse($since).ToUniversalTime()
-    Get-WinEvent -FilterHashtable @{
-      LogName = 'System','Application','Security'
-      Level = 1,2,3
-      StartTime = $startTime
-    } -MaxEvents $max -ErrorAction SilentlyContinue |
-      Select-Object @{n='TimeCreated';e={$_.TimeCreated.ToUniversalTime().ToString('o')}},
-        Id, Level, LogName, ProviderName, MachineName,
-        @{n='Message';e={$_.Message}},
-        @{n='TaskDisplayName';e={$_.TaskDisplayName}}
-  } -ArgumentList '${sinceIso}', ${MAX_EVENTS_PER_PC_PER_RUN} |
-    ConvertTo-Json -Compress -Depth 4
-} finally {
-  Remove-PSSession $session
-}
+$startTime = [DateTime]::Parse('${sinceIso}').ToUniversalTime()
+Get-WinEvent -ComputerName '${name}' -FilterHashtable @{
+  LogName = 'System','Application'
+  Level = 1,2,3
+  StartTime = $startTime
+} -MaxEvents ${MAX_EVENTS_PER_PC_PER_RUN} -ErrorAction Stop |
+  Select-Object @{n='TimeCreated';e={$_.TimeCreated.ToUniversalTime().ToString('o')}},
+    Id, Level, LogName, ProviderName, MachineName,
+    @{n='Message';e={$_.Message}},
+    @{n='TaskDisplayName';e={$_.TaskDisplayName}} |
+  ConvertTo-Json -Compress -Depth 4
 `;
 
   return new Promise((resolve, reject) => {
