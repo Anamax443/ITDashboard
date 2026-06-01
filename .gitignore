@@ -1,0 +1,26 @@
+node_modules/
+dist/
+build/
+out/
+*.log
+.env
+.env.local
+.env.*.local
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+coverage/
+*.tsbuildinfo
+
+# Electron
+apps/desktop/release/
+apps/desktop/out/
+
+# Local secrets / credential vault dumps
+*.vault
+*.dpapi
+
+# SQL dumps
+*.bak
+*.bacpac

@@ -1,0 +1,24 @@
+{
+  "scripts": [
+    {
+      "slug": "ad-user-info",
+      "name": "AD User info",
+      "language": "powershell",
+      "path": "powershell/ad-user-info.ps1",
+      "description": "Returns AD user properties + group membership.",
+      "params": [
+        { "name": "SamAccountName", "type": "string", "required": true }
+      ]
+    },
+    {
+      "slug": "pc-services",
+      "name": "PC services (remote)",
+      "language": "powershell",
+      "path": "powershell/pc-services.ps1",
+      "description": "Lists Windows services on a remote PC via WinRM.",
+      "params": [
+        { "name": "ComputerName", "type": "string", "required": true }
+      ]
+    }
+  ]
+}
