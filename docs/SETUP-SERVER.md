@@ -1,188 +1,273 @@
-# Setup admin serveru `10.8.2.213`
+# Setup admin serveru `10.8.2.213` (B-S-W-MIKOS)
 
-Jednorázové kroky. Spouští se přes RDP pod účtem s admin právy na serveru.
+Jednorázové kroky pro bootstrap. Spouští se přes RDP pod účtem s admin právy na serveru a SQL sysadmin na 10.8.2.225.
 
 Po dokončení už nikdy nemusíš na server ručně — každý `git push` do `main` se auto-deployne přes GitHub Actions self-hosted runner.
 
+**Real-world setup proběhl 2026-06-01.** Tento dokument reflektuje skutečnost, ne ideál.
+
 ## 0. Prerekvizity
 
-- [ ] RDP přístup na `10.8.2.213` s lokálním admin / Domain Admin
-- [ ] SQL přístup na `10.8.2.225\BCNEW` jako sysadmin (jednorázově pro create DB)
-- [ ] Doménový service account `MICOS\svc-itdashboard` (pokud neexistuje, vytvoř přes ADUC)
-- [ ] GitHub repo admin role na `Anamax443/ITDashboard` (pro registraci runneru)
+- [ ] RDP přístup na `10.8.2.213` s lokálním admin / Domain Admin v doméně `AXINETWORK.LOC`
+- [ ] SQL přístup na `10.8.2.225` (default instance — `B-S-W-SQL-04`, NE `\BCNEW`) jako sysadmin
+- [ ] GitHub repo admin role na `Anamax443/ITDashboard`
 
-## 1. Install Node.js LTS 20
-
-```powershell
-# Stáhni LTS installer z https://nodejs.org/ a nainstaluj
-# Ověř:
-node --version    # v20.x.x
-npm --version
-```
-
-## 2. Install Git
+## 1. Ověř GPO ExecutionPolicy
 
 ```powershell
-# https://git-scm.com/download/win
-git --version
+Get-ExecutionPolicy -List
 ```
 
-## 3. Install RSAT ActiveDirectory PowerShell module
+Pokud `MachinePolicy = AllSigned` → setup počítá s tím a používá `cmd` shell místo PS v deploy workflow. Žádný `Set-ExecutionPolicy` to nepřepíše (GPO override).
+
+## 2. Install Node.js LTS 20, Git, NSSM
+
+`winget` na Windows Server obvykle není. Direct download:
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$dl = 'C:\Setup'
+New-Item -ItemType Directory -Force $dl | Out-Null
+
+# Node.js LTS 20
+Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.18.1/node-v20.18.1-x64.msi' -OutFile "$dl\node.msi" -UseBasicParsing
+Start-Process msiexec.exe -ArgumentList "/i `"$dl\node.msi`" /qn /norestart" -Wait
+
+# Git for Windows
+Invoke-WebRequest -Uri 'https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe' -OutFile "$dl\git.exe" -UseBasicParsing
+Start-Process "$dl\git.exe" -ArgumentList '/VERYSILENT /NORESTART /NOCANCEL /SP- /SUPPRESSMSGBOXES' -Wait
+
+# NSSM — nssm.cc občas down, retry, fallback web.archive.org
+$nssmSources = @(
+    'https://nssm.cc/release/nssm-2.24.zip',
+    'https://web.archive.org/web/2024/https://nssm.cc/release/nssm-2.24.zip'
+)
+foreach ($url in $nssmSources) {
+    try {
+        Invoke-WebRequest -Uri $url -OutFile "$dl\nssm.zip" -UseBasicParsing -TimeoutSec 30
+        if ((Get-Item "$dl\nssm.zip").Length -gt 100000) { break }
+    } catch { continue }
+}
+Expand-Archive "$dl\nssm.zip" -DestinationPath "$dl\nssm-extracted" -Force
+$exe = Get-ChildItem "$dl\nssm-extracted" -Recurse -Filter 'nssm.exe' | Where-Object FullName -match 'win64' | Select-Object -First 1
+New-Item -ItemType Directory -Force 'C:\Tools\nssm' | Out-Null
+Copy-Item $exe.FullName 'C:\Tools\nssm\nssm.exe' -Force
+```
+
+Pak **zavři PS, otevři nový jako Admin** (PATH refresh) a ověř:
+
+```powershell
+node --version    # v20.18.1
+git --version     # 2.47.x
+& 'C:\Tools\nssm\nssm.exe' version 2>&1 | Select-Object -First 1
+```
+
+## 3. RSAT ActiveDirectory PowerShell modul
 
 ```powershell
 Add-WindowsCapability -Online -Name Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0
 Import-Module ActiveDirectory
-Get-ADDomain | Select Name    # smoke test
+(Get-ADDomain).Name   # → axinetwork
 ```
 
-## 4. Install NSSM (pro Windows Service wrapper)
+## 4. Service account v AD
 
 ```powershell
-# Stáhni nssm.exe z https://nssm.cc/download a rozbal do C:\Tools\nssm\
-# Ověř:
-C:\Tools\nssm\nssm.exe version
+Import-Module ActiveDirectory
+$pwd = Read-Host -Prompt "Heslo pro svc-itdashboard" -AsSecureString
+
+New-ADUser `
+    -Name 'svc-itdashboard' `
+    -SamAccountName 'svc-itdashboard' `
+    -UserPrincipalName 'svc-itdashboard@axinetwork.loc' `
+    -DisplayName 'ITDashboard Service Account' `
+    -AccountPassword $pwd `
+    -Enabled $true `
+    -PasswordNeverExpires $true `
+    -CannotChangePassword $true
 ```
 
-## 5. Clone repo + první build
+Schovej heslo do password manageru — budeš ho potřebovat 2× (NSSM service + GitHub runner).
 
-```powershell
-New-Item -ItemType Directory -Force C:\Apps
-cd C:\Apps
-git clone https://github.com/Anamax443/ITDashboard.git
-cd ITDashboard
-npm ci
-npm run build
-```
+## 5. Create DB + grant (SSMS na 10.8.2.225)
 
-## 6. Configure `.env`
-
-```powershell
-Copy-Item .env.example .env
-notepad .env
-# Nastav:
-#   SQL_HOST=10.8.2.225
-#   SQL_INSTANCE=BCNEW
-#   SQL_DATABASE=ITDashboard
-#   SQL_TRUSTED_CONNECTION=true
-#   API_PORT=4000
-#   COLLECTOR_LEVELS=Warning,Error,Critical
-#   RETENTION_RAW_DAYS=90
-```
-
-## 7. Create DB + grant service account
-
-Spusť v SSMS (nebo `sqlcmd`) proti `10.8.2.225\BCNEW`:
+V SSMS connectni `10.8.2.225` jako sysadmin, otevři query do `master`:
 
 ```sql
-CREATE DATABASE ITDashboard;
+IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'ITDashboard')
+    CREATE DATABASE ITDashboard;
 GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'AXINETWORK\svc-itdashboard')
+    CREATE LOGIN [AXINETWORK\svc-itdashboard] FROM WINDOWS;
+GO
+
 USE ITDashboard;
 GO
-CREATE LOGIN [MICOS\svc-itdashboard] FROM WINDOWS;
-CREATE USER [MICOS\svc-itdashboard] FOR LOGIN [MICOS\svc-itdashboard];
-ALTER ROLE db_owner ADD MEMBER [MICOS\svc-itdashboard];
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'AXINETWORK\svc-itdashboard')
+    CREATE USER [AXINETWORK\svc-itdashboard] FOR LOGIN [AXINETWORK\svc-itdashboard];
+GO
+ALTER ROLE db_owner ADD MEMBER [AXINETWORK\svc-itdashboard];
 GO
 ```
 
-Pak v repo dir spusť migrace (poprvé pod tvým účtem stačí, pokud máš grant):
+## 6. Clone repo + build + .env + migrace
 
 ```powershell
-cd C:\Apps\ITDashboard\apps\server
+New-Item -ItemType Directory -Force C:\Apps | Out-Null
+Set-Location C:\Apps
+git clone https://github.com/Anamax443/ITDashboard.git
+Set-Location C:\Apps\ITDashboard
+
+# Workspace install (jen server — desktop se buildí lokálně per IT-PC)
+npm install --workspace @itdashboard/server
+
+# .env
+@'
+SQL_HOST=10.8.2.225
+SQL_INSTANCE=
+SQL_DATABASE=ITDashboard
+SQL_TRUSTED_CONNECTION=true
+API_PORT=4000
+API_BIND=0.0.0.0
+COLLECTOR_POLL_INTERVAL_SEC=300
+COLLECTOR_LEVELS=Warning,Error,Critical
+COLLECTOR_LOGNAMES=System,Application,Security
+RETENTION_RAW_DAYS=90
+'@ | Out-File 'apps\server\.env' -Encoding utf8 -NoNewline
+
+# Build + migrate
+Set-Location apps\server
+npm run build
 npm run migrate
 ```
 
-## 8. Install API jako Windows Service
+**Pozn:** Server používá driver `msnodesqlv8` (NE výchozí tedious) kvůli pravému Windows SSPI v doméně. tedious v doméně failuje s "untrusted domain". Driver má prebuilt binaries pro Node 20 Windows, žádný native build nepotřeba.
+
+## 7. Install API jako Windows Service
 
 ```powershell
 $svc = 'ITDashboardAPI'
 $nssm = 'C:\Tools\nssm\nssm.exe'
 $node = (Get-Command node).Source
-$app  = 'C:\Apps\ITDashboard\apps\server\dist\index.js'
+$appDir = 'C:\Apps\ITDashboard\apps\server'
+$appJs = "$appDir\dist\index.js"
+$logsDir = 'C:\Apps\ITDashboard\logs'
+New-Item -ItemType Directory -Force $logsDir | Out-Null
 
-& $nssm install $svc $node $app
-& $nssm set $svc AppDirectory 'C:\Apps\ITDashboard\apps\server'
-& $nssm set $svc AppStdout 'C:\Apps\ITDashboard\logs\api.out.log'
-& $nssm set $svc AppStderr 'C:\Apps\ITDashboard\logs\api.err.log'
-& $nssm set $svc ObjectName 'MICOS\svc-itdashboard' '<svc-account-password>'
+$pwdSecure = Read-Host -Prompt "Heslo pro svc-itdashboard" -AsSecureString
+$BSTR = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pwdSecure)
+$pwdPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+
+& $nssm install $svc $node $appJs
+& $nssm set $svc AppDirectory $appDir
+& $nssm set $svc AppStdout "$logsDir\api.out.log"
+& $nssm set $svc AppStderr "$logsDir\api.err.log"
 & $nssm set $svc Start SERVICE_AUTO_START
-New-Item -ItemType Directory -Force C:\Apps\ITDashboard\logs
+& $nssm set $svc ObjectName 'AXINETWORK\svc-itdashboard' $pwdPlain
+& $nssm set $svc Description 'ITDashboard API + eventlog collector'
+
+[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+Remove-Variable pwdPlain, pwdSecure
+
 Start-Service $svc
-Get-Service $svc
-```
-
-Smoke test:
-
-```powershell
 Invoke-RestMethod http://localhost:4000/health
-Invoke-RestMethod http://localhost:4000/health/db
+Invoke-RestMethod http://localhost:4000/health/db   # → ok:true
 ```
 
-## 9. Firewall — povol port 4000 v doméně
+## 8. Firewall — whitelist konkrétních IP
 
 ```powershell
-New-NetFirewallRule -DisplayName 'ITDashboard API' `
-  -Direction Inbound -Protocol TCP -LocalPort 4000 -Action Allow `
-  -Profile Domain
+$allowedSources = @(
+    '10.8.2.213',   # localhost (admin server)
+    '10.8.2.181',   # tvůj dev PC (uprav)
+    '10.8.2.243'    # další IT specialista
+)
+
+New-NetFirewallRule -DisplayName 'ITDashboard API (4000)' `
+    -Direction Inbound -Protocol TCP -LocalPort 4000 -Action Allow `
+    -Profile Domain `
+    -RemoteAddress $allowedSources
 ```
 
-## 10. Register GitHub Actions self-hosted runner
+## 9. GitHub Actions self-hosted runner
 
-V GitHub UI: **Anamax443/ITDashboard → Settings → Actions → Runners → New self-hosted runner → Windows x64**.
-
-Zkopíruj příkazy z GitHub UI a spusť je v PowerShellu jako admin. Postupně:
+V GitHub UI: **Settings → Actions → Runners → New self-hosted runner → Windows x64**. Vygeneruje URL + jednorázový token (platí 1h).
 
 ```powershell
-New-Item -ItemType Directory -Force C:\Actions-Runner
-cd C:\Actions-Runner
+$ErrorActionPreference = 'Stop'
+New-Item -ItemType Directory -Force 'C:\actions-runner' | Out-Null
+Set-Location 'C:\actions-runner'
 
-# 1) Download (GitHub ti dá konkrétní verzi)
-Invoke-WebRequest -Uri <URL z GitHub UI> -OutFile actions-runner.zip
-Expand-Archive actions-runner.zip -DestinationPath .
+# URL a hash z GitHub UI (verze runneru se mění)
+Invoke-WebRequest -Uri 'https://github.com/actions/runner/releases/download/v2.334.0/actions-runner-win-x64-2.334.0.zip' `
+    -OutFile 'runner.zip' -UseBasicParsing
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::ExtractToDirectory("$PWD\runner.zip", "$PWD")
 
-# 2) Configure (token je z GitHub UI, jednorázový)
-.\config.cmd --url https://github.com/Anamax443/ITDashboard --token <token z UI> `
-  --labels itdashboard-prod --runasservice --windowslogonaccount 'MICOS\svc-itdashboard' `
-  --windowslogonpassword '<svc-account-password>'
+$pwdSecure = Read-Host -Prompt "Heslo pro svc-itdashboard" -AsSecureString
+$BSTR = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pwdSecure)
+$pwdPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
 
-# 3) Install + start jako Windows Service (config.cmd to udělal s --runasservice)
-Get-Service 'actions.runner.*'
+& "$PWD\config.cmd" `
+    --url 'https://github.com/Anamax443/ITDashboard' `
+    --token '<TOKEN_Z_GITHUB_UI>' `
+    --name 'B-S-W-MIKOS' `
+    --labels 'itdashboard-prod' `
+    --work '_work' `
+    --runasservice `
+    --windowslogonaccount 'AXINETWORK\svc-itdashboard' `
+    --windowslogonpassword $pwdPlain `
+    --unattended `
+    --replace
+
+[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+
+Get-Service 'actions.runner.*'   # Running, Automatic
 ```
 
-Ověř v GitHub UI → Settings → Actions → Runners — runner musí být **Idle** s labelem `itdashboard-prod`.
+## 10. Repo variables (v GitHub UI)
 
-## 11. Repo secrets / variables
-
-V GitHub UI: **Settings → Secrets and variables → Actions → Variables → New variable**:
+**Settings → Secrets and variables → Actions → Variables → New repository variable:**
 
 | Name | Value |
 |------|-------|
 | `SQL_HOST` | `10.8.2.225` |
-| `SQL_INSTANCE` | `BCNEW` |
+| `SQL_INSTANCE` | `_` (sentinel pro „no instance", GitHub variables nepovolí prázdnou hodnotu) |
 | `SQL_DATABASE` | `ITDashboard` |
 
-(Žádné secrets potřeba — SQL používá Integrated Auth přes service account, který spouští runner.)
+Žádné secrets potřeba — Integrated Auth.
 
-## 12. První deploy přes Actions
+## 11. První test deploy
 
-```powershell
-# Na tvém local PC:
-cd d:\git\ITDashboard
+Z lokálu (d:/git/ITDashboard):
+
+```bash
 git commit --allow-empty -m "chore: trigger first deploy"
-git push
+git push origin main
 ```
 
-V GitHub UI → Actions → "Deploy to 10.8.2.213" run by sjet zelený. Ověř na serveru:
+V GitHub UI → Actions: workflow `Deploy to 10.8.2.213` musí proběhnout zeleně. Pak ověř na serveru:
 
 ```powershell
-Invoke-RestMethod http://10.8.2.213:4000/health
+Invoke-RestMethod http://localhost:4000/health
 ```
+
+## Gotchas zaznamenané ze skutečného setupu
+
+1. **GPO `AllSigned`** v AXINETWORK doméně blokuje PowerShell scripty. Deploy workflow proto používá `shell: cmd`, service restart přes `net stop/start` (NE `Restart-Service`).
+2. **`SQL_INSTANCE`** v GitHub variables nesmí být prázdné — používáme `_` jako sentinel, server kód to interpretuje jako „no instance".
+3. **`msnodesqlv8`** driver (NE výchozí tedious v `mssql`) — jediný způsob jak udělat pravou Windows Integrated Auth v doméně.
+4. **`npm ci`** vs **`npm install`** — `package-lock.json` zatím není v repu, takže workflow používá `npm install`.
+5. **`B-S-W-SQL-04`** je default instance, NE `\BCNEW` (BCNEW byl jen RDP alias title baru, mate to).
 
 ## Hotovo
 
-Od teď: `local edit → git push → auto-deploy`. Na server už nemusíš sahat.
+Od teď: `local edit → git push → auto-deploy`. Žádné manuální sahání na server.
 
 Troubleshooting:
 
-- Actions run failne → GitHub UI → Actions → workflow run → logs
+- Actions run failne → GitHub UI → Actions → workflow run → klikni na job → krok s ✗ → log
 - API service nestartuje → `C:\Apps\ITDashboard\logs\api.err.log`
-- DB connect fail → `Test-NetConnection 10.8.2.225 -Port 1433` a ověř `MICOS\svc-itdashboard` grant
+- DB connect fail → ověř `AXINETWORK\svc-itdashboard` má `db_owner` na DB `ITDashboard`
+- Runner offline v GitHub UI → `Get-Service 'actions.runner.*'`, restart pokud Stopped
