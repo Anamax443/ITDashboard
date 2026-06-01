@@ -39,6 +39,45 @@ th { background: var(--surface); color: var(--text-dim); font-size: 12px; text-t
 .callout-err { background: rgba(239, 68, 68, 0.1); border-color: var(--critical); }
 .ascii { background: var(--surface); padding: 12px; border-radius: 6px; font-family: Consolas, monospace; font-size: 11px; white-space: pre; overflow-x: auto; }
 a.external { color: var(--accent); }
+
+@media print {
+  :root {
+    --bg: white; --surface: white; --surface-2: #f5f5f5;
+    --text: black; --text-dim: #555;
+    --accent: #1d4ed8; --critical: #b91c1c; --error: #c2410c;
+    --warning: #a16207; --ok: #15803d; --border: #d1d5db;
+  }
+  html, body { background: white !important; color: black !important; font-size: 10pt; }
+  .container { display: block; max-width: 100%; }
+  nav.toc { display: none; }
+  main { padding: 0 20px; max-width: 100%; }
+  h1 { font-size: 18pt; }
+  h2 { font-size: 14pt; color: #1d4ed8; page-break-before: auto; page-break-after: avoid; margin-top: 16pt; }
+  h3 { font-size: 11pt; color: #111; page-break-after: avoid; }
+  table, pre, .callout, .ascii { page-break-inside: avoid; }
+  pre, .ascii {
+    background: #f5f5f5 !important; color: black !important;
+    border: 1px solid #ccc; font-size: 9pt;
+  }
+  pre code { color: black !important; }
+  code { background: #f5f5f5; color: #b91c1c; padding: 1px 3px; }
+  table { font-size: 9pt; }
+  th { background: #f0f0f0 !important; color: #333 !important; }
+  td, th { border: 1px solid #ccc; padding: 4px 6px; }
+  a { color: black; text-decoration: none; }
+  a.external, nav a { color: #1d4ed8; }
+  /* Show external URLs after the link text when printed */
+  main a[href^="http"]:after { content: " (" attr(href) ")"; font-size: 8pt; color: #555; }
+  main a[href^="#"]:after { content: ""; }
+  .callout-info { background: #eff6ff !important; border-left-color: #1d4ed8; }
+  .callout-warn { background: #fef9c3 !important; border-left-color: #ca8a04; }
+  .callout-err { background: #fee2e2 !important; border-left-color: #b91c1c; }
+  .tag { color: black !important; border: 1px solid #999; background: white !important; }
+  .tag-get { border-color: #15803d; color: #15803d !important; }
+  .tag-post { border-color: #1d4ed8; color: #1d4ed8 !important; }
+  .tag-crit { border-color: #b91c1c; color: #b91c1c !important; }
+  .tag-warn { border-color: #a16207; color: #a16207 !important; }
+}
 </style>
 </head>
 <body>
@@ -69,6 +108,9 @@ a.external { color: var(--accent); }
 <main>
 
 <h1>ITDashboard — Documentation</h1>
+<div style="display: flex; gap: 12px; margin-bottom: 16px;">
+  <button onclick="window.print()" style="background: var(--surface-2); color: var(--text); border: 1px solid var(--border); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 13px;">🖨 Print / Save as PDF</button>
+</div>
 <p>Internal AD &amp; eventlog dashboard for IT operators. Eventlog analytics (Warning/Error/Critical focus), AD computer inventory, ad-hoc PowerShell/Python/C# script execution.</p>
 
 <h2 id="overview">Overview</h2>
