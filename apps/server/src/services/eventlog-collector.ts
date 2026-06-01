@@ -181,7 +181,7 @@ export async function runCollectorOnce(triggerSource: 'scheduled' | 'manual' = '
       );
 
       for (let j = 0; j < results.length; j++) {
-        const r = results[j];
+        const r = results[j]!;
         const c = batch[j]!;
         if (r.status === 'fulfilled') {
           succeeded++;
