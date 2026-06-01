@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import type { ComputerItem, SyncResult, AdSyncRun } from '../api.js';
+import type { ComputerItem as CI, SyncResult, AdSyncRun } from '../api.js';
+type ComputerItem = CI;
 import { api, timeAgo } from '../api.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
@@ -55,11 +56,21 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
   const sorted = useSortedItems(filtered, sort);
   const enabled = items.filter((c) => c.enabled);
   const disabled = items.filter((c) => !c.enabled);
+  const monitored = items.filter((c) => c.enabled && c.monitor_enabled).length;
+
+  const toggleMonitor = async (c: ComputerItem) => {
+    try {
+      await api.setMonitor(c.id, !c.monitor_enabled);
+      onRefreshLocal();
+    } catch (err) {
+      setError(String(err));
+    }
+  };
 
   return (
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1' }}>
       <div className="panel-header">
-        <h2>Computers ({enabled.length} active · {disabled.length} disabled)</h2>
+        <h2>Computers ({enabled.length} active · {monitored} monitored · {disabled.length} disabled)</h2>
         <div className="panel-actions filters">
           <input
             type="text"
@@ -125,23 +136,40 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
             <thead>
               <tr>
                 <th style={{ width: 24 }}></th>
+                <th style={{ width: 70, textAlign: 'center' }} title="Collect events from this PC">Monitor</th>
                 <SortHeader<ComputerItem> col="name" label="Name" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="fqdn" label="FQDN" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="os_version" label="OS" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="last_seen" label="Last seen" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="enabled" label="Status" sort={sort} toggle={toggle} />
+                <th style={{ width: 120 }}>Last collected</th>
+                <th>Last error</th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((c) => (
                 <tr key={c.id} style={{ opacity: c.enabled ? 1 : 0.5 }}>
                   <td>{c.enabled ? '🟢' : '⚪'}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={c.monitor_enabled}
+                      disabled={!c.enabled}
+                      onChange={() => toggleMonitor(c)}
+                      title={c.monitor_enabled ? 'Click to stop monitoring' : 'Click to start monitoring'}
+                      style={{ cursor: c.enabled ? 'pointer' : 'not-allowed' }}
+                    />
+                  </td>
                   <td style={{ fontWeight: 600 }}>{c.name}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{c.fqdn ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{c.os_version ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{timeAgo(c.last_seen)}</td>
                   <td style={{ color: c.enabled ? 'var(--ok)' : 'var(--text-dim)', fontSize: 11 }}>
                     {c.enabled ? 'Active' : 'Disabled'}
+                  </td>
+                  <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{timeAgo(c.last_collected_at ?? null)}</td>
+                  <td style={{ color: c.last_error ? 'var(--critical)' : 'var(--text-dim)', fontSize: 11, maxWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.last_error ?? ''}>
+                    {c.last_error ?? '—'}
                   </td>
                 </tr>
               ))}

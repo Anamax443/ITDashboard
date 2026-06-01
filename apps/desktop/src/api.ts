@@ -45,6 +45,10 @@ export interface ComputerItem {
   os_version: string | null;
   last_seen: string | null;
   enabled: boolean;
+  monitor_enabled: boolean;
+  last_collected_at?: string | null;
+  last_error?: string | null;
+  consecutive_failures?: number;
 }
 
 async function jget<T>(path: string): Promise<T> {
@@ -97,6 +101,15 @@ export const api = {
   syncHistory: () => jget<{ items: AdSyncRun[] }>('/computers/sync/history'),
   lastSync: () => jget<{ last: AdSyncRun | null }>('/computers/sync/last'),
   version: () => jget<VersionInfo>('/version'),
+  setMonitor: async (id: number, monitor: boolean) => {
+    const r = await fetch(`${API_BASE}/computers/${id}/monitor`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monitor }),
+    });
+    if (!r.ok) throw new Error(`PATCH /computers/${id}/monitor → ${r.status}`);
+    return r.json() as Promise<{ id: number; name: string; monitor_enabled: boolean }>;
+  },
 };
 
 export interface VersionInfo {
