@@ -25,6 +25,7 @@ const MAX_EVENTS_PER_PC_PER_RUN = 500;
 const CONCURRENCY = 5;
 
 let runInFlight = false;
+let currentAbortController: AbortController | null = null;
 
 interface InFlightProgress {
   startedAt: string;
@@ -46,7 +47,8 @@ let currentProgress: InFlightProgress | null = null;
  * Runs under the API service account (svc-itdashboard); the account needs
  * Event Log Readers membership on the target PC (typically granted via GPO).
  */
-async function collectFromPC(name: string, sinceUtc: Date): Promise<RawEvent[]> {
+async function collectFromPC(name: string, sinceUtc: Date, signal?: AbortSignal): Promise<RawEvent[]> {
+  if (signal?.aborted) throw new Error('aborted');
   const sinceIso = sinceUtc.toISOString();
   const ps = `
 $ErrorActionPreference = 'Stop'
@@ -67,9 +69,15 @@ Get-WinEvent -ComputerName '${name}' -FilterHashtable @{
     const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps]);
     let stdout = '';
     let stderr = '';
+    const onAbort = () => {
+      try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
     proc.stdout.on('data', (b) => (stdout += b.toString('utf8')));
     proc.stderr.on('data', (b) => (stderr += b.toString('utf8')));
     proc.on('close', (code) => {
+      signal?.removeEventListener('abort', onAbort);
+      if (signal?.aborted) return reject(new Error('aborted'));
       if (code !== 0) {
         return reject(new Error(stderr.trim() || `PS exit ${code}`));
       }
@@ -160,6 +168,8 @@ export interface CollectorRunResult {
 export async function runCollectorOnce(triggerSource: 'scheduled' | 'manual' = 'scheduled'): Promise<CollectorRunResult | null> {
   if (runInFlight) return null;
   runInFlight = true;
+  currentAbortController = new AbortController();
+  const signal = currentAbortController.signal;
 
   const pool = await getPool();
   const runStart = await pool.request().input('src', triggerSource).query<{ id: number }>(`
@@ -190,13 +200,17 @@ export async function runCollectorOnce(triggerSource: 'scheduled' | 'manual' = '
 
     // Process in batches of CONCURRENCY
     for (let i = 0; i < targets.length; i += CONCURRENCY) {
+      if (signal.aborted) {
+        logActivity('warn', 'collector', `Aborted after ${i} PCs`);
+        break;
+      }
       const batch = targets.slice(i, i + CONCURRENCY);
       currentProgress.currentlyProcessing = batch.map((c) => c.name);
 
       const results = await Promise.allSettled(
         batch.map(async (c) => {
           const since = c.last_collected_at ?? new Date(Date.now() - 60 * 60 * 1000); // 1h cold start
-          const events = await collectFromPC(c.name, since);
+          const events = await collectFromPC(c.name, since, signal);
           const added = await insertEvents(c.id, events);
           await markSuccess(c.id, runStartedAt);
           return added;
@@ -226,23 +240,33 @@ export async function runCollectorOnce(triggerSource: 'scheduled' | 'manual' = '
     }
 
     const durationMs = Date.now() - t0;
+    const aborted = signal.aborted;
     await pool.request()
       .input('id', runId).input('total', targets.length).input('succ', succeeded)
-      .input('fail', failed).input('added', totalAdded)
+      .input('fail', failed).input('added', totalAdded).input('notes', aborted ? 'aborted by operator' : null)
       .query(`
         UPDATE collector_runs
         SET finished_at = SYSUTCDATETIME(),
             pcs_total = @total, pcs_succeeded = @succ, pcs_failed = @fail,
-            events_added = @added
+            events_added = @added, notes = @notes
         WHERE id = @id;
       `);
 
-    logActivity('success', 'collector', `Run done: ${succeeded} OK / ${failed} fail / +${totalAdded} events (${(durationMs/1000).toFixed(1)}s)`);
+    const status = aborted ? 'aborted' : 'done';
+    logActivity(aborted ? 'warn' : 'success', 'collector', `Run ${status}: ${succeeded} OK / ${failed} fail / +${totalAdded} events (${(durationMs/1000).toFixed(1)}s)`);
     return { runId, pcsTotal: targets.length, pcsSucceeded: succeeded, pcsFailed: failed, eventsAdded: totalAdded, durationMs };
   } finally {
     runInFlight = false;
     currentProgress = null;
+    currentAbortController = null;
   }
+}
+
+export function stopCollector(): boolean {
+  if (!runInFlight || !currentAbortController) return false;
+  logActivity('warn', 'collector', 'Stop requested by operator');
+  currentAbortController.abort();
+  return true;
 }
 
 let scheduledTimer: NodeJS.Timeout | null = null;

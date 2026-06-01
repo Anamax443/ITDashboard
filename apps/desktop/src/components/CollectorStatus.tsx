@@ -61,6 +61,16 @@ export function CollectorStatus() {
     }
   };
 
+  const stop = async () => {
+    setError(null);
+    try {
+      await api.collectorStop();
+      await fetchStatus();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const inFlight = status?.inFlight || triggering;
   const progress = status?.progress;
   const last = status?.lastRun;
@@ -80,9 +90,20 @@ export function CollectorStatus() {
           <span style={{ color: 'var(--text-dim)' }}>never ran</span>
         )}
 
-        <button className="refresh-btn" onClick={trigger} disabled={inFlight} style={{ marginLeft: 'auto' }}>
-          {inFlight ? 'Running…' : 'Run now'}
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          {inFlight && (
+            <button
+              className="refresh-btn"
+              onClick={stop}
+              style={{ borderColor: 'var(--critical)', color: 'var(--critical)' }}
+            >
+              ⏹ Stop
+            </button>
+          )}
+          <button className="refresh-btn" onClick={trigger} disabled={inFlight}>
+            {inFlight ? 'Running…' : '▶ Run now'}
+          </button>
+        </div>
         {error && <span style={{ color: 'var(--critical)' }}>⚠ {error}</span>}
       </div>
 

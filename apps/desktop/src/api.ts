@@ -87,6 +87,7 @@ export const api = {
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),
+  collectorStop: () => jpost<{ stopped: boolean }>('/collector/stop'),
   activityLog: (limit = 200, sinceSeq?: number) => {
     const params = new URLSearchParams();
     params.set('limit', String(limit));
