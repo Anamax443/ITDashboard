@@ -19,7 +19,7 @@ async function ensureMigrationsTable(pool: Awaited<ReturnType<typeof getPool>>) 
 
 async function appliedMigrations(pool: Awaited<ReturnType<typeof getPool>>): Promise<Set<string>> {
   const r = await pool.request().query<{ id: string }>('SELECT id FROM schema_migrations');
-  return new Set(r.recordset.map((x) => x.id));
+  return new Set(r.recordset.map((x: { id: string }) => x.id));
 }
 
 async function main() {

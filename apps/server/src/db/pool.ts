@@ -21,5 +21,5 @@ export function getPool(): Promise<sql.ConnectionPool> {
   };
 
   poolPromise = new sql.ConnectionPool(config).connect();
-  return poolPromise;
+  return poolPromise!;
 }
