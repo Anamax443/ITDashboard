@@ -1,24 +1,29 @@
-import sql from 'mssql';
+import sql from 'mssql/msnodesqlv8.js';
 
 let poolPromise: Promise<sql.ConnectionPool> | null = null;
 
+/**
+ * Uses msnodesqlv8 driver for true Windows SSPI / Integrated Auth.
+ * The API service runs under svc-itdashboard; the SQL login is mapped to that
+ * Windows account, so no password is ever in config or memory.
+ */
 export function getPool(): Promise<sql.ConnectionPool> {
   if (poolPromise) return poolPromise;
 
-  const trusted = (process.env.SQL_TRUSTED_CONNECTION ?? 'true') === 'true';
+  const host = process.env.SQL_HOST ?? 'localhost';
+  const instance = process.env.SQL_INSTANCE;
+  const database = process.env.SQL_DATABASE ?? 'ITDashboard';
+  const server = instance ? `${host}\\${instance}` : host;
+
   const config: sql.config = {
-    server: process.env.SQL_HOST ?? 'localhost',
-    database: process.env.SQL_DATABASE ?? 'ITDashboard',
+    server,
+    database,
     options: {
-      instanceName: process.env.SQL_INSTANCE,
+      trustedConnection: true,
       trustServerCertificate: true,
-      enableArithAbort: true,
     },
     pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
-    ...(trusted
-      ? { authentication: { type: 'ntlm', options: { domain: '', userName: '', password: '' } } as never }
-      : { user: process.env.SQL_USER, password: process.env.SQL_PASSWORD }),
-  };
+  } as sql.config;
 
   poolPromise = new sql.ConnectionPool(config).connect();
   return poolPromise!;
