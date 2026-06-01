@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { EventsTable } from './components/EventsTable.js';
 import { TopEventIds } from './components/TopEventIds.js';
@@ -30,6 +30,9 @@ export function App() {
 
   const [error, setError] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
+  const [version, setVersion] = useState<VersionInfo | null>(null);
+
+  useEffect(() => { api.version().then(setVersion).catch(() => {}); }, []);
 
   const refreshComputers = useCallback(async () => {
     try {
@@ -83,7 +86,18 @@ export function App() {
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>Activity</button>
           </div>
         </div>
-        <div className="meta">API: {API_BASE}</div>
+        <div className="meta">
+          {version && (
+            <span title={`${version.shaFull}\nbranch: ${version.branch ?? '?'}`}>
+              <a href={`https://github.com/Anamax443/ITDashboard/commit/${version.shaFull}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+                {version.sha}
+              </a>
+              {version.branch && <span style={{ color: 'var(--text-dim)' }}> · {version.branch}</span>}
+              <span style={{ margin: '0 8px' }}>·</span>
+            </span>
+          )}
+          API: {API_BASE}
+        </div>
       </div>
 
       {view === 'dashboard' && (

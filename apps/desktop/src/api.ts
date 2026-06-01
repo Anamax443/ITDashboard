@@ -95,7 +95,15 @@ export const api = {
   },
   syncHistory: () => jget<{ items: AdSyncRun[] }>('/computers/sync/history'),
   lastSync: () => jget<{ last: AdSyncRun | null }>('/computers/sync/last'),
+  version: () => jget<VersionInfo>('/version'),
 };
+
+export interface VersionInfo {
+  sha: string;
+  shaFull: string;
+  branch: string | null;
+  builtAt: string;
+}
 
 export interface ActivityLogEntry {
   ts: string;

@@ -8,6 +8,7 @@ import { registerComputersRoutes } from './routes/computers.js';
 import { registerScriptsRoutes } from './routes/scripts.js';
 import { registerCollectorRoutes } from './routes/collector.js';
 import { registerActivityRoutes } from './routes/activity.js';
+import { registerVersionRoutes } from './routes/version.js';
 import { startCollectorSchedule } from './services/eventlog-collector.js';
 
 const PORT = Number(process.env.API_PORT ?? 4000);
@@ -24,6 +25,7 @@ await registerComputersRoutes(app);
 await registerScriptsRoutes(app);
 await registerCollectorRoutes(app);
 await registerActivityRoutes(app);
+await registerVersionRoutes(app);
 
 app.listen({ port: PORT, host: BIND }).then(() => {
   startCollectorSchedule();
