@@ -53,16 +53,24 @@ async function collectFromPC(name: string, sinceUtc: Date, signal?: AbortSignal)
   const ps = `
 $ErrorActionPreference = 'Stop'
 $startTime = [DateTime]::Parse('${sinceIso}').ToUniversalTime()
-Get-WinEvent -ComputerName '${name}' -FilterHashtable @{
-  LogName = 'System','Application'
-  Level = 1,2,3
-  StartTime = $startTime
-} -MaxEvents ${MAX_EVENTS_PER_PC_PER_RUN} -ErrorAction Stop |
-  Select-Object @{n='TimeCreated';e={$_.TimeCreated.ToUniversalTime().ToString('o')}},
-    Id, Level, LogName, ProviderName, MachineName,
-    @{n='Message';e={$_.Message}},
-    @{n='TaskDisplayName';e={$_.TaskDisplayName}} |
-  ConvertTo-Json -Compress -Depth 4
+try {
+  Get-WinEvent -ComputerName '${name}' -FilterHashtable @{
+    LogName = 'System','Application'
+    Level = 1,2,3
+    StartTime = $startTime
+  } -MaxEvents ${MAX_EVENTS_PER_PC_PER_RUN} -ErrorAction Stop |
+    Select-Object @{n='TimeCreated';e={$_.TimeCreated.ToUniversalTime().ToString('o')}},
+      Id, Level, LogName, ProviderName, MachineName,
+      @{n='Message';e={$_.Message}},
+      @{n='TaskDisplayName';e={$_.TaskDisplayName}} |
+    ConvertTo-Json -Compress -Depth 4
+} catch {
+  if ($_.FullyQualifiedErrorId -match 'NoMatchingEventsFound' -or $_.Exception.Message -match 'No events were found') {
+    Write-Output '[]'
+  } else {
+    throw
+  }
+}
 `;
 
   return new Promise((resolve, reject) => {
