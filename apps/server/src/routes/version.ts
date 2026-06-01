@@ -9,10 +9,7 @@ interface VersionInfo {
   builtAt: string;
 }
 
-let cached: VersionInfo | null = null;
-
 async function readVersion(): Promise<VersionInfo> {
-  if (cached) return cached;
   // dist runs from C:\Apps\ITDashboard\apps\server\dist; .git is at C:\Apps\ITDashboard\.git
   const gitDir = join(process.cwd(), '..', '..', '.git');
   let shaFull = 'unknown';
@@ -35,13 +32,12 @@ async function readVersion(): Promise<VersionInfo> {
   } catch {
     // .git not accessible — leave as unknown
   }
-  cached = {
+  return {
     sha: shaFull.slice(0, 7),
     shaFull,
     branch,
     builtAt: new Date().toISOString(),
   };
-  return cached;
 }
 
 async function readDocsHtml(): Promise<string> {
