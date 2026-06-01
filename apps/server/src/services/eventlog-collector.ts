@@ -25,6 +25,20 @@ const CONCURRENCY = 5;
 
 let runInFlight = false;
 
+interface InFlightProgress {
+  startedAt: string;
+  triggerSource: 'scheduled' | 'manual';
+  totalPcs: number;
+  processedPcs: number;
+  succeededPcs: number;
+  failedPcs: number;
+  eventsAddedSoFar: number;
+  currentlyProcessing: string[];
+  recentFailures: { name: string; error: string }[];
+}
+
+let currentProgress: InFlightProgress | null = null;
+
 /**
  * Pulls events from a single PC via PS Remoting (WinRM). Runs under the API
  * service account (svc-itdashboard); the account needs Remote Management Users
@@ -167,9 +181,23 @@ export async function runCollectorOnce(triggerSource: 'scheduled' | 'manual' = '
     let totalAdded = 0;
     const runStartedAt = new Date();
 
+    currentProgress = {
+      startedAt: runStartedAt.toISOString(),
+      triggerSource,
+      totalPcs: targets.length,
+      processedPcs: 0,
+      succeededPcs: 0,
+      failedPcs: 0,
+      eventsAddedSoFar: 0,
+      currentlyProcessing: [],
+      recentFailures: [],
+    };
+
     // Process in batches of CONCURRENCY
     for (let i = 0; i < targets.length; i += CONCURRENCY) {
       const batch = targets.slice(i, i + CONCURRENCY);
+      currentProgress.currentlyProcessing = batch.map((c) => c.name);
+
       const results = await Promise.allSettled(
         batch.map(async (c) => {
           const since = c.last_collected_at ?? new Date(Date.now() - 60 * 60 * 1000); // 1h cold start
@@ -186,11 +214,18 @@ export async function runCollectorOnce(triggerSource: 'scheduled' | 'manual' = '
         if (r.status === 'fulfilled') {
           succeeded++;
           totalAdded += r.value;
+          currentProgress.eventsAddedSoFar += r.value;
         } else {
           failed++;
+          const errMsg = String(r.reason).split('\n')[0]?.slice(0, 200) ?? 'unknown';
           await markFailure(c.id, String(r.reason));
+          currentProgress.recentFailures.unshift({ name: c.name, error: errMsg });
+          if (currentProgress.recentFailures.length > 5) currentProgress.recentFailures.length = 5;
         }
       }
+      currentProgress.processedPcs += batch.length;
+      currentProgress.succeededPcs = succeeded;
+      currentProgress.failedPcs = failed;
     }
 
     const durationMs = Date.now() - t0;
@@ -208,6 +243,7 @@ export async function runCollectorOnce(triggerSource: 'scheduled' | 'manual' = '
     return { runId, pcsTotal: targets.length, pcsSucceeded: succeeded, pcsFailed: failed, eventsAdded: totalAdded, durationMs };
   } finally {
     runInFlight = false;
+    currentProgress = null;
   }
 }
 
@@ -234,6 +270,7 @@ export async function getCollectorStatus() {
   `);
   return {
     inFlight: runInFlight,
+    progress: currentProgress,
     lastRun: r.recordset[0] ?? null,
   };
 }

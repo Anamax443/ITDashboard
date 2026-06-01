@@ -73,8 +73,21 @@ export const api = {
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),
 };
 
+export interface CollectorProgress {
+  startedAt: string;
+  triggerSource: 'scheduled' | 'manual';
+  totalPcs: number;
+  processedPcs: number;
+  succeededPcs: number;
+  failedPcs: number;
+  eventsAddedSoFar: number;
+  currentlyProcessing: string[];
+  recentFailures: { name: string; error: string }[];
+}
+
 export interface CollectorStatus {
   inFlight: boolean;
+  progress: CollectorProgress | null;
   lastRun: {
     id: number;
     started_at: string;

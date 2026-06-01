@@ -1,29 +1,45 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { CollectorStatus as CS } from '../api.js';
 import { api, timeAgo } from '../api.js';
 
+const POLL_IDLE_MS = 15_000;
+const POLL_RUNNING_MS = 2_000;
+
 export function CollectorStatus() {
   const [status, setStatus] = useState<CS | null>(null);
-  const [running, setRunning] = useState(false);
+  const [triggering, setTriggering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchStatus = async () => {
     try {
       const s = await api.collectorStatus();
       setStatus(s);
+      return s;
     } catch (e) {
       setError(String(e));
+      return null;
     }
   };
 
   useEffect(() => {
-    fetchStatus();
-    const t = setInterval(fetchStatus, 15_000);
-    return () => clearInterval(t);
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      const s = await fetchStatus();
+      const inFlight = s?.inFlight ?? false;
+      const next = inFlight ? POLL_RUNNING_MS : POLL_IDLE_MS;
+      timerRef.current = setTimeout(tick, next);
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, []);
 
   const trigger = async () => {
-    setRunning(true);
+    setTriggering(true);
     setError(null);
     try {
       await api.collectorRun();
@@ -31,39 +47,93 @@ export function CollectorStatus() {
     } catch (e) {
       setError(String(e));
     } finally {
-      setRunning(false);
+      setTriggering(false);
     }
   };
 
+  const inFlight = status?.inFlight || triggering;
+  const progress = status?.progress;
   const last = status?.lastRun;
-  const inFlight = status?.inFlight || running;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 12px', background: 'var(--surface)', borderRadius: 8, fontSize: 12 }}>
-      <span style={{ color: 'var(--text-dim)' }}>Collector:</span>
-      {inFlight && <span style={{ color: 'var(--accent)' }}>● Running…</span>}
-      {!inFlight && last && (
+    <div style={{ background: 'var(--surface)', borderRadius: 8, padding: 8, fontSize: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ color: 'var(--text-dim)', fontWeight: 600 }}>Collector:</span>
+
+        {inFlight && progress ? (
+          <ProgressDisplay progress={progress} />
+        ) : inFlight ? (
+          <span style={{ color: 'var(--accent)' }}>● Starting…</span>
+        ) : last ? (
+          <IdleDisplay last={last} />
+        ) : (
+          <span style={{ color: 'var(--text-dim)' }}>never ran</span>
+        )}
+
+        <button className="refresh-btn" onClick={trigger} disabled={inFlight} style={{ marginLeft: 'auto' }}>
+          {inFlight ? 'Running…' : 'Run now'}
+        </button>
+        {error && <span style={{ color: 'var(--critical)' }}>⚠ {error}</span>}
+      </div>
+
+      {inFlight && progress && progress.recentFailures.length > 0 && (
+        <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-dim)' }}>
+          Recent failures:{' '}
+          {progress.recentFailures.map((f) => (
+            <span key={f.name} title={f.error} style={{ marginRight: 8 }}>
+              <span style={{ color: 'var(--critical)' }}>{f.name}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProgressDisplay({ progress }: { progress: NonNullable<CS['progress']> }) {
+  const pct = progress.totalPcs > 0 ? (progress.processedPcs / progress.totalPcs) * 100 : 0;
+  const elapsed = Math.floor((Date.now() - new Date(progress.startedAt).getTime()) / 1000);
+  return (
+    <>
+      <span style={{ color: 'var(--accent)' }}>● Running</span>
+      <div style={{ flex: '0 0 200px', height: 6, background: 'var(--bg)', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.3s' }} />
+      </div>
+      <span>{progress.processedPcs}/{progress.totalPcs} PCs</span>
+      <span>·</span>
+      <span style={{ color: 'var(--ok)' }}>✓ {progress.succeededPcs}</span>
+      <span style={{ color: 'var(--text-dim)' }}>/</span>
+      <span style={{ color: 'var(--critical)' }}>✗ {progress.failedPcs}</span>
+      <span>·</span>
+      <span>+{progress.eventsAddedSoFar} events</span>
+      <span>·</span>
+      <span style={{ color: 'var(--text-dim)' }}>{elapsed}s</span>
+      {progress.currentlyProcessing.length > 0 && (
         <>
-          <span>
-            Last: {timeAgo(last.finished_at ?? last.started_at)} ({last.trigger_source})
+          <span style={{ color: 'var(--text-dim)' }}>·</span>
+          <span style={{ color: 'var(--text-dim)' }} title={progress.currentlyProcessing.join(', ')}>
+            now: {progress.currentlyProcessing.slice(0, 2).join(', ')}{progress.currentlyProcessing.length > 2 ? ` +${progress.currentlyProcessing.length - 2}` : ''}
           </span>
-          <span>·</span>
-          <span style={{ color: 'var(--ok)' }}>{last.pcs_succeeded ?? 0} OK</span>
-          {(last.pcs_failed ?? 0) > 0 && (
-            <>
-              <span style={{ color: 'var(--text-dim)' }}>/</span>
-              <span style={{ color: 'var(--critical)' }}>{last.pcs_failed} fail</span>
-            </>
-          )}
-          <span>·</span>
-          <span>+{last.events_added ?? 0} events</span>
         </>
       )}
-      {!inFlight && !last && <span style={{ color: 'var(--text-dim)' }}>never ran</span>}
-      <button className="refresh-btn" onClick={trigger} disabled={inFlight} style={{ marginLeft: 'auto' }}>
-        {inFlight ? '…' : 'Run now'}
-      </button>
-      {error && <span style={{ color: 'var(--critical)' }}>⚠ {error}</span>}
-    </div>
+    </>
+  );
+}
+
+function IdleDisplay({ last }: { last: NonNullable<CS['lastRun']> }) {
+  return (
+    <>
+      <span>Last: {timeAgo(last.finished_at ?? last.started_at)} ({last.trigger_source})</span>
+      <span>·</span>
+      <span style={{ color: 'var(--ok)' }}>{last.pcs_succeeded ?? 0} OK</span>
+      {(last.pcs_failed ?? 0) > 0 && (
+        <>
+          <span style={{ color: 'var(--text-dim)' }}>/</span>
+          <span style={{ color: 'var(--critical)' }}>{last.pcs_failed} fail</span>
+        </>
+      )}
+      <span>·</span>
+      <span>+{last.events_added ?? 0} events</span>
+    </>
   );
 }
