@@ -11,7 +11,8 @@ export function getPool(): Promise<sql.ConnectionPool> {
   if (poolPromise) return poolPromise;
 
   const host = process.env.SQL_HOST ?? 'localhost';
-  const instance = process.env.SQL_INSTANCE;
+  const rawInstance = process.env.SQL_INSTANCE ?? '';
+  const instance = (rawInstance === '' || rawInstance === '_') ? null : rawInstance;
   const database = process.env.SQL_DATABASE ?? 'ITDashboard';
   const server = instance ? `${host}\\${instance}` : host;
 
