@@ -49,6 +49,8 @@ export interface ComputerItem {
   last_collected_at?: string | null;
   last_error?: string | null;
   consecutive_failures?: number;
+  ou_path?: string | null;
+  distinguished_name?: string | null;
 }
 
 async function jget<T>(path: string): Promise<T> {

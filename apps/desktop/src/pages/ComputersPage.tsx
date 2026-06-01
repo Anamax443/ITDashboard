@@ -47,7 +47,8 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
       if (
         !c.name.toLowerCase().includes(q) &&
         !(c.fqdn ?? '').toLowerCase().includes(q) &&
-        !(c.os_version ?? '').toLowerCase().includes(q)
+        !(c.os_version ?? '').toLowerCase().includes(q) &&
+        !(c.ou_path ?? '').toLowerCase().includes(q)
       ) return false;
     }
     return true;
@@ -158,6 +159,7 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
                 <th style={{ width: 24 }}></th>
                 <th style={{ width: 70, textAlign: 'center' }} title="Collect events from this PC">Monitor</th>
                 <SortHeader<ComputerItem> col="name" label="Name" sort={sort} toggle={toggle} />
+                <SortHeader<ComputerItem> col="ou_path" label="OU path" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="fqdn" label="FQDN" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="os_version" label="OS" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="last_seen" label="Last seen" sort={sort} toggle={toggle} />
@@ -181,6 +183,7 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
                     />
                   </td>
                   <td style={{ fontWeight: 600 }}>{c.name}</td>
+                  <td style={{ color: 'var(--text-dim)', fontSize: 11 }} title={c.distinguished_name ?? ''}>{c.ou_path ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{c.fqdn ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{c.os_version ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{timeAgo(c.last_seen)}</td>

@@ -8,16 +8,42 @@ export interface ADComputer {
   OperatingSystem: string | null;
   LastLogonDate: string | null;
   Enabled: boolean;
+  DistinguishedName: string | null;
+}
+
+/**
+ * Converts AD DistinguishedName to a human-readable OU path.
+ * e.g. "CN=PC1,OU=Notebooks,OU=Sales,DC=axinetwork,DC=loc"
+ *   →  "axinetwork.loc/Sales/Notebooks"
+ * The CN (computer name) is dropped — path describes the container only.
+ */
+export function dnToOuPath(dn: string | null): string | null {
+  if (!dn) return null;
+  // Split on unescaped commas (DN escapes commas with backslash)
+  const parts = dn.split(/(?<!\\),/);
+  const ous: string[] = [];
+  const dcs: string[] = [];
+  for (const part of parts) {
+    const m = part.trim().match(/^(CN|OU|DC)=(.+)$/i);
+    if (!m) continue;
+    const type = m[1]!.toUpperCase();
+    const val = m[2]!.replace(/\\,/g, ',');
+    if (type === 'OU') ous.push(val);
+    else if (type === 'DC') dcs.push(val);
+  }
+  const domain = dcs.join('.');
+  if (ous.length === 0) return domain || null;
+  return [domain, ...ous.reverse()].join('/');
 }
 
 function fetchFromAD(): Promise<ADComputer[]> {
   const ps = `
 $ErrorActionPreference = 'Stop'
 Import-Module ActiveDirectory
-Get-ADComputer -Filter * -Properties OperatingSystem, LastLogonDate |
+Get-ADComputer -Filter * -Properties OperatingSystem, LastLogonDate, DistinguishedName |
   Select-Object Name, DNSHostName, OperatingSystem,
     @{n='LastLogonDate';e={ if ($_.LastLogonDate) { $_.LastLogonDate.ToUniversalTime().ToString('o') } else { $null } }},
-    Enabled |
+    Enabled, DistinguishedName |
   ConvertTo-Json -Compress -Depth 4
 `;
 
@@ -70,19 +96,23 @@ export async function syncComputersFromAD(triggerSource: 'manual' | 'scheduled' 
     let updated = 0;
 
     for (const c of adList) {
+      const ouPath = dnToOuPath(c.DistinguishedName);
       const r = await pool.request()
         .input('name', c.Name)
         .input('fqdn', c.DNSHostName)
         .input('os', c.OperatingSystem)
         .input('last_seen', c.LastLogonDate)
         .input('enabled', c.Enabled ? 1 : 0)
+        .input('dn', c.DistinguishedName)
+        .input('ou', ouPath)
         .query<{ action: 'INSERT' | 'UPDATE' }>(`
           MERGE computers AS tgt
           USING (SELECT @name AS name) AS src ON tgt.name = src.name
           WHEN MATCHED THEN UPDATE SET
-            fqdn = @fqdn, os_version = @os, last_seen = @last_seen, enabled = @enabled
-          WHEN NOT MATCHED THEN INSERT (name, fqdn, os_version, last_seen, enabled)
-            VALUES (@name, @fqdn, @os, @last_seen, @enabled)
+            fqdn = @fqdn, os_version = @os, last_seen = @last_seen, enabled = @enabled,
+            distinguished_name = @dn, ou_path = @ou
+          WHEN NOT MATCHED THEN INSERT (name, fqdn, os_version, last_seen, enabled, distinguished_name, ou_path)
+            VALUES (@name, @fqdn, @os, @last_seen, @enabled, @dn, @ou)
           OUTPUT $action AS action;
         `);
       const action = r.recordset[0]?.action;
