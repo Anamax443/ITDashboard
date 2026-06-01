@@ -12,6 +12,8 @@ jobs:
     defaults:
       run:
         shell: cmd
+    env:
+      RUNTIME_DIR: C:\Apps\ITDashboard
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,19 +23,29 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install deps
+      - name: Sync source to runtime location
+        # Mirror the checked-out tree into C:\Apps\ITDashboard so the NSSM-managed
+        # service picks up the new code. Exclude node_modules (workspace-installed
+        # in runtime dir) and .env (operator-owned at runtime).
+        run: |
+          robocopy . %RUNTIME_DIR% /MIR /XD node_modules .git _diag _work /XF .env /NFL /NDL /NJH /NJS /NC /NS
+          if %ERRORLEVEL% GEQ 8 exit /b %ERRORLEVEL%
+          exit /b 0
+
+      - name: Install deps in runtime location
+        working-directory: ${{ env.RUNTIME_DIR }}
         run: npm install --workspace @itdashboard/server --include-workspace-root
 
       - name: Typecheck
-        working-directory: apps/server
+        working-directory: ${{ env.RUNTIME_DIR }}\apps\server
         run: npm run typecheck
 
       - name: Build
-        working-directory: apps/server
+        working-directory: ${{ env.RUNTIME_DIR }}\apps\server
         run: npm run build
 
       - name: Apply DB migrations
-        working-directory: apps/server
+        working-directory: ${{ env.RUNTIME_DIR }}\apps\server
         env:
           SQL_HOST: ${{ vars.SQL_HOST }}
           SQL_INSTANCE: ${{ vars.SQL_INSTANCE }}

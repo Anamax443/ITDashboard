@@ -39,6 +39,23 @@ async function jget<T>(path: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+export interface SyncResult {
+  fetched: number;
+  inserted: number;
+  updated: number;
+  removed: number;
+  durationMs: number;
+}
+
+async function jpost<T>(path: string): Promise<T> {
+  const r = await fetch(`${API_BASE}${path}`, { method: 'POST' });
+  if (!r.ok) {
+    const text = await r.text().catch(() => '');
+    throw new Error(`${path} → ${r.status} ${text}`);
+  }
+  return r.json() as Promise<T>;
+}
+
 export const api = {
   summary: () => jget<Summary>('/events/summary'),
   events: (q: { computer?: string; level?: 'critical' | 'error' | 'warning'; hours?: number; limit?: number } = {}) => {
@@ -51,6 +68,7 @@ export const api = {
   },
   topIds: (hours = 24, limit = 15) => jget<{ items: TopEventId[] }>(`/events/top-ids?hours=${hours}&limit=${limit}`),
   computers: () => jget<{ items: ComputerItem[] }>('/computers'),
+  syncComputers: () => jpost<SyncResult>('/computers/sync'),
 };
 
 export function levelName(level: number): 'crit' | 'err' | 'warn' | 'info' {
