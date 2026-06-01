@@ -38,6 +38,54 @@ export interface TopComputer {
   warning_count: number;
 }
 
+export interface DiskItem {
+  id: number;
+  computer_id: number;
+  computer: string;
+  drive_letter: string;
+  volume_label: string | null;
+  filesystem: string | null;
+  total_bytes: number;
+  free_bytes: number;
+  collected_at: string;
+}
+
+export type DiskStatus = 'critical' | 'warning' | 'ok';
+
+export interface DiskThresholds {
+  criticalPct: number;
+  warningPct: number;
+  criticalGb: number;
+  warningGb: number;
+  mode: 'pct' | 'gb' | 'either';
+}
+
+export function parseDiskThresholds(settings: Record<string, string>): DiskThresholds {
+  return {
+    criticalPct: Number(settings['disk.critical_pct'] ?? 5),
+    warningPct: Number(settings['disk.warning_pct'] ?? 15),
+    criticalGb: Number(settings['disk.critical_gb'] ?? 5),
+    warningGb: Number(settings['disk.warning_gb'] ?? 20),
+    mode: (settings['disk.threshold_mode'] as 'pct' | 'gb' | 'either') ?? 'pct',
+  };
+}
+
+export function evaluateDisk(d: DiskItem, t: DiskThresholds): DiskStatus {
+  if (d.total_bytes <= 0) return 'ok';
+  const freePct = (d.free_bytes / d.total_bytes) * 100;
+  const freeGb = d.free_bytes / 1024 ** 3;
+  const pctCrit = freePct < t.criticalPct;
+  const pctWarn = freePct < t.warningPct;
+  const gbCrit = freeGb < t.criticalGb;
+  const gbWarn = freeGb < t.warningGb;
+  if (t.mode === 'pct') return pctCrit ? 'critical' : pctWarn ? 'warning' : 'ok';
+  if (t.mode === 'gb') return gbCrit ? 'critical' : gbWarn ? 'warning' : 'ok';
+  // either: warn if either threshold tripped
+  if (pctCrit || gbCrit) return 'critical';
+  if (pctWarn || gbWarn) return 'warning';
+  return 'ok';
+}
+
 export interface ComputerItem {
   id: number;
   name: string;
@@ -111,6 +159,18 @@ export const api = {
     });
     if (!r.ok) throw new Error(`PATCH /computers/${id}/monitor → ${r.status}`);
     return r.json() as Promise<{ id: number; name: string; monitor_enabled: boolean }>;
+  },
+  disks: () => jget<{ items: DiskItem[] }>('/disks'),
+  disksCollect: () => jpost<{ pcs: number; ok: number; fail: number; drives: number; durationMs: number }>('/disks/collect'),
+  settings: () => jget<Record<string, string>>('/settings'),
+  saveSettings: async (values: Record<string, string>) => {
+    const r = await fetch(`${API_BASE}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(values),
+    });
+    if (!r.ok) throw new Error(`PUT /settings → ${r.status}`);
+    return r.json() as Promise<{ updated: number }>;
   },
   setMonitorBulk: async (ids: number[], monitor: boolean) => {
     const r = await fetch(`${API_BASE}/computers/monitor/bulk`, {

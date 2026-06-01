@@ -10,10 +10,11 @@ import { TimelineChart } from './components/TimelineChart.js';
 import { TopComputersChart } from './components/TopComputersChart.js';
 import { ActivityLog } from './components/ActivityLog.js';
 import { ComputersPage } from './pages/ComputersPage.js';
+import { SettingsPage } from './pages/SettingsPage.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'computers' | 'activity';
+type View = 'dashboard' | 'computers' | 'activity' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('dashboard');
@@ -84,6 +85,7 @@ export function App() {
             <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button>
             <button className={view === 'computers' ? 'active' : ''} onClick={() => setView('computers')}>Computers</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>Activity</button>
+            <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Settings</button>
             <a
               href={`${API_BASE}/docs`}
               target="_blank"
@@ -148,6 +150,12 @@ export function App() {
       {view === 'activity' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <ActivityLog height={window.innerHeight - 180} />
+        </div>
+      )}
+
+      {view === 'settings' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <SettingsPage />
         </div>
       )}
 

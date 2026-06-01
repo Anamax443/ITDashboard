@@ -9,7 +9,10 @@ import { registerScriptsRoutes } from './routes/scripts.js';
 import { registerCollectorRoutes } from './routes/collector.js';
 import { registerActivityRoutes } from './routes/activity.js';
 import { registerVersionRoutes } from './routes/version.js';
+import { registerSettingsRoutes } from './routes/settings.js';
+import { registerDisksRoutes } from './routes/disks.js';
 import { startCollectorSchedule } from './services/eventlog-collector.js';
+import { startDiskSchedule } from './services/disk-collector.js';
 
 const PORT = Number(process.env.API_PORT ?? 4000);
 const BIND = process.env.API_BIND ?? '0.0.0.0';
@@ -26,9 +29,12 @@ await registerScriptsRoutes(app);
 await registerCollectorRoutes(app);
 await registerActivityRoutes(app);
 await registerVersionRoutes(app);
+await registerSettingsRoutes(app);
+await registerDisksRoutes(app);
 
 app.listen({ port: PORT, host: BIND }).then(() => {
   startCollectorSchedule();
+  startDiskSchedule();
 }).catch((err) => {
   app.log.error(err);
   process.exit(1);
