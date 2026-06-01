@@ -1,0 +1,187 @@
+:root {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-hover: #334155;
+  --border: #334155;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --accent: #3b82f6;
+  --critical: #ef4444;
+  --error: #f97316;
+  --warning: #eab308;
+  --ok: #22c55e;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  height: 100vh;
+  gap: 12px;
+  padding: 12px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-radius: 8px;
+}
+
+.topbar h1 { margin: 0; font-size: 18px; font-weight: 600; }
+.topbar .meta { color: var(--text-dim); font-size: 12px; }
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 16px;
+  border-left: 4px solid var(--border);
+}
+
+.card.critical { border-left-color: var(--critical); }
+.card.error    { border-left-color: var(--error); }
+.card.warning  { border-left-color: var(--warning); }
+.card.info     { border-left-color: var(--accent); }
+
+.card .label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+.card .value { font-size: 32px; font-weight: 700; margin-top: 4px; }
+.card.critical .value { color: var(--critical); }
+.card.error    .value { color: var(--error); }
+.card.warning  .value { color: var(--warning); }
+.card.info     .value { color: var(--accent); }
+
+.panels {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 12px;
+  min-height: 0;
+}
+
+.panel {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel .panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
+.panel .panel-actions { display: flex; gap: 6px; }
+
+.panel-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.events-panel { grid-column: 1; grid-row: 1 / span 2; }
+.top-ids-panel { grid-column: 2; grid-row: 1; }
+.computers-panel { grid-column: 2; grid-row: 2; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+thead { position: sticky; top: 0; background: var(--surface); }
+th, td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+th { color: var(--text-dim); font-weight: 500; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+tbody tr:hover { background: var(--surface-hover); }
+
+.level-pill {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.level-pill.crit { background: var(--critical); color: white; }
+.level-pill.err  { background: var(--error); color: white; }
+.level-pill.warn { background: var(--warning); color: #422006; }
+
+.msg-cell {
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.filters select, .filters input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.empty { color: var(--text-dim); padding: 16px; text-align: center; }
+
+.statusbar {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+  display: flex;
+  justify-content: space-between;
+}
+
+.statusbar .ok { color: var(--ok); }
+.statusbar .err { color: var(--critical); }
+
+.refresh-btn {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.refresh-btn:hover { background: var(--surface-hover); color: var(--text); }

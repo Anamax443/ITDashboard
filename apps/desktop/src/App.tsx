@@ -1,44 +1,89 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { api, API_BASE } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem } from './api.js';
+import { SummaryCards } from './components/SummaryCards.js';
+import { EventsTable } from './components/EventsTable.js';
+import { TopEventIds } from './components/TopEventIds.js';
+import { ComputersList } from './components/ComputersList.js';
 
-interface Summary {
-  critical_24h: number;
-  error_24h: number;
-  warning_24h: number;
-}
-
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://10.8.2.213:4000';
+const REFRESH_MS = 30_000;
 
 export function App() {
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [topIds, setTopIds] = useState<TopEventId[]>([]);
+  const [computers, setComputers] = useState<ComputerItem[]>([]);
+
+  const [filterComputer, setFilterComputer] = useState('');
+  const [filterLevel, setFilterLevel] = useState<'' | 'critical' | 'error' | 'warning'>('');
+  const [filterHours, setFilterHours] = useState(24);
+
   const [error, setError] = useState<string | null>(null);
+  const [lastFetch, setLastFetch] = useState<Date | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [s, e, t, c] = await Promise.all([
+        api.summary(),
+        api.events({
+          computer: filterComputer || undefined,
+          level: filterLevel || undefined,
+          hours: filterHours,
+          limit: 300,
+        }),
+        api.topIds(filterHours, 15),
+        api.computers(),
+      ]);
+      setSummary(s);
+      setEvents(e.items);
+      setTopIds(t.items);
+      setComputers(c.items);
+      setError(null);
+      setLastFetch(new Date());
+    } catch (err) {
+      setError(String(err));
+    }
+  }, [filterComputer, filterLevel, filterHours]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/events/summary`)
-      .then((r) => r.json())
-      .then(setSummary)
-      .catch((e) => setError(String(e)));
-  }, []);
+    refresh();
+    const t = setInterval(refresh, REFRESH_MS);
+    return () => clearInterval(t);
+  }, [refresh]);
 
   return (
-    <div style={{ fontFamily: 'Segoe UI, sans-serif', padding: 24 }}>
-      <h1>ITDashboard</h1>
-      {error && <div style={{ color: 'crimson' }}>API error: {error}</div>}
-      {summary && (
-        <div style={{ display: 'flex', gap: 16 }}>
-          <Card label="Critical (24h)" value={summary.critical_24h} color="#b91c1c" />
-          <Card label="Error (24h)" value={summary.error_24h} color="#c2410c" />
-          <Card label="Warning (24h)" value={summary.warning_24h} color="#a16207" />
-        </div>
-      )}
-    </div>
-  );
-}
+    <div className="app">
+      <div className="topbar">
+        <h1>ITDashboard</h1>
+        <div className="meta">API: {API_BASE}</div>
+      </div>
 
-function Card({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div style={{ border: `2px solid ${color}`, borderRadius: 8, padding: 16, minWidth: 160 }}>
-      <div style={{ fontSize: 12, color: '#444' }}>{label}</div>
-      <div style={{ fontSize: 32, fontWeight: 700, color }}>{value}</div>
+      <SummaryCards summary={summary} computers={computers} />
+
+      <div className="panels">
+        <EventsTable
+          events={events}
+          computers={computers}
+          filterComputer={filterComputer}
+          filterLevel={filterLevel}
+          filterHours={filterHours}
+          onChangeComputer={setFilterComputer}
+          onChangeLevel={setFilterLevel}
+          onChangeHours={setFilterHours}
+          onRefresh={refresh}
+        />
+        <TopEventIds items={topIds} />
+        <ComputersList items={computers} />
+      </div>
+
+      <div className="statusbar">
+        <span>
+          {error ? <span className="err">⚠ {error}</span> : <span className="ok">● Connected</span>}
+        </span>
+        <span>
+          Last refresh: {lastFetch ? lastFetch.toLocaleTimeString('cs-CZ') : '—'} · auto every {REFRESH_MS / 1000}s
+        </span>
+      </div>
     </div>
   );
 }
