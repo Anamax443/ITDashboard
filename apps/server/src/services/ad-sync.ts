@@ -71,7 +71,7 @@ export async function syncComputersFromAD(): Promise<SyncResult> {
       .input('os', c.OperatingSystem)
       .input('last_seen', c.LastLogonDate)
       .input('enabled', c.Enabled ? 1 : 0)
-      .query<{ action: 'insert' | 'update' }>(`
+      .query<{ action: 'INSERT' | 'UPDATE' }>(`
         MERGE computers AS tgt
         USING (SELECT @name AS name) AS src ON tgt.name = src.name
         WHEN MATCHED THEN UPDATE SET
