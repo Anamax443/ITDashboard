@@ -63,4 +63,46 @@ export async function registerEventsRoutes(app: FastifyInstance) {
       `);
     return { items: r.recordset };
   });
+
+  app.get('/events/timeline', async (req) => {
+    const q = z.object({ hours: z.coerce.number().int().min(1).max(24 * 30).default(24) }).parse(req.query);
+    const pool = await getPool();
+    const r = await pool.request()
+      .input('hours', q.hours)
+      .query(`
+        SELECT
+          DATEADD(HOUR, DATEDIFF(HOUR, 0, time_created), 0) AS bucket,
+          level,
+          COUNT(*) AS cnt
+        FROM events
+        WHERE time_created >= DATEADD(HOUR, -@hours, SYSUTCDATETIME())
+          AND level IN (1, 2, 3)
+        GROUP BY DATEADD(HOUR, DATEDIFF(HOUR, 0, time_created), 0), level
+        ORDER BY bucket, level
+      `);
+    return { items: r.recordset };
+  });
+
+  app.get('/events/top-computers', async (req) => {
+    const q = z.object({ hours: z.coerce.number().int().default(24), limit: z.coerce.number().int().default(10) }).parse(req.query);
+    const pool = await getPool();
+    const r = await pool.request()
+      .input('hours', q.hours)
+      .input('lim', q.limit)
+      .query(`
+        SELECT TOP (@lim)
+          c.name,
+          COUNT(*) AS total,
+          SUM(CASE WHEN e.level = 1 THEN 1 ELSE 0 END) AS critical_count,
+          SUM(CASE WHEN e.level = 2 THEN 1 ELSE 0 END) AS error_count,
+          SUM(CASE WHEN e.level = 3 THEN 1 ELSE 0 END) AS warning_count
+        FROM events e
+        JOIN computers c ON c.id = e.computer_id
+        WHERE e.time_created >= DATEADD(HOUR, -@hours, SYSUTCDATETIME())
+          AND e.level IN (1, 2, 3)
+        GROUP BY c.name
+        ORDER BY total DESC
+      `);
+    return { items: r.recordset };
+  });
 }

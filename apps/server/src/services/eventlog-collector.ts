@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { getPool } from '../db/pool.js';
+import { logActivity } from './activity-log.js';
 
 interface ComputerRow {
   id: number;
@@ -176,6 +177,7 @@ export async function runCollectorOnce(triggerSource: 'scheduled' | 'manual' = '
 
   try {
     const targets = await listTargets();
+    logActivity('info', 'collector', `Starting run (${triggerSource}) — ${targets.length} target PCs, concurrency ${CONCURRENCY}`);
     let succeeded = 0;
     let failed = 0;
     let totalAdded = 0;
@@ -215,12 +217,14 @@ export async function runCollectorOnce(triggerSource: 'scheduled' | 'manual' = '
           succeeded++;
           totalAdded += r.value;
           currentProgress.eventsAddedSoFar += r.value;
+          if (r.value > 0) logActivity('info', 'collector', `${c.name} → +${r.value} events`);
         } else {
           failed++;
           const errMsg = String(r.reason).split('\n')[0]?.slice(0, 200) ?? 'unknown';
           await markFailure(c.id, String(r.reason));
           currentProgress.recentFailures.unshift({ name: c.name, error: errMsg });
           if (currentProgress.recentFailures.length > 5) currentProgress.recentFailures.length = 5;
+          logActivity('warn', 'collector', `${c.name} → ${errMsg}`);
         }
       }
       currentProgress.processedPcs += batch.length;
@@ -240,6 +244,7 @@ export async function runCollectorOnce(triggerSource: 'scheduled' | 'manual' = '
         WHERE id = @id;
       `);
 
+    logActivity('success', 'collector', `Run done: ${succeeded} OK / ${failed} fail / +${totalAdded} events (${(durationMs/1000).toFixed(1)}s)`);
     return { runId, pcsTotal: targets.length, pcsSucceeded: succeeded, pcsFailed: failed, eventsAdded: totalAdded, durationMs };
   } finally {
     runInFlight = false;

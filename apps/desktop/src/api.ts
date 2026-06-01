@@ -24,6 +24,20 @@ export interface TopEventId {
   cnt: number;
 }
 
+export interface TimelineBucket {
+  bucket: string;
+  level: number;
+  cnt: number;
+}
+
+export interface TopComputer {
+  name: string;
+  total: number;
+  critical_count: number;
+  error_count: number;
+  warning_count: number;
+}
+
 export interface ComputerItem {
   id: number;
   name: string;
@@ -67,11 +81,40 @@ export const api = {
     return jget<{ items: EventItem[] }>(`/events?${params}`);
   },
   topIds: (hours = 24, limit = 15) => jget<{ items: TopEventId[] }>(`/events/top-ids?hours=${hours}&limit=${limit}`),
+  timeline: (hours = 24) => jget<{ items: TimelineBucket[] }>(`/events/timeline?hours=${hours}`),
+  topComputers: (hours = 24, limit = 10) => jget<{ items: TopComputer[] }>(`/events/top-computers?hours=${hours}&limit=${limit}`),
   computers: () => jget<{ items: ComputerItem[] }>('/computers'),
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),
+  activityLog: (limit = 200, sinceSeq?: number) => {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (sinceSeq != null) params.set('sinceSeq', String(sinceSeq));
+    return jget<{ entries: ActivityLogEntry[]; seq: number }>(`/activity/log?${params}`);
+  },
+  syncHistory: () => jget<{ items: AdSyncRun[] }>('/computers/sync/history'),
+  lastSync: () => jget<{ last: AdSyncRun | null }>('/computers/sync/last'),
 };
+
+export interface ActivityLogEntry {
+  ts: string;
+  level: 'info' | 'warn' | 'error' | 'success';
+  source: string;
+  message: string;
+}
+
+export interface AdSyncRun {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  fetched: number | null;
+  inserted: number | null;
+  updated: number | null;
+  removed: number | null;
+  error: string | null;
+  trigger_source: string | null;
+}
 
 export interface CollectorProgress {
   startedAt: string;

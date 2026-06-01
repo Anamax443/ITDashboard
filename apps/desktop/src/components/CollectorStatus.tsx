@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { CollectorStatus as CS } from '../api.js';
+import type { CollectorStatus as CS, ActivityLogEntry } from '../api.js';
 import { api, timeAgo } from '../api.js';
 
 const POLL_IDLE_MS = 15_000;
@@ -9,12 +9,22 @@ export function CollectorStatus() {
   const [status, setStatus] = useState<CS | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastLog, setLastLog] = useState<ActivityLogEntry | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const logSeqRef = useRef<number>(0);
 
   const fetchStatus = async () => {
     try {
       const s = await api.collectorStatus();
       setStatus(s);
+      // Also pull last log line
+      try {
+        const log = await api.activityLog(5, logSeqRef.current);
+        if (log.entries.length > 0) {
+          setLastLog(log.entries[log.entries.length - 1] ?? null);
+        }
+        logSeqRef.current = log.seq;
+      } catch { /* ignore */ }
       return s;
     } catch (e) {
       setError(String(e));
@@ -84,6 +94,12 @@ export function CollectorStatus() {
               <span style={{ color: 'var(--critical)' }}>{f.name}</span>
             </span>
           ))}
+        </div>
+      )}
+
+      {lastLog && (
+        <div style={{ marginTop: 4, fontSize: 10, fontFamily: 'Consolas, monospace', color: 'var(--text-dim)' }}>
+          <span style={{ color: 'var(--accent)' }}>[{lastLog.source}]</span> {lastLog.message}
         </div>
       )}
     </div>

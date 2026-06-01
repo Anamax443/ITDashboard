@@ -1,11 +1,23 @@
-import React, { useState } from 'react';
-import type { ComputerItem, SyncResult } from '../api.js';
+import React, { useEffect, useState } from 'react';
+import type { ComputerItem, SyncResult, AdSyncRun } from '../api.js';
 import { api, timeAgo } from '../api.js';
+import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
 export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]; onRefreshLocal: () => void }) {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
+  const [lastSyncRun, setLastSyncRun] = useState<AdSyncRun | null>(null);
+  const [history, setHistory] = useState<AdSyncRun[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.lastSync().then((r) => setLastSyncRun(r.last)).catch(() => {});
+    api.syncHistory().then((r) => setHistory(r.items)).catch(() => {});
+  }, []);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'disabled'>('');
+  const { sort, toggle } = useSort<ComputerItem>({ col: 'name', dir: 'asc' });
 
   const runSync = async () => {
     setSyncing(true);
@@ -14,6 +26,11 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
       const result = await api.syncComputers();
       setLastSync(result);
       onRefreshLocal();
+      // Refresh history
+      const last = await api.lastSync();
+      setLastSyncRun(last.last);
+      const hist = await api.syncHistory();
+      setHistory(hist.items);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -21,6 +38,21 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
     }
   };
 
+  const filtered = items.filter((c) => {
+    if (statusFilter === 'active' && !c.enabled) return false;
+    if (statusFilter === 'disabled' && c.enabled) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (
+        !c.name.toLowerCase().includes(q) &&
+        !(c.fqdn ?? '').toLowerCase().includes(q) &&
+        !(c.os_version ?? '').toLowerCase().includes(q)
+      ) return false;
+    }
+    return true;
+  });
+
+  const sorted = useSortedItems(filtered, sort);
   const enabled = items.filter((c) => c.enabled);
   const disabled = items.filter((c) => !c.enabled);
 
@@ -29,34 +61,79 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
       <div className="panel-header">
         <h2>Computers ({enabled.length} active · {disabled.length} disabled)</h2>
         <div className="panel-actions filters">
-          {lastSync && (
+          <input
+            type="text"
+            placeholder="Search…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ width: 160 }}
+          />
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'active' | 'disabled' | '')}>
+            <option value="">All status</option>
+            <option value="active">Active</option>
+            <option value="disabled">Disabled</option>
+          </select>
+          {(lastSync || lastSyncRun) && (
             <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>
-              Last sync: fetched {lastSync.fetched}, +{lastSync.inserted} new, {lastSync.updated} updated, {lastSync.removed} disabled ({(lastSync.durationMs / 1000).toFixed(1)}s)
+              {lastSync ? (
+                <>Last sync: fetched {lastSync.fetched}, +{lastSync.inserted} new, {lastSync.updated} updated, {lastSync.removed} disabled ({(lastSync.durationMs / 1000).toFixed(1)}s)</>
+              ) : lastSyncRun ? (
+                <>Last sync: {timeAgo(lastSyncRun.finished_at ?? lastSyncRun.started_at)} ({lastSyncRun.fetched ?? '?'} fetched, +{lastSyncRun.inserted ?? 0} new)</>
+              ) : null}
             </span>
           )}
+          <button className="refresh-btn" onClick={() => setShowHistory((s) => !s)}>
+            {showHistory ? 'Hide history' : 'History'}
+          </button>
           {error && <span style={{ color: 'var(--critical)', fontSize: 11 }}>⚠ {error}</span>}
           <button className="refresh-btn" onClick={runSync} disabled={syncing} style={{ minWidth: 130 }}>
             {syncing ? 'Syncing…' : '↻ Sync from AD'}
           </button>
         </div>
       </div>
+      {showHistory && (
+        <div style={{ padding: '8px 12px', background: 'var(--bg)', borderBottom: '1px solid var(--border)', maxHeight: 200, overflowY: 'auto' }}>
+          <table style={{ fontSize: 11 }}>
+            <thead>
+              <tr>
+                <th>Time</th><th>Source</th><th>Fetched</th><th>+New</th><th>Updated</th><th>Disabled</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((h) => (
+                <tr key={h.id}>
+                  <td>{new Date(h.started_at).toLocaleString('cs-CZ')}</td>
+                  <td style={{ color: 'var(--text-dim)' }}>{h.trigger_source}</td>
+                  <td>{h.fetched ?? '—'}</td>
+                  <td style={{ color: 'var(--ok)' }}>+{h.inserted ?? 0}</td>
+                  <td>{h.updated ?? 0}</td>
+                  <td>{h.removed ?? 0}</td>
+                  <td style={{ color: h.error ? 'var(--critical)' : 'var(--ok)' }} title={h.error ?? ''}>
+                    {h.error ? '✗ Error' : h.finished_at ? '✓ OK' : '… running'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="panel-body">
-        {items.length === 0 ? (
-          <div className="empty">No computers registered. Click "Sync from AD" to import.</div>
+        {sorted.length === 0 ? (
+          <div className="empty">{items.length === 0 ? 'No computers registered. Click "Sync from AD" to import.' : 'No computers match your filters.'}</div>
         ) : (
           <table>
             <thead>
               <tr>
                 <th style={{ width: 24 }}></th>
-                <th>Name</th>
-                <th>FQDN</th>
-                <th>OS</th>
-                <th>Last seen</th>
-                <th>Status</th>
+                <SortHeader<ComputerItem> col="name" label="Name" sort={sort} toggle={toggle} />
+                <SortHeader<ComputerItem> col="fqdn" label="FQDN" sort={sort} toggle={toggle} />
+                <SortHeader<ComputerItem> col="os_version" label="OS" sort={sort} toggle={toggle} />
+                <SortHeader<ComputerItem> col="last_seen" label="Last seen" sort={sort} toggle={toggle} />
+                <SortHeader<ComputerItem> col="enabled" label="Status" sort={sort} toggle={toggle} />
               </tr>
             </thead>
             <tbody>
-              {items.map((c) => (
+              {sorted.map((c) => (
                 <tr key={c.id} style={{ opacity: c.enabled ? 1 : 0.5 }}>
                   <td>{c.enabled ? '🟢' : '⚪'}</td>
                   <td style={{ fontWeight: 600 }}>{c.name}</td>

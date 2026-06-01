@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { EventItem, ComputerItem } from '../api.js';
 import { levelName, levelLabel } from '../api.js';
+import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
 interface Props {
   events: EventItem[];
@@ -16,15 +17,47 @@ interface Props {
 
 export function EventsTable(props: Props) {
   const [selected, setSelected] = useState<EventItem | null>(null);
+  const [search, setSearch] = useState('');
+  const { sort, toggle } = useSort<EventItem>({ col: 'time_created', dir: 'desc' });
+
+  const providers = Array.from(new Set(props.events.map((e) => e.provider_name).filter((p): p is string => !!p))).sort();
+  const [filterProvider, setFilterProvider] = useState('');
+
+  const filtered = props.events.filter((e) => {
+    if (filterProvider && e.provider_name !== filterProvider) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (
+        !(e.message ?? '').toLowerCase().includes(q) &&
+        !(e.computer ?? '').toLowerCase().includes(q) &&
+        !String(e.event_id).includes(q) &&
+        !(e.provider_name ?? '').toLowerCase().includes(q)
+      ) return false;
+    }
+    return true;
+  });
+
+  const sorted = useSortedItems(filtered, sort);
 
   return (
     <div className="panel events-panel">
       <div className="panel-header">
-        <h2>Recent events</h2>
+        <h2>Recent events ({sorted.length})</h2>
         <div className="panel-actions filters">
+          <input
+            type="text"
+            placeholder="Search msg/PC/ID…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ width: 160 }}
+          />
           <select value={props.filterComputer} onChange={(e) => props.onChangeComputer(e.target.value)}>
             <option value="">All computers</option>
             {props.computers.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+          </select>
+          <select value={filterProvider} onChange={(e) => setFilterProvider(e.target.value)}>
+            <option value="">All sources</option>
+            {providers.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
           <select value={props.filterLevel} onChange={(e) => props.onChangeLevel(e.target.value as Props['filterLevel'])}>
             <option value="">All levels</option>
@@ -42,22 +75,23 @@ export function EventsTable(props: Props) {
         </div>
       </div>
       <div className="panel-body">
-        {props.events.length === 0 ? (
+        {sorted.length === 0 ? (
           <div className="empty">No events match your filters.</div>
         ) : (
           <table>
             <thead>
               <tr>
-                <th style={{ width: 130 }}>Time</th>
-                <th style={{ width: 120 }}>Computer</th>
-                <th style={{ width: 70 }}>Level</th>
-                <th style={{ width: 70 }}>Event ID</th>
-                <th style={{ width: 110 }}>Log</th>
+                <SortHeader<EventItem> col="time_created" label="Time" sort={sort} toggle={toggle} width={130} />
+                <SortHeader<EventItem> col="computer" label="Computer" sort={sort} toggle={toggle} width={120} />
+                <SortHeader<EventItem> col="level" label="Level" sort={sort} toggle={toggle} width={70} />
+                <SortHeader<EventItem> col="event_id" label="Event ID" sort={sort} toggle={toggle} width={70} />
+                <SortHeader<EventItem> col="provider_name" label="Source" sort={sort} toggle={toggle} width={140} />
+                <SortHeader<EventItem> col="log_name" label="Log" sort={sort} toggle={toggle} width={90} />
                 <th>Message</th>
               </tr>
             </thead>
             <tbody>
-              {props.events.map((e) => {
+              {sorted.map((e) => {
                 const lvl = levelName(e.level);
                 return (
                   <tr key={e.id} onClick={() => setSelected(e)} style={{ cursor: 'pointer' }}>
@@ -65,6 +99,7 @@ export function EventsTable(props: Props) {
                     <td>{e.computer}</td>
                     <td><span className={`level-pill ${lvl}`}>{levelLabel(e.level)}</span></td>
                     <td>{e.event_id}</td>
+                    <td style={{ color: 'var(--text-dim)' }}>{e.provider_name ?? '—'}</td>
                     <td>{e.log_name}</td>
                     <td className="msg-cell" title={e.message ?? ''}>{e.message ?? '—'}</td>
                   </tr>
@@ -87,7 +122,7 @@ function EventDetail({ event, onClose }: { event: EventItem; onClose: () => void
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ background: 'var(--surface)', padding: 24, borderRadius: 8, maxWidth: 700, maxHeight: '80vh', overflow: 'auto', width: '90%' }}
+        style={{ background: 'var(--surface)', padding: 24, borderRadius: 8, maxWidth: 720, maxHeight: '85vh', overflow: 'auto', width: '90%' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
           <h2 style={{ margin: 0 }}>Event detail</h2>
@@ -98,8 +133,8 @@ function EventDetail({ event, onClose }: { event: EventItem; onClose: () => void
           <dt style={{ color: 'var(--text-dim)' }}>Computer</dt><dd>{event.computer}</dd>
           <dt style={{ color: 'var(--text-dim)' }}>Level</dt><dd>{levelLabel(event.level)}</dd>
           <dt style={{ color: 'var(--text-dim)' }}>Event ID</dt><dd>{event.event_id}</dd>
-          <dt style={{ color: 'var(--text-dim)' }}>Log</dt><dd>{event.log_name}</dd>
-          <dt style={{ color: 'var(--text-dim)' }}>Provider</dt><dd>{event.provider_name ?? '—'}</dd>
+          <dt style={{ color: 'var(--text-dim)' }}>Log Name</dt><dd>{event.log_name}</dd>
+          <dt style={{ color: 'var(--text-dim)' }}>Source</dt><dd>{event.provider_name ?? '—'}</dd>
         </dl>
         <h3 style={{ marginTop: 16, fontSize: 13, color: 'var(--text-dim)' }}>Message</h3>
         <pre style={{ background: 'var(--bg)', padding: 12, borderRadius: 4, whiteSpace: 'pre-wrap', fontSize: 12 }}>

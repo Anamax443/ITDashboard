@@ -1,16 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { EventsTable } from './components/EventsTable.js';
 import { TopEventIds } from './components/TopEventIds.js';
 import { ComputersList } from './components/ComputersList.js';
 import { CollectorStatus } from './components/CollectorStatus.js';
+import { TimelineChart } from './components/TimelineChart.js';
+import { TopComputersChart } from './components/TopComputersChart.js';
+import { ActivityLog } from './components/ActivityLog.js';
 import { ComputersPage } from './pages/ComputersPage.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'computers';
+type View = 'dashboard' | 'computers' | 'activity';
 
 export function App() {
   const [view, setView] = useState<View>('dashboard');
@@ -18,6 +21,8 @@ export function App() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [topIds, setTopIds] = useState<TopEventId[]>([]);
   const [computers, setComputers] = useState<ComputerItem[]>([]);
+  const [timeline, setTimeline] = useState<TimelineBucket[]>([]);
+  const [topComputers, setTopComputers] = useState<TopComputer[]>([]);
 
   const [filterComputer, setFilterComputer] = useState('');
   const [filterLevel, setFilterLevel] = useState<'' | 'critical' | 'error' | 'warning'>('');
@@ -36,27 +41,29 @@ export function App() {
   }, []);
 
   const refresh = useCallback(async () => {
-    try {
-      const [s, e, t, c] = await Promise.all([
-        api.summary(),
-        api.events({
-          computer: filterComputer || undefined,
-          level: filterLevel || undefined,
-          hours: filterHours,
-          limit: 300,
-        }),
-        api.topIds(filterHours, 15),
-        api.computers(),
-      ]);
-      setSummary(s);
-      setEvents(e.items);
-      setTopIds(t.items);
-      setComputers(c.items);
-      setError(null);
-      setLastFetch(new Date());
-    } catch (err) {
-      setError(String(err));
-    }
+    const results = await Promise.allSettled([
+      api.summary(),
+      api.events({
+        computer: filterComputer || undefined,
+        level: filterLevel || undefined,
+        hours: filterHours,
+        limit: 300,
+      }),
+      api.topIds(filterHours, 15),
+      api.computers(),
+      api.timeline(filterHours),
+      api.topComputers(filterHours, 10),
+    ]);
+    if (results[0].status === 'fulfilled') setSummary(results[0].value);
+    if (results[1].status === 'fulfilled') setEvents(results[1].value.items);
+    if (results[2].status === 'fulfilled') setTopIds(results[2].value.items);
+    if (results[3].status === 'fulfilled') setComputers(results[3].value.items);
+    if (results[4].status === 'fulfilled') setTimeline(results[4].value.items);
+    if (results[5].status === 'fulfilled') setTopComputers(results[5].value.items);
+
+    const errs = results.map((r, i) => r.status === 'rejected' ? `[${['summary','events','topIds','computers','timeline','topComputers'][i]}] ${r.reason}` : null).filter(Boolean);
+    setError(errs.length > 0 ? errs.join(' · ') : null);
+    setLastFetch(new Date());
   }, [filterComputer, filterLevel, filterHours]);
 
   useEffect(() => {
@@ -73,6 +80,7 @@ export function App() {
           <div className="nav">
             <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button>
             <button className={view === 'computers' ? 'active' : ''} onClick={() => setView('computers')}>Computers</button>
+            <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>Activity</button>
           </div>
         </div>
         <div className="meta">API: {API_BASE}</div>
@@ -82,6 +90,10 @@ export function App() {
         <>
           <CollectorStatus />
           <SummaryCards summary={summary} computers={computers} />
+          <div className="charts-row">
+            <TimelineChart buckets={timeline} hours={filterHours} />
+            <TopComputersChart items={topComputers} />
+          </div>
           <div className="panels">
             <EventsTable
               events={events}
@@ -103,6 +115,12 @@ export function App() {
       {view === 'computers' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <ComputersPage items={computers} onRefreshLocal={refreshComputers} />
+        </div>
+      )}
+
+      {view === 'activity' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <ActivityLog height={window.innerHeight - 180} />
         </div>
       )}
 
