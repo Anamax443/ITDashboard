@@ -54,7 +54,16 @@ jobs:
         run: npm run migrate
 
       - name: Restart API Windows Service
+        # net stop returns when STOP_PENDING; need to wait for full STOPPED before start.
+        # Use sc with explicit polling so the new service definitely picks up new dist.
         run: |
-          net stop ITDashboardAPI
-          net start ITDashboardAPI
+          sc stop ITDashboardAPI
+          :waitstop
+          sc query ITDashboardAPI | findstr STOPPED >nul
+          if errorlevel 1 (
+            ping 127.0.0.1 -n 2 >nul
+            goto waitstop
+          )
+          sc start ITDashboardAPI
+          ping 127.0.0.1 -n 4 >nul
           sc query ITDashboardAPI
