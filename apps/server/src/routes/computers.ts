@@ -54,4 +54,18 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     }
     return row;
   });
+
+  app.post('/computers/monitor/bulk', async (req) => {
+    const body = z.object({
+      ids: z.array(z.number().int()).min(1),
+      monitor: z.boolean(),
+    }).parse(req.body);
+    const pool = await getPool();
+    // Use table-valued parameter would be cleaner, but for simplicity build IN list.
+    const idsCSV = body.ids.join(',');
+    const r = await pool.request()
+      .input('m', body.monitor ? 1 : 0)
+      .query(`UPDATE computers SET monitor_enabled = @m WHERE id IN (${idsCSV})`);
+    return { updated: r.rowsAffected[0] ?? 0, monitor: body.monitor };
+  });
 }

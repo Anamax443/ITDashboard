@@ -110,6 +110,15 @@ export const api = {
     if (!r.ok) throw new Error(`PATCH /computers/${id}/monitor → ${r.status}`);
     return r.json() as Promise<{ id: number; name: string; monitor_enabled: boolean }>;
   },
+  setMonitorBulk: async (ids: number[], monitor: boolean) => {
+    const r = await fetch(`${API_BASE}/computers/monitor/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, monitor }),
+    });
+    if (!r.ok) throw new Error(`POST /computers/monitor/bulk → ${r.status}`);
+    return r.json() as Promise<{ updated: number; monitor: boolean }>;
+  },
 };
 
 export interface VersionInfo {

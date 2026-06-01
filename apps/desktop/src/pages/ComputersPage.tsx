@@ -67,6 +67,20 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
     }
   };
 
+  const bulkSetMonitor = async (monitor: boolean) => {
+    // Apply only to currently visible (filtered) + enabled rows
+    const targetIds = sorted.filter((c) => c.enabled).map((c) => c.id);
+    if (targetIds.length === 0) return;
+    try {
+      const result = await api.setMonitorBulk(targetIds, monitor);
+      setError(null);
+      onRefreshLocal();
+      return result;
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
   return (
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1' }}>
       <div className="panel-header">
@@ -93,6 +107,12 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
               ) : null}
             </span>
           )}
+          <button className="refresh-btn" onClick={() => bulkSetMonitor(true)} title="Enable monitoring for all visible active PCs">
+            ✓ All
+          </button>
+          <button className="refresh-btn" onClick={() => bulkSetMonitor(false)} title="Disable monitoring for all visible active PCs">
+            ✗ None
+          </button>
           <button className="refresh-btn" onClick={() => setShowHistory((s) => !s)}>
             {showHistory ? 'Hide history' : 'History'}
           </button>
