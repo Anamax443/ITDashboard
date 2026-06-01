@@ -69,7 +69,32 @@ export const api = {
   topIds: (hours = 24, limit = 15) => jget<{ items: TopEventId[] }>(`/events/top-ids?hours=${hours}&limit=${limit}`),
   computers: () => jget<{ items: ComputerItem[] }>('/computers'),
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
+  collectorStatus: () => jget<CollectorStatus>('/collector/status'),
+  collectorRun: () => jpost<CollectorRunResult>('/collector/run'),
 };
+
+export interface CollectorStatus {
+  inFlight: boolean;
+  lastRun: {
+    id: number;
+    started_at: string;
+    finished_at: string | null;
+    pcs_total: number | null;
+    pcs_succeeded: number | null;
+    pcs_failed: number | null;
+    events_added: number | null;
+    trigger_source: string | null;
+  } | null;
+}
+
+export interface CollectorRunResult {
+  runId: number;
+  pcsTotal: number;
+  pcsSucceeded: number;
+  pcsFailed: number;
+  eventsAdded: number;
+  durationMs: number;
+}
 
 export function levelName(level: number): 'crit' | 'err' | 'warn' | 'info' {
   if (level === 1) return 'crit';

@@ -6,6 +6,8 @@ import { registerHealthRoutes } from './routes/health.js';
 import { registerEventsRoutes } from './routes/events.js';
 import { registerComputersRoutes } from './routes/computers.js';
 import { registerScriptsRoutes } from './routes/scripts.js';
+import { registerCollectorRoutes } from './routes/collector.js';
+import { startCollectorSchedule } from './services/eventlog-collector.js';
 
 const PORT = Number(process.env.API_PORT ?? 4000);
 const BIND = process.env.API_BIND ?? '0.0.0.0';
@@ -19,8 +21,11 @@ await registerHealthRoutes(app);
 await registerEventsRoutes(app);
 await registerComputersRoutes(app);
 await registerScriptsRoutes(app);
+await registerCollectorRoutes(app);
 
-app.listen({ port: PORT, host: BIND }).catch((err) => {
+app.listen({ port: PORT, host: BIND }).then(() => {
+  startCollectorSchedule();
+}).catch((err) => {
   app.log.error(err);
   process.exit(1);
 });

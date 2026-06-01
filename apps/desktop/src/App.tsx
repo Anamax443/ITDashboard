@@ -5,6 +5,7 @@ import { SummaryCards } from './components/SummaryCards.js';
 import { EventsTable } from './components/EventsTable.js';
 import { TopEventIds } from './components/TopEventIds.js';
 import { ComputersList } from './components/ComputersList.js';
+import { CollectorStatus } from './components/CollectorStatus.js';
 import { ComputersPage } from './pages/ComputersPage.js';
 
 const REFRESH_MS = 30_000;
@@ -79,6 +80,7 @@ export function App() {
 
       {view === 'dashboard' && (
         <>
+          <CollectorStatus />
           <SummaryCards summary={summary} computers={computers} />
           <div className="panels">
             <EventsTable
