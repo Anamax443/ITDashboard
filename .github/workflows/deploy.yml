@@ -19,7 +19,7 @@ jobs:
           node-version: '20'
 
       - name: Install deps
-        run: npm ci
+        run: npm install --workspace @itdashboard/server --include-workspace-root
 
       - name: Typecheck
         run: npm run typecheck
