@@ -9,6 +9,9 @@ jobs:
   deploy:
     runs-on: [self-hosted, windows, itdashboard-prod]
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: cmd
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,9 +25,11 @@ jobs:
         run: npm install --workspace @itdashboard/server --include-workspace-root
 
       - name: Typecheck
+        working-directory: apps/server
         run: npm run typecheck
 
       - name: Build
+        working-directory: apps/server
         run: npm run build
 
       - name: Apply DB migrations
@@ -37,7 +42,7 @@ jobs:
         run: npm run migrate
 
       - name: Restart API Windows Service
-        shell: powershell
         run: |
-          Restart-Service -Name 'ITDashboardAPI' -Force
-          Get-Service -Name 'ITDashboardAPI'
+          net stop ITDashboardAPI
+          net start ITDashboardAPI
+          sc query ITDashboardAPI
