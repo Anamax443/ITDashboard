@@ -84,6 +84,19 @@ export function App() {
             <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button>
             <button className={view === 'computers' ? 'active' : ''} onClick={() => setView('computers')}>Computers</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>Activity</button>
+            <a
+              href={`${API_BASE}/docs`}
+              target="_blank"
+              rel="noreferrer"
+              className=""
+              style={{
+                background: 'transparent', color: 'var(--text-dim)', border: '1px solid transparent',
+                borderRadius: 4, padding: '4px 12px', fontSize: 13, textDecoration: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              📖 Docs
+            </a>
           </div>
         </div>
         <div className="meta">

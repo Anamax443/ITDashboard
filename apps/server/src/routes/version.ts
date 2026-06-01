@@ -44,6 +44,21 @@ async function readVersion(): Promise<VersionInfo> {
   return cached;
 }
 
+async function readDocsHtml(): Promise<string> {
+  // dist runs from C:\Apps\ITDashboard\apps\server\dist; docs/ is at C:\Apps\ITDashboard\docs
+  const docPath = join(process.cwd(), '..', '..', 'docs', 'dashboard.html');
+  try {
+    return await readFile(docPath, 'utf8');
+  } catch {
+    return '<!doctype html><html><body><h1>Documentation file not found</h1><p>Expected at <code>docs/dashboard.html</code></p></body></html>';
+  }
+}
+
 export async function registerVersionRoutes(app: FastifyInstance) {
   app.get('/version', async () => readVersion());
+
+  app.get('/docs', async (_req, reply) => {
+    const html = await readDocsHtml();
+    reply.type('text/html').send(html);
+  });
 }
