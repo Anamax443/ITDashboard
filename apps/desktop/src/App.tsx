@@ -12,10 +12,11 @@ import { TopComputersChart } from './components/TopComputersChart.js';
 import { ActivityLog } from './components/ActivityLog.js';
 import { ComputersPage } from './pages/ComputersPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
+import { ServicesPage } from './pages/ServicesPage.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'events' | 'computers' | 'activity' | 'settings';
+type View = 'dashboard' | 'events' | 'computers' | 'services' | 'activity' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('dashboard');
@@ -96,6 +97,7 @@ export function App() {
             <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button>
             <button className={view === 'events' ? 'active' : ''} onClick={() => setView('events')}>Events</button>
             <button className={view === 'computers' ? 'active' : ''} onClick={() => setView('computers')}>Computers</button>
+            <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>Services</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>Activity</button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Settings</button>
             <a
@@ -172,6 +174,12 @@ export function App() {
       {view === 'computers' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <ComputersPage items={computers} onRefreshLocal={refreshComputers} initialFilter={computersPreFilter} onFilterConsumed={() => setComputersPreFilter(null)} />
+        </div>
+      )}
+
+      {view === 'services' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <ServicesPage />
         </div>
       )}
 

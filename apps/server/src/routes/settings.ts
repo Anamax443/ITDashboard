@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getAllSettings, setSettings } from '../services/settings.js';
 import { rescheduleCollector } from '../services/eventlog-collector.js';
 import { rescheduleDisk } from '../services/disk-collector.js';
+import { rescheduleServices } from '../services/services-collector.js';
 
 export async function registerSettingsRoutes(app: FastifyInstance) {
   app.get('/settings', async () => {
@@ -20,6 +21,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
     }
     if (body['disk.interval_sec']) {
       rescheduleDisk(Number(body['disk.interval_sec']));
+    }
+    if (body['services.interval_sec']) {
+      rescheduleServices(Number(body['services.interval_sec']));
     }
     return { updated: Object.keys(body).length };
   });

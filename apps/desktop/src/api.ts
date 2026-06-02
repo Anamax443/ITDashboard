@@ -38,6 +38,17 @@ export interface TopComputer {
   warning_count: number;
 }
 
+export interface ServiceProblem {
+  id: number;
+  computer_id: number;
+  computer: string;
+  service_name: string;
+  display_name: string | null;
+  start_mode: string;
+  state: string;
+  collected_at: string;
+}
+
 export interface DiskItem {
   id: number;
   computer_id: number;
@@ -188,6 +199,8 @@ export const api = {
   },
   disks: () => jget<{ items: DiskItem[] }>('/disks'),
   disksCollect: () => jpost<{ pcs: number; ok: number; fail: number; drives: number; durationMs: number }>('/disks/collect'),
+  serviceProblems: () => jget<{ items: ServiceProblem[] }>('/services/problems'),
+  servicesScan: () => jpost<{ pcs: number; ok: number; fail: number; problems: number; durationMs: number }>('/services/scan'),
   settings: () => jget<Record<string, string>>('/settings'),
   firewallWhitelist: () => jget<{ ips: string[] }>('/firewall/whitelist'),
   saveFirewallWhitelist: async (ips: string[]) => {

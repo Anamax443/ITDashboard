@@ -138,6 +138,9 @@ export function SettingsPage() {
             <Field label="Disk scan">
               <IntervalInput v={value('disk.interval_sec', '1800')} onChange={(v) => set('disk.interval_sec', v)} />
             </Field>
+            <Field label="Services scan">
+              <IntervalInput v={value('services.interval_sec', '900')} onChange={(v) => set('services.interval_sec', v)} />
+            </Field>
           </FieldGroup>
         </Section>
 
