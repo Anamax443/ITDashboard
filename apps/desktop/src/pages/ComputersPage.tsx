@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import type { ComputerItem as CI, SyncResult, AdSyncRun } from '../api.js';
+import type { ComputerItem as CI, SyncResult, AdSyncRun, DiskItem } from '../api.js';
 type ComputerItem = CI;
-import { api, timeAgo } from '../api.js';
+import { api, timeAgo, parseDiskThresholds } from '../api.js';
+import { DisksCell } from '../components/DiskBar.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
 export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]; onRefreshLocal: () => void }) {
