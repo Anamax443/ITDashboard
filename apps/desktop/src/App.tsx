@@ -148,13 +148,8 @@ export function App() {
             onClickDiskWarning={() => { setComputersPreFilter('disk-warning'); setView('computers'); }}
             onClickUnreachable={() => { setComputersPreFilter('failing'); setView('computers'); }}
           />
-          <div className="charts-row">
+          <div className="charts-row" style={{ gridTemplateColumns: '1fr' }}>
             <TimelineChart buckets={timeline} hours={filterHours} />
-            <TopComputersChart items={topComputers} />
-          </div>
-          <div className="panels" style={{ gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr' }}>
-            <TopEventIds items={topIds} />
-            <ComputersList items={computers} />
           </div>
         </>
       )}
