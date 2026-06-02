@@ -5,7 +5,7 @@ import { api, timeAgo, parseDiskThresholds } from '../api.js';
 import { DisksCell } from '../components/DiskBar.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
-export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | null; onFilterConsumed?: () => void }) {
+export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | 'failing' | null; onFilterConsumed?: () => void }) {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
   const [lastSyncRun, setLastSyncRun] = useState<AdSyncRun | null>(null);

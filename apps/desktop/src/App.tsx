@@ -35,7 +35,7 @@ export function App() {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [disks, setDisks] = useState<DiskItem[]>([]);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
-  const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | null>(null);
+  const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'failing' | null>(null);
 
   useEffect(() => {
     api.version().then(setVersion).catch(() => {});
@@ -140,6 +140,7 @@ export function App() {
             onClickComputers={() => setView('computers')}
             onClickDiskCritical={() => { setComputersPreFilter('disk-critical'); setView('computers'); }}
             onClickDiskWarning={() => { setComputersPreFilter('disk-warning'); setView('computers'); }}
+            onClickUnreachable={() => { setComputersPreFilter('failing'); setView('computers'); }}
           />
           <div className="charts-row">
             <TimelineChart buckets={timeline} hours={filterHours} />

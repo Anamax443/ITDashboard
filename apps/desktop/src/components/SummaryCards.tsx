@@ -11,23 +11,32 @@ interface Props {
   onClickComputers?: () => void;
   onClickDiskCritical?: () => void;
   onClickDiskWarning?: () => void;
+  onClickUnreachable?: () => void;
 }
 
 export function SummaryCards({
   summary, computers, diskSummary,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
-  onClickDiskCritical, onClickDiskWarning,
+  onClickDiskCritical, onClickDiskWarning, onClickUnreachable,
 }: Props) {
   const enabledCount = computers.filter((c) => c.enabled).length;
   const total = computers.length;
+  const unreachableCount = computers.filter((c) => c.enabled && c.monitor_enabled && (c.consecutive_failures ?? 0) > 0).length;
   return (
-    <div className="cards" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+    <div className="cards" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
       <Card label="Critical events (24h)" value={summary?.critical_24h ?? '—'} kind="critical"
         onClick={summary && summary.critical_24h > 0 ? onClickCritical : undefined} />
       <Card label="Errors (24h)" value={summary?.error_24h ?? '—'} kind="error"
         onClick={summary && summary.error_24h > 0 ? onClickError : undefined} />
       <Card label="Warnings (24h)" value={summary?.warning_24h ?? '—'} kind="warning"
         onClick={summary && summary.warning_24h > 0 ? onClickWarning : undefined} />
+      <Card
+        label="Unreachable"
+        value={unreachableCount}
+        sub="RPC fail / offline"
+        kind="critical"
+        onClick={unreachableCount > 0 ? onClickUnreachable : undefined}
+      />
       <Card
         label="Disk critical"
         value={diskSummary ? `${diskSummary.criticalPcs} PC` : '—'}
