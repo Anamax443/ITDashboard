@@ -14,7 +14,7 @@ import { SettingsPage } from './pages/SettingsPage.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'computers' | 'activity' | 'settings';
+type View = 'dashboard' | 'events' | 'computers' | 'activity' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('dashboard');
@@ -83,6 +83,7 @@ export function App() {
           <h1>ITDashboard</h1>
           <div className="nav">
             <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button>
+            <button className={view === 'events' ? 'active' : ''} onClick={() => setView('events')}>Events</button>
             <button className={view === 'computers' ? 'active' : ''} onClick={() => setView('computers')}>Computers</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>Activity</button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Settings</button>
@@ -123,22 +124,27 @@ export function App() {
             <TimelineChart buckets={timeline} hours={filterHours} />
             <TopComputersChart items={topComputers} />
           </div>
-          <div className="panels">
-            <EventsTable
-              events={events}
-              computers={computers}
-              filterComputer={filterComputer}
-              filterLevel={filterLevel}
-              filterHours={filterHours}
-              onChangeComputer={setFilterComputer}
-              onChangeLevel={setFilterLevel}
-              onChangeHours={setFilterHours}
-              onRefresh={refresh}
-            />
+          <div className="panels" style={{ gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr' }}>
             <TopEventIds items={topIds} />
             <ComputersList items={computers} />
           </div>
         </>
+      )}
+
+      {view === 'events' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <EventsTable
+            events={events}
+            computers={computers}
+            filterComputer={filterComputer}
+            filterLevel={filterLevel}
+            filterHours={filterHours}
+            onChangeComputer={setFilterComputer}
+            onChangeLevel={setFilterLevel}
+            onChangeHours={setFilterHours}
+            onRefresh={refresh}
+          />
+        </div>
       )}
 
       {view === 'computers' && (
