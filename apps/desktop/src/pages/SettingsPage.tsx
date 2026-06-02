@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 
+const PERIODIC_CHECKS = [
+  { key: 'checks.run_eventlog', label: 'Eventlog collector' },
+  { key: 'checks.run_disk', label: 'Disk scan' },
+  { key: 'checks.run_services', label: 'Services scan' },
+] as const;
+
 function NetworkAccessSection() {
   const [ips, setIps] = useState<string[]>([]);
   const [draft, setDraft] = useState<string>('');
@@ -133,22 +139,24 @@ export function SettingsPage() {
 
         <HelpBox title="What this tab does">
           <p>Configure all background-scan intervals, dashboard thresholds, and which IPs may reach the API. All settings persist in the DB and apply live — no service restart needed.</p>
-          <p><strong>Collection intervals</strong> — how often eventlog / disk / services collectors run against monitored PCs.</p>
+          <p><strong>Periodic checks</strong> — how often the scheduler runs and which checks are included: eventlog, disk space, services.</p>
           <p><strong>Network access</strong> — Windows Firewall whitelist for inbound 4000. Be careful: removing your own IP locks you out (you'd need RDP to fix it).</p>
           <p><strong>Disk space thresholds</strong> — when a drive's free % or GB drops below the threshold, it's flagged Critical / Warning on the dashboard and in Computers tab.</p>
         </HelpBox>
 
-        <Section title="Collection intervals" description="How often each background task runs. Changes apply immediately, no service restart needed.">
+        <Section title="Periodic checks" description="One scheduler runs selected checks in order. Changes apply immediately, no service restart needed.">
+          <Field label="Run every">
+            <IntervalInput v={value('checks.interval_sec', '900')} onChange={(v) => set('checks.interval_sec', v)} />
+          </Field>
           <FieldGroup>
-            <Field label="Eventlog collector">
-              <IntervalInput v={value('collector.interval_sec', '300')} onChange={(v) => set('collector.interval_sec', v)} />
-            </Field>
-            <Field label="Disk scan">
-              <IntervalInput v={value('disk.interval_sec', '1800')} onChange={(v) => set('disk.interval_sec', v)} />
-            </Field>
-            <Field label="Services scan">
-              <IntervalInput v={value('services.interval_sec', '900')} onChange={(v) => set('services.interval_sec', v)} />
-            </Field>
+            {PERIODIC_CHECKS.map((check) => (
+              <CheckField
+                key={check.key}
+                label={check.label}
+                checked={value(check.key, 'true') === 'true'}
+                onChange={(checked) => set(check.key, String(checked))}
+              />
+            ))}
           </FieldGroup>
         </Section>
 
@@ -241,6 +249,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <label style={{ display: 'block', fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>{label}</label>
       {children}
     </div>
+  );
+}
+
+function CheckField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)', fontSize: 13, cursor: 'pointer', minWidth: 180 }}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {label}
+    </label>
   );
 }
 

@@ -143,7 +143,7 @@ export function App() {
               <li><strong>Stopped services</strong> — PCs with non-noise stopped auto-services → Services tab</li>
               <li><strong>Computers</strong> — active / total inventory → Computers tab</li>
             </ul>
-            <p><strong>Events timeline</strong> shows stacked hourly bars for the last 24h. <strong>Collector bar</strong> shows live progress of the eventlog scan (▶ Run now / ⏹ Stop).</p>
+            <p><strong>Events timeline</strong> shows stacked hourly bars for the last 24h. <strong>Collector bar</strong> shows live progress of the eventlog scan (▶ Run now / ⏹ Stop) and can run all checks sequentially (eventlog → disk → services).</p>
             <p>The detailed lists (Events, Computers, Services, Activity, Settings) have their own tabs.</p>
           </HelpBox>
           <CollectorStatus />

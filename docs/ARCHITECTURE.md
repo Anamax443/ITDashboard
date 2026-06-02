@@ -14,7 +14,7 @@
 - **Events** — full-width events table with search + filters (Computer, Source, Level, Time range)
 - **Computers** — inventory with status chips, monitor checkboxes, bulk all/none, AD sync, disk scan, sync history
 - **Activity** — terminal-style live log (filter, pause, copy)
-- **Settings** — collection intervals + disk thresholds (applied live, no restart)
+- **Settings** — periodic check frequency + enabled checks + disk thresholds (applied live, no restart)
 
 ### API + collectors (`apps/server`)
 - Fastify + TypeScript, runs as Windows Service `ITDashboardAPI` (NSSM) on `10.8.2.213`.
@@ -29,8 +29,10 @@
   - `settings` — get all, put bulk
   - `scripts` — list (run endpoint pending)
 - Background tasks:
-  - **Eventlog collector** — every `collector.interval_sec` (default 300) pulls Warning/Error/Critical events
-  - **Disk collector** — every `disk.interval_sec` (default 1800) pulls Win32_LogicalDisk via DCOM
+  - **Periodic checks scheduler** — every `checks.interval_sec` (default 900) runs selected checks from Settings: eventlog, disk, services
+  - **Eventlog collector** — pulls Warning/Error/Critical events
+  - **Disk collector** — pulls Win32_LogicalDisk via DCOM
+  - **Services collector** — checks Auto + non-running Windows services and drift policy
   - **Retention purge** — `sp_purge_old_events @retention_days = 90` daily
 
 ### Database (`MSSQL 10.8.2.225`, DB `ITDashboard`)
@@ -76,7 +78,7 @@ Persisted in `computers.last_status`. UI shows breakdown in Dashboard Unreachabl
 `computers.monitor_enabled` is the operator's intent. AD sync explicitly does **not** touch this column — it only updates `fqdn`, `os_version`, `last_seen`, `enabled` (AD presence). When a PC is removed from AD it gets soft-disabled (`enabled = 0`) but its events stay. If it reappears, `enabled = 1` again and the original `monitor_enabled` state persists.
 
 ### Settings live-reschedule
-Some settings (collector / disk intervals) cause immediate timer reschedule on save — no service restart. Implemented via `rescheduleCollector` / `rescheduleDisk` exported from the collector services, called from the `PUT /settings` handler.
+`checks.interval_sec` causes immediate scheduler reschedule on save — no service restart. The check enable flags (`checks.run_eventlog`, `checks.run_disk`, `checks.run_services`) are read on every scheduled run, so toggles apply to the next cycle.
 
 ### Activity log is in-memory only
 Ring buffer of 500 entries, polled by dashboard every 2s. Lost on service restart. For permanent audit, the relevant info is also written to DB tables (`collector_runs`, `ad_sync_runs`, `script_runs`). This avoids DB writes for every log line (~thousands per collector run).
@@ -145,3 +147,4 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 012_per_user_service | service_problems.per_user_start (LUID suffix detection) |
 | 013_excluded_flag | computers.excluded (operator-controlled hard exclude) |
 | 014_service_policy | service_policy table with seeded defaults + service_problems drift columns |
+| 015_periodic_checks | unified periodic check scheduler settings |

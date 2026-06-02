@@ -198,6 +198,7 @@ export const api = {
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),
+  collectorRunAll: () => jpost<CollectorRunAllResult>('/collector/run-all'),
   collectorStop: () => jpost<{ stopped: boolean }>('/collector/stop'),
   activityLog: (limit = 200, sinceSeq?: number) => {
     const params = new URLSearchParams();
@@ -326,6 +327,34 @@ export interface CollectorRunResult {
   pcsFailed: number;
   eventsAdded: number;
   durationMs: number;
+}
+
+export interface DiskCollectResult {
+  pcs: number;
+  ok: number;
+  fail: number;
+  drives: number;
+  durationMs: number;
+}
+
+export interface ServicesScanResult {
+  pcs: number;
+  ok: number;
+  fail: number;
+  problems: number;
+  durationMs: number;
+}
+
+export interface CollectorRunAllResult {
+  eventlog: CollectorRunResult | null;
+  disk: DiskCollectResult | null;
+  services: ServicesScanResult | null;
+  durationMs: number;
+  selected: {
+    eventlog: boolean;
+    disk: boolean;
+    services: boolean;
+  };
 }
 
 export function levelName(level: number): 'crit' | 'err' | 'warn' | 'info' {

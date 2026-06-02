@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { runCollectorOnce, getCollectorStatus, stopCollector } from '../services/eventlog-collector.js';
+import { runAllChecksOnce } from '../services/checks-runner.js';
 
 export async function registerCollectorRoutes(app: FastifyInstance) {
   app.get('/collector/status', async () => getCollectorStatus());
@@ -26,5 +27,20 @@ export async function registerCollectorRoutes(app: FastifyInstance) {
       return { error: 'Collector not running' };
     }
     return { stopped: true };
+  });
+
+  app.post('/collector/run-all', async (_req, reply) => {
+    try {
+      const result = await runAllChecksOnce('manual');
+      if (result === null) {
+        reply.code(409);
+        return { error: 'Checks already running' };
+      }
+      return result;
+    } catch (err) {
+      app.log.error({ err }, 'Run all checks failed');
+      reply.code(500);
+      return { error: String(err) };
+    }
   });
 }

@@ -8,8 +8,10 @@ const POLL_RUNNING_MS = 2_000;
 export function CollectorStatus() {
   const [status, setStatus] = useState<CS | null>(null);
   const [triggering, setTriggering] = useState(false);
+  const [triggeringAll, setTriggeringAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastLog, setLastLog] = useState<ActivityLogEntry | null>(null);
+  const [lastAllSummary, setLastAllSummary] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logSeqRef = useRef<number>(0);
 
@@ -51,6 +53,7 @@ export function CollectorStatus() {
   const trigger = async () => {
     setTriggering(true);
     setError(null);
+    setLastAllSummary(null);
     try {
       await api.collectorRun();
       await fetchStatus();
@@ -58,6 +61,26 @@ export function CollectorStatus() {
       setError(String(e));
     } finally {
       setTriggering(false);
+    }
+  };
+
+  const triggerAll = async () => {
+    setTriggeringAll(true);
+    setError(null);
+    setLastAllSummary(null);
+    try {
+      const result = await api.collectorRunAll();
+      const parts = [
+        result.eventlog ? `events +${result.eventlog.eventsAdded}` : 'events skipped',
+        result.disk ? `disks ${result.disk.drives} drives` : 'disks skipped',
+        result.services ? `services ${result.services.problems} problems` : 'services skipped',
+      ];
+      setLastAllSummary(`${parts.join(' · ')} · ${(result.durationMs / 1000).toFixed(1)}s`);
+      await fetchStatus();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setTriggeringAll(false);
     }
   };
 
@@ -71,7 +94,7 @@ export function CollectorStatus() {
     }
   };
 
-  const inFlight = status?.inFlight || triggering;
+  const inFlight = status?.inFlight || triggering || triggeringAll;
   const progress = status?.progress;
   const last = status?.lastRun;
 
@@ -103,9 +126,18 @@ export function CollectorStatus() {
           <button className="refresh-btn" onClick={trigger} disabled={inFlight}>
             {inFlight ? 'Running…' : '▶ Run now'}
           </button>
+          <button className="refresh-btn" onClick={triggerAll} disabled={inFlight} title="Run eventlog collector, disk scan, and services scan sequentially">
+            {triggeringAll ? 'Running all…' : '▶ Run all checks'}
+          </button>
         </div>
         {error && <span style={{ color: 'var(--critical)' }}>⚠ {error}</span>}
       </div>
+
+      {lastAllSummary && !inFlight && (
+        <div style={{ marginTop: 4, fontSize: 10, fontFamily: 'Consolas, monospace', color: 'var(--ok)' }}>
+          [checks] {lastAllSummary}
+        </div>
+      )}
 
       {inFlight && progress && progress.recentFailures.length > 0 && (
         <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-dim)' }}>

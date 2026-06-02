@@ -174,7 +174,7 @@ service restarts on new dist/, in-memory state cleared</div>
 <ul>
   <li>Fastify + TypeScript HTTP API on port <code>4000</code></li>
   <li>MSSQL via <strong><code>msnodesqlv8</code></strong> driver (Windows-native, SSPI Integrated Auth; the pure-JS <code>tedious</code> driver fails with "untrusted domain" in domain environments)</li>
-  <li>Background tasks: eventlog collector loop, disk collector loop, retention purge</li>
+  <li>Background tasks: unified periodic checks scheduler (eventlog / disk / services), retention purge</li>
   <li>PowerShell child processes for AD queries (<code>Get-ADComputer</code>), eventlog reads (<code>Get-WinEvent -ComputerName</code>), disk reads (<code>Get-CimInstance</code> via DCOM session)</li>
   <li>Node-side TCP probe to port 135 before each PS spawn — fail-fast for offline targets, clean classification</li>
   <li>In-memory ring buffer (500 entries) for activity log, polled by dashboard</li>
@@ -249,7 +249,7 @@ service restarts on new dist/, in-memory state cleared</div>
 
 <h3>Settings tab</h3>
 <ul>
-  <li><strong>Collection intervals</strong> — eventlog collector (default 5 min), disk scan (default 30 min); unit selector (sec / min / hour); changes apply live (no service restart needed)</li>
+  <li><strong>Periodic checks</strong> — one frequency plus checkboxes for Eventlog collector, Disk scan, and Services scan; changes apply live (no service restart needed)</li>
   <li><strong>Disk space thresholds</strong> — Mode (Percent free / GB free / Either most-strict), Critical & Warning values for both % and GB</li>
   <li>Save button only enabled when there are unsaved changes</li>
 </ul>
@@ -261,7 +261,7 @@ service restarts on new dist/, in-memory state cleared</div>
 <p>Background job that pulls Warning/Error/Critical events from every monitored PC.</p>
 <table>
   <tr><th>Setting</th><th>Default</th><th>Configurable in</th></tr>
-  <tr><td>Schedule interval</td><td>300s (5 min)</td><td>Settings → Collection intervals (live)</td></tr>
+  <tr><td>Schedule</td><td>Selected in periodic checks</td><td>Settings → Periodic checks</td></tr>
   <tr><td>Concurrency</td><td>5 PCs simultaneously</td><td><code>CONCURRENCY</code> constant</td></tr>
   <tr><td>Max events per PC per run</td><td>500</td><td><code>MAX_EVENTS_PER_PC_PER_RUN</code></td></tr>
   <tr><td>Skip threshold</td><td>10 consecutive failures</td><td><code>MAX_FAILURES_BEFORE_SKIP</code></td></tr>
@@ -300,7 +300,7 @@ service restarts on new dist/, in-memory state cleared</div>
 <p>Periodic scan of free/total bytes per drive on every monitored PC.</p>
 <table>
   <tr><th>Setting</th><th>Default</th><th>Configurable</th></tr>
-  <tr><td>Schedule interval</td><td>1800s (30 min)</td><td>Settings → Collection intervals</td></tr>
+  <tr><td>Schedule</td><td>Selected in periodic checks</td><td>Settings → Periodic checks</td></tr>
   <tr><td>Concurrency</td><td>5</td><td><code>CONCURRENCY</code></td></tr>
   <tr><td>Drive filter</td><td>DriveType=3 (fixed local)</td><td>—</td></tr>
   <tr><td>Pre-flight TCP probe</td><td>2s on port 135</td><td>same as eventlog collector</td></tr>
@@ -321,7 +321,7 @@ service restarts on new dist/, in-memory state cleared</div>
 <p>Detects Windows services with <strong>StartMode = Automatic</strong> but <strong>State ≠ Running</strong> on every monitored PC. Filters legitimate cases (Trigger Start, Delayed Start, per-user instances) and compares the rest against a policy table.</p>
 <table>
   <tr><th>Setting</th><th>Default</th></tr>
-  <tr><td>Schedule interval</td><td>900s (15 min)</td></tr>
+  <tr><td>Schedule</td><td>Selected in Settings → Periodic checks (default included)</td></tr>
   <tr><td>Transport</td><td>Win32_Service via DCOM session (same RPC as eventlog/disk)</td></tr>
   <tr><td>Trigger-start detection</td><td>Registry <code>HKLM\SYSTEM\CurrentControlSet\Services\&lt;svc&gt;\TriggerInfo</code> subkey exists</td></tr>
   <tr><td>Delayed-start detection</td><td>Registry <code>DelayedAutostart = 1</code></td></tr>
@@ -380,11 +380,13 @@ service restarts on new dist/, in-memory state cleared</div>
 <p>Run history persists in <code>script_runs</code> (invoker, target, params, exit code, stdout/stderr). UI for spawning is planned.</p>
 
 <h2 id="settings">Settings</h2>
-<p>Key-value store in <code>settings</code> table. All values persist in DB and survive service restarts. Some keys also live-reschedule when changed:</p>
+<p>Key-value store in <code>settings</code> table. All values persist in DB and survive service restarts. Periodic check settings apply live:</p>
 <table>
   <tr><th>Key</th><th>Default</th><th>Effect on change</th></tr>
-  <tr><td><code>collector.interval_sec</code></td><td>300</td><td>Live reschedule of eventlog collector timer</td></tr>
-  <tr><td><code>disk.interval_sec</code></td><td>1800</td><td>Live reschedule of disk collector timer</td></tr>
+  <tr><td><code>checks.interval_sec</code></td><td>900</td><td>Live reschedule of unified periodic checks timer</td></tr>
+  <tr><td><code>checks.run_eventlog</code></td><td><code>true</code></td><td>Read on next scheduled cycle</td></tr>
+  <tr><td><code>checks.run_disk</code></td><td><code>true</code></td><td>Read on next scheduled cycle</td></tr>
+  <tr><td><code>checks.run_services</code></td><td><code>true</code></td><td>Read on next scheduled cycle</td></tr>
   <tr><td><code>disk.threshold_mode</code></td><td><code>pct</code></td><td>UI re-evaluates on next refresh</td></tr>
   <tr><td><code>disk.critical_pct</code></td><td>5</td><td>UI re-evaluates</td></tr>
   <tr><td><code>disk.warning_pct</code></td><td>15</td><td>UI re-evaluates</td></tr>
@@ -415,6 +417,7 @@ service restarts on new dist/, in-memory state cleared</div>
   <tr><td colspan="3" style="background:var(--surface)">Collectors</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/collector/status</code></td><td>In-flight progress + last run</td></tr>
   <tr><td><span class="tag tag-post">POST</span></td><td><code>/collector/run</code></td><td>Trigger manual eventlog collector</td></tr>
+  <tr><td><span class="tag tag-post">POST</span></td><td><code>/collector/run-all</code></td><td>Trigger manual eventlog + disk + services checks</td></tr>
   <tr><td><span class="tag tag-post">POST</span></td><td><code>/collector/stop</code></td><td>Abort in-flight collector run</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/disks</code></td><td>Latest disk snapshot per PC/drive</td></tr>
   <tr><td><span class="tag tag-post">POST</span></td><td><code>/disks/collect</code></td><td>Trigger manual disk scan</td></tr>

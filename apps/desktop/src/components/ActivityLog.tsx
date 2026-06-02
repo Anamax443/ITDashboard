@@ -62,7 +62,7 @@ export function ActivityLog({ height = 400, autoScroll = true }: { height?: numb
       <div style={{ padding: 12 }}>
         <HelpBox title="What this tab shows">
           <p>Real-time stream of every background action: eventlog collector, AD sync, disk scan, services scan, firewall changes. Polled every 2s.</p>
-          <p><strong>Source tags:</strong> <code>[collector]</code>, <code>[disk]</code>, <code>[services]</code>, <code>[ad-sync]</code>, <code>[firewall]</code></p>
+          <p><strong>Source tags:</strong> <code>[checks]</code>, <code>[collector]</code>, <code>[disk]</code>, <code>[services]</code>, <code>[ad-sync]</code>, <code>[firewall]</code></p>
           <p><strong>Levels:</strong> Success (green) · Info (dim) · Warning (amber) · Error (red)</p>
           <p>Buffer is in-memory (last 500 entries), lost on service restart. For permanent audit see DB tables <code>collector_runs</code>, <code>ad_sync_runs</code>.</p>
           <p><strong>📋 Copy</strong> exports filtered lines as tab-separated text to clipboard.</p>
