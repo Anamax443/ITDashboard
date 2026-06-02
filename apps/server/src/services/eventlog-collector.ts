@@ -54,6 +54,22 @@ async function collectFromPC(name: string, sinceUtc: Date, signal?: AbortSignal)
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Quick TCP probe on RPC endpoint mapper (135) with 2s timeout — distinguishes offline from RPC misconfigured.
+$tcpOk = $false
+try {
+  $client = New-Object Net.Sockets.TcpClient
+  $iar = $client.BeginConnect('${name}', 135, $null, $null)
+  if ($iar.AsyncWaitHandle.WaitOne(2000, $false)) {
+    $client.EndConnect($iar)
+    $tcpOk = $true
+  }
+  $client.Close()
+} catch { }
+if (-not $tcpOk) {
+  Write-Error 'CLASS_OFFLINE: TCP/135 unreachable' -ErrorAction Stop
+}
+
 $startTime = [DateTime]::Parse('${sinceIso}').ToUniversalTime()
 try {
   Get-WinEvent -ComputerName '${name}' -FilterHashtable @{
@@ -149,20 +165,31 @@ async function markSuccess(computerId: number, runStartedAt: Date): Promise<void
       SET last_collected_at = @t,
           last_seen = @t,
           last_error = NULL,
-          consecutive_failures = 0
+          consecutive_failures = 0,
+          last_status = 'online'
       WHERE id = @id;
     `);
 }
 
+function classifyError(msg: string): 'offline' | 'rpc_unavailable' | 'access_denied' | 'unknown' {
+  if (msg.includes('CLASS_OFFLINE') || msg.includes('No such host') || msg.includes('network path was not found')) return 'offline';
+  if (msg.includes('RPC server is unavailable')) return 'rpc_unavailable';
+  if (msg.includes('Access is denied') || msg.includes('Access denied')) return 'access_denied';
+  return 'unknown';
+}
+
 async function markFailure(computerId: number, errorMsg: string): Promise<void> {
   const pool = await getPool();
+  const status = classifyError(errorMsg);
   await pool.request()
     .input('id', computerId)
     .input('err', errorMsg.slice(0, 4000))
+    .input('st', status)
     .query(`
       UPDATE computers
       SET last_error = @err,
-          consecutive_failures = consecutive_failures + 1
+          consecutive_failures = consecutive_failures + 1,
+          last_status = @st
       WHERE id = @id;
     `);
 }

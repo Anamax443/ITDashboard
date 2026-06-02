@@ -266,8 +266,15 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                   <td style={{ color: 'var(--text-dim)' }}>{c.fqdn ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{c.os_version ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{timeAgo(c.last_seen)}</td>
-                  <td style={{ color: c.enabled ? 'var(--ok)' : 'var(--text-dim)', fontSize: 11 }}>
-                    {c.enabled ? 'Active' : 'Disabled'}
+                  <td style={{ fontSize: 11 }}>
+                    {!c.enabled
+                      ? <span style={{ color: 'var(--text-dim)' }}>Disabled</span>
+                      : c.last_status === 'online' ? <span style={{ color: 'var(--ok)' }}>● Online</span>
+                      : c.last_status === 'offline' ? <span style={{ color: 'var(--text-dim)' }}>○ Offline</span>
+                      : c.last_status === 'rpc_unavailable' ? <span style={{ color: 'var(--warning)' }}>⚠ RPC fail</span>
+                      : c.last_status === 'access_denied' ? <span style={{ color: 'var(--critical)' }}>✗ Access denied</span>
+                      : c.last_status === 'unknown' ? <span style={{ color: 'var(--critical)' }}>? Unknown</span>
+                      : <span style={{ color: 'var(--ok)' }}>Active</span>}
                   </td>
                   <td><DisksCell disks={disksByComputer.get(c.id) ?? []} thresholds={thresholds} /></td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{timeAgo(c.last_collected_at ?? null)}</td>

@@ -21,7 +21,19 @@ export function SummaryCards({
 }: Props) {
   const enabledCount = computers.filter((c) => c.enabled).length;
   const total = computers.length;
-  const unreachableCount = computers.filter((c) => c.enabled && c.monitor_enabled && (c.consecutive_failures ?? 0) > 0).length;
+  const monitoredFailing = computers.filter((c) => c.enabled && c.monitor_enabled && (c.consecutive_failures ?? 0) > 0);
+  const unreachableCount = monitoredFailing.length;
+  const offlineCount = monitoredFailing.filter((c) => c.last_status === 'offline').length;
+  const rpcCount = monitoredFailing.filter((c) => c.last_status === 'rpc_unavailable').length;
+  const accessCount = monitoredFailing.filter((c) => c.last_status === 'access_denied').length;
+  const unknownCount = unreachableCount - offlineCount - rpcCount - accessCount;
+  const unreachableSub =
+    [
+      offlineCount > 0 ? `${offlineCount} offline` : null,
+      rpcCount > 0 ? `${rpcCount} RPC` : null,
+      accessCount > 0 ? `${accessCount} auth` : null,
+      unknownCount > 0 ? `${unknownCount} other` : null,
+    ].filter(Boolean).join(' · ') || 'RPC fail / offline';
   return (
     <div className="cards" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
       <Card label="Critical events (24h)" value={summary?.critical_24h ?? '—'} kind="critical"
@@ -33,7 +45,7 @@ export function SummaryCards({
       <Card
         label="Unreachable"
         value={unreachableCount}
-        sub="RPC fail / offline"
+        sub={unreachableSub}
         kind="critical"
         onClick={unreachableCount > 0 ? onClickUnreachable : undefined}
       />

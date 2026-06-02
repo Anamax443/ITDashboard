@@ -124,6 +124,7 @@ export interface ComputerItem {
   consecutive_failures?: number;
   ou_path?: string | null;
   distinguished_name?: string | null;
+  last_status?: 'online' | 'offline' | 'rpc_unavailable' | 'access_denied' | 'unknown' | null;
 }
 
 async function jget<T>(path: string): Promise<T> {
