@@ -8,6 +8,16 @@ const PERIODIC_CHECKS = [
   { key: 'checks.run_services', label: 'Services scan' },
 ] as const;
 
+const SCHEDULE_DAYS = [
+  { value: 1, label: 'Po' },
+  { value: 2, label: 'Út' },
+  { value: 3, label: 'St' },
+  { value: 4, label: 'Čt' },
+  { value: 5, label: 'Pá' },
+  { value: 6, label: 'So' },
+  { value: 0, label: 'Ne' },
+] as const;
+
 function NetworkAccessSection() {
   const [ips, setIps] = useState<string[]>([]);
   const [draft, setDraft] = useState<string>('');
@@ -103,6 +113,18 @@ export function SettingsPage() {
 
   const value = (key: string, def = '') => dirty[key] ?? settings[key] ?? def;
   const set = (key: string, v: string) => setDirty((d) => ({ ...d, [key]: v }));
+  const selectedDays = new Set(
+    value('checks.days', '1,2,3,4,5').split(',')
+      .map((v) => Number(v.trim()))
+      .filter((v) => Number.isInteger(v) && v >= 0 && v <= 6)
+  );
+  const toggleDay = (day: number) => {
+    const next = new Set(selectedDays);
+    if (next.has(day)) next.delete(day);
+    else next.add(day);
+    const ordered = SCHEDULE_DAYS.map((d) => d.value).filter((d) => next.has(d));
+    set('checks.days', ordered.join(','));
+  };
 
   const save = async () => {
     setSaving(true);
@@ -139,7 +161,7 @@ export function SettingsPage() {
 
         <HelpBox title="What this tab does">
           <p>Configure all background-scan intervals, dashboard thresholds, and which IPs may reach the API. All settings persist in the DB and apply live — no service restart needed.</p>
-          <p><strong>Periodic checks</strong> — how often the scheduler runs and which checks are included: eventlog, disk space, services.</p>
+          <p><strong>Periodic checks</strong> — how often the scheduler runs, on which days/time window, and which checks are included. Manual runs are still allowed outside the window.</p>
           <p><strong>Network access</strong> — Windows Firewall whitelist for inbound 4000. Be careful: removing your own IP locks you out (you'd need RDP to fix it).</p>
           <p><strong>Disk space thresholds</strong> — when a drive's free % or GB drops below the threshold, it's flagged Critical / Warning on the dashboard and in Computers tab.</p>
         </HelpBox>
@@ -148,6 +170,33 @@ export function SettingsPage() {
           <Field label="Run every">
             <IntervalInput v={value('checks.interval_sec', '900')} onChange={(v) => set('checks.interval_sec', v)} />
           </Field>
+          <Field label="Days">
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {SCHEDULE_DAYS.map((day) => (
+                <button
+                  key={day.value}
+                  type="button"
+                  onClick={() => toggleDay(day.value)}
+                  className="refresh-btn"
+                  style={{
+                    minWidth: 42,
+                    background: selectedDays.has(day.value) ? 'var(--accent)' : 'transparent',
+                    color: selectedDays.has(day.value) ? 'white' : 'var(--text-dim)',
+                  }}
+                >
+                  {day.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <FieldGroup>
+            <Field label="Window from">
+              <input type="time" value={value('checks.window_start', '06:00')} onChange={(e) => set('checks.window_start', e.target.value)} style={{ ...fieldStyle, minWidth: 120 }} />
+            </Field>
+            <Field label="Window to">
+              <input type="time" value={value('checks.window_end', '18:00')} onChange={(e) => set('checks.window_end', e.target.value)} style={{ ...fieldStyle, minWidth: 120 }} />
+            </Field>
+          </FieldGroup>
           <FieldGroup>
             {PERIODIC_CHECKS.map((check) => (
               <CheckField

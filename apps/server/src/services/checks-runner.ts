@@ -7,6 +7,12 @@ import { getAllSettings } from './settings.js';
 type CheckName = 'eventlog' | 'disk' | 'services';
 type CheckSelection = Record<CheckName, boolean>;
 
+interface CheckWindow {
+  days: Set<number>;
+  startMinutes: number;
+  endMinutes: number;
+}
+
 export interface DiskCollectResult {
   pcs: number;
   ok: number;
@@ -69,6 +75,24 @@ function boolSetting(value: string | undefined, fallback: boolean): boolean {
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
 }
 
+function parseTime(value: string | undefined, fallback: string): number {
+  const raw = value ?? fallback;
+  const match = raw.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return parseTime(fallback, '00:00');
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return parseTime(fallback, '00:00');
+  return hours * 60 + minutes;
+}
+
+function parseDays(value: string | undefined): Set<number> {
+  const raw = value ?? '1,2,3,4,5';
+  const days = raw.split(',')
+    .map((v) => Number(v.trim()))
+    .filter((v) => Number.isInteger(v) && v >= 0 && v <= 6);
+  return new Set(days.length > 0 ? days : [1, 2, 3, 4, 5]);
+}
+
 async function loadSelection(): Promise<CheckSelection> {
   const settings = await getAllSettings();
   return Object.fromEntries(
@@ -80,6 +104,25 @@ async function loadIntervalSec(): Promise<number> {
   const settings = await getAllSettings();
   const interval = Number(settings['checks.interval_sec'] ?? 900);
   return Number.isFinite(interval) && interval > 0 ? interval : 900;
+}
+
+async function loadWindow(): Promise<CheckWindow> {
+  const settings = await getAllSettings();
+  return {
+    days: parseDays(settings['checks.days']),
+    startMinutes: parseTime(settings['checks.window_start'], '06:00'),
+    endMinutes: parseTime(settings['checks.window_end'], '18:00'),
+  };
+}
+
+function isWithinWindow(now: Date, window: CheckWindow): boolean {
+  if (!window.days.has(now.getDay())) return false;
+  const minuteOfDay = now.getHours() * 60 + now.getMinutes();
+  if (window.startMinutes === window.endMinutes) return true;
+  if (window.startMinutes < window.endMinutes) {
+    return minuteOfDay >= window.startMinutes && minuteOfDay < window.endMinutes;
+  }
+  return minuteOfDay >= window.startMinutes || minuteOfDay < window.endMinutes;
 }
 
 export async function runChecksOnce(
@@ -124,6 +167,12 @@ export async function runChecksOnce(
   }
 }
 
+async function runScheduledChecksIfAllowed(): Promise<void> {
+  const window = await loadWindow();
+  if (!isWithinWindow(new Date(), window)) return;
+  await runChecksOnce('scheduled');
+}
+
 export async function runAllChecksOnce(triggerSource: 'manual' | 'scheduled'): Promise<RunChecksResult | null> {
   return runChecksOnce(triggerSource, { eventlog: true, disk: true, services: true });
 }
@@ -132,7 +181,7 @@ export async function startChecksSchedule(): Promise<void> {
   const interval = await loadIntervalSec();
   if (timer) clearInterval(timer);
   timer = setInterval(() => {
-    runChecksOnce('scheduled').catch((e) => console.error('Scheduled checks error', e));
+    runScheduledChecksIfAllowed().catch((e) => console.error('Scheduled checks error', e));
   }, interval * 1000);
   console.log(`Periodic checks scheduled every ${interval}s`);
 }
@@ -140,7 +189,7 @@ export async function startChecksSchedule(): Promise<void> {
 export function rescheduleChecks(intervalSec: number): void {
   if (timer) clearInterval(timer);
   timer = setInterval(() => {
-    runChecksOnce('scheduled').catch((e) => console.error('Scheduled checks error', e));
+    runScheduledChecksIfAllowed().catch((e) => console.error('Scheduled checks error', e));
   }, intervalSec * 1000);
   console.log(`Periodic checks rescheduled every ${intervalSec}s`);
 }

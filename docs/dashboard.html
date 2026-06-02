@@ -249,7 +249,7 @@ service restarts on new dist/, in-memory state cleared</div>
 
 <h3>Settings tab</h3>
 <ul>
-  <li><strong>Periodic checks</strong> — one frequency plus checkboxes for Eventlog collector, Disk scan, and Services scan; changes apply live (no service restart needed)</li>
+  <li><strong>Periodic checks</strong> — one frequency, editable days/time window (default Po–Pá 06:00–18:00), plus checkboxes for Eventlog collector, Disk scan, and Services scan; changes apply live (no service restart needed)</li>
   <li><strong>Disk space thresholds</strong> — Mode (Percent free / GB free / Either most-strict), Critical & Warning values for both % and GB</li>
   <li>Save button only enabled when there are unsaved changes</li>
 </ul>
@@ -384,6 +384,9 @@ service restarts on new dist/, in-memory state cleared</div>
 <table>
   <tr><th>Key</th><th>Default</th><th>Effect on change</th></tr>
   <tr><td><code>checks.interval_sec</code></td><td>900</td><td>Live reschedule of unified periodic checks timer</td></tr>
+  <tr><td><code>checks.days</code></td><td><code>1,2,3,4,5</code></td><td>Scheduled checks run only on selected days (0=Sunday, 1=Monday)</td></tr>
+  <tr><td><code>checks.window_start</code></td><td><code>06:00</code></td><td>Scheduled checks run only after this local server time</td></tr>
+  <tr><td><code>checks.window_end</code></td><td><code>18:00</code></td><td>Scheduled checks run only before this local server time</td></tr>
   <tr><td><code>checks.run_eventlog</code></td><td><code>true</code></td><td>Read on next scheduled cycle</td></tr>
   <tr><td><code>checks.run_disk</code></td><td><code>true</code></td><td>Read on next scheduled cycle</td></tr>
   <tr><td><code>checks.run_services</code></td><td><code>true</code></td><td>Read on next scheduled cycle</td></tr>

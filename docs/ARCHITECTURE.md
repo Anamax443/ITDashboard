@@ -29,7 +29,7 @@
   - `settings` — get all, put bulk
   - `scripts` — list (run endpoint pending)
 - Background tasks:
-  - **Periodic checks scheduler** — every `checks.interval_sec` (default 900) runs selected checks from Settings: eventlog, disk, services
+  - **Periodic checks scheduler** — every `checks.interval_sec` (default 900) within `checks.days` + `checks.window_start/end` runs selected checks from Settings: eventlog, disk, services
   - **Eventlog collector** — pulls Warning/Error/Critical events
   - **Disk collector** — pulls Win32_LogicalDisk via DCOM
   - **Services collector** — checks Auto + non-running Windows services and drift policy
@@ -78,7 +78,7 @@ Persisted in `computers.last_status`. UI shows breakdown in Dashboard Unreachabl
 `computers.monitor_enabled` is the operator's intent. AD sync explicitly does **not** touch this column — it only updates `fqdn`, `os_version`, `last_seen`, `enabled` (AD presence). When a PC is removed from AD it gets soft-disabled (`enabled = 0`) but its events stay. If it reappears, `enabled = 1` again and the original `monitor_enabled` state persists.
 
 ### Settings live-reschedule
-`checks.interval_sec` causes immediate scheduler reschedule on save — no service restart. The check enable flags (`checks.run_eventlog`, `checks.run_disk`, `checks.run_services`) are read on every scheduled run, so toggles apply to the next cycle.
+`checks.interval_sec` causes immediate scheduler reschedule on save — no service restart. The day/time window and check enable flags (`checks.run_eventlog`, `checks.run_disk`, `checks.run_services`) are read on every scheduled run, so toggles apply to the next cycle.
 
 ### Activity log is in-memory only
 Ring buffer of 500 entries, polled by dashboard every 2s. Lost on service restart. For permanent audit, the relevant info is also written to DB tables (`collector_runs`, `ad_sync_runs`, `script_runs`). This avoids DB writes for every log line (~thousands per collector run).

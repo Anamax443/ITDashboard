@@ -9,7 +9,7 @@ Internal IT operations dashboard for the **AXINETWORK** domain. Eventlog analyti
 - **Disk space monitoring** — periodic DCOM scan; configurable thresholds (% / GB); colored progress bars; drill-down filter.
 - **Reachability classification** — every collector run categorises each PC as `online` / `offline` / `rpc_unavailable` / `access_denied`. Dashboard surfaces breakdown.
 - **Activity log** — terminal-style live view of every collector / sync / disk-scan action with filter, pause, copy-to-clipboard.
-- **Settings page** — periodic check frequency + enabled checks + disk thresholds, applied live without service restart.
+- **Settings page** — periodic check frequency, days/time window, enabled checks + disk thresholds, applied live without service restart.
 
 ## Live topology
 
