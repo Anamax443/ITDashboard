@@ -140,3 +140,8 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 007_disks_settings | disks table + settings table + default disk thresholds |
 | 008_interval_settings | settings rows for collector/disk/adsync intervals |
 | 009_last_status | computers.last_status (online/offline/rpc_unavailable/access_denied) |
+| 010_service_problems | service_problems table (Win32_Service Auto+!Running snapshot) + services.interval_sec default 900s |
+| 011_service_trigger_delayed_columns | service_problems.delayed_start + trigger_start columns |
+| 012_per_user_service | service_problems.per_user_start (LUID suffix detection) |
+| 013_excluded_flag | computers.excluded (operator-controlled hard exclude) |
+| 014_service_policy | service_policy table with seeded defaults + service_problems drift columns |

@@ -1,22 +1,28 @@
 import React, { useEffect, useState } from 'react';
-import type { ServiceProblem } from '../api.js';
+import type { ServiceProblem, ServiceAggregate } from '../api.js';
 import { api, timeAgo } from '../api.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 import { HelpBox } from '../components/HelpBox.js';
 
 export function ServicesPage() {
+  const [view, setView] = useState<'by-pc' | 'by-service'>('by-pc');
   const [items, setItems] = useState<ServiceProblem[]>([]);
+  const [aggregate, setAggregate] = useState<ServiceAggregate[]>([]);
   const [scanning, setScanning] = useState(false);
   const [lastResult, setLastResult] = useState<{ ok: number; fail: number; problems: number; durationMs: number } | null>(null);
+  const [scanStartedAt, setScanStartedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [hideTriggerStart, setHideTriggerStart] = useState(true);
   const [hideDelayedStart, setHideDelayedStart] = useState(false);
   const [hidePerUser, setHidePerUser] = useState(true);
+  const [hideCompliant, setHideCompliant] = useState(false);
   const { sort, toggle } = useSort<ServiceProblem>({ col: 'computer', dir: 'asc' });
+  const { sort: aggSort, toggle: aggToggle } = useSort<ServiceAggregate>({ col: 'pc_count', dir: 'desc' });
 
   const refresh = () => {
     api.serviceProblems().then((r) => setItems(r.items)).catch((e) => setError(String(e)));
+    api.servicesAggregate().then((r) => setAggregate(r.items)).catch(() => {});
   };
 
   useEffect(() => {
@@ -28,6 +34,7 @@ export function ServicesPage() {
   const triggerScan = async () => {
     setError(null);
     setScanning(true);
+    setScanStartedAt(new Date());
     try {
       const result = await api.servicesScan();
       setLastResult({ ok: result.ok, fail: result.fail, problems: result.problems, durationMs: result.durationMs });
@@ -39,10 +46,21 @@ export function ServicesPage() {
     }
   };
 
+  // Elapsed seconds while scanning
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!scanning) return;
+    const t = setInterval(() => {
+      if (scanStartedAt) setElapsed(Math.floor((Date.now() - scanStartedAt.getTime()) / 1000));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [scanning, scanStartedAt]);
+
   const filtered = items.filter((s) => {
     if (hideTriggerStart && s.trigger_start) return false;
     if (hideDelayedStart && s.delayed_start) return false;
     if (hidePerUser && s.per_user_start) return false;
+    if (hideCompliant && s.is_compliant === true) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -103,7 +121,15 @@ export function ServicesPage() {
             <input type="checkbox" checked={hidePerUser} onChange={(e) => setHidePerUser(e.target.checked)} />
             Hide per-user
           </label>
-          {scanning && <span style={{ color: 'var(--accent)', fontSize: 11 }}>● Scanning…</span>}
+          <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }} title="Hide services that match a policy with OK status">
+            <input type="checkbox" checked={hideCompliant} onChange={(e) => setHideCompliant(e.target.checked)} />
+            Hide compliant
+          </label>
+          {scanning && (
+            <span style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 600 }}>
+              ● Scanning… {elapsed}s
+            </span>
+          )}
           {!scanning && lastResult && (
             <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>
               <span style={{ color: 'var(--ok)' }}>{lastResult.ok} OK</span>
@@ -113,12 +139,27 @@ export function ServicesPage() {
           )}
           {error && <span style={{ color: 'var(--critical)', fontSize: 11 }}>⚠ {error}</span>}
           <button className="refresh-btn" onClick={triggerScan} disabled={scanning} title="Scan services on all monitored PCs">
-            {scanning ? '…' : '🔧 Scan services'}
+            {scanning ? `… ${elapsed}s` : '🔧 Scan services'}
+          </button>
+          <a
+            href={api.servicesGpoScriptUrl()}
+            target="_blank"
+            rel="noreferrer"
+            className="refresh-btn"
+            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+            title="Download PowerShell script that applies your current service policy. Suitable for GPO Computer Startup Script."
+          >
+            📤 GPO script
+          </a>
+          <button className="refresh-btn" onClick={() => setView(view === 'by-pc' ? 'by-service' : 'by-pc')}>
+            {view === 'by-pc' ? '📊 By service' : '📋 By PC'}
           </button>
         </div>
       </div>
       <div className="panel-body">
-        {sorted.length === 0 ? (
+        {view === 'by-service' ? (
+          <ByServiceTable items={aggregate} sort={aggSort} toggle={aggToggle} search={search} hideCompliant={hideCompliant} hideTriggerStart={hideTriggerStart} hideDelayedStart={hideDelayedStart} hidePerUser={hidePerUser} />
+        ) : sorted.length === 0 ? (
           <div className="empty">
             {items.length === 0
               ? 'No problems found — all monitored PCs have their auto-services running. (Or scan never ran — click 🔧 Scan services.)'
@@ -168,5 +209,63 @@ export function ServicesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function ByServiceTable({ items, sort, toggle, search, hideCompliant, hideTriggerStart, hideDelayedStart, hidePerUser }: {
+  items: ServiceAggregate[];
+  sort: { col: keyof ServiceAggregate; dir: 'asc' | 'desc' } | null;
+  toggle: (col: keyof ServiceAggregate) => void;
+  search: string;
+  hideCompliant: boolean;
+  hideTriggerStart: boolean;
+  hideDelayedStart: boolean;
+  hidePerUser: boolean;
+}) {
+  const filtered = items.filter((s) => {
+    if (hideTriggerStart && s.trigger_start) return false;
+    if (hideDelayedStart && s.delayed_start) return false;
+    if (hidePerUser && s.per_user_start) return false;
+    if (hideCompliant && s.drift_count === 0 && s.unclassified_count === 0) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return s.service_name.toLowerCase().includes(q) || (s.display_name ?? '').toLowerCase().includes(q);
+    }
+    return true;
+  });
+  const sorted = useSortedItems(filtered, sort);
+  if (sorted.length === 0) return <div className="empty">No services match.</div>;
+  return (
+    <table>
+      <thead>
+        <tr>
+          <SortHeader<ServiceAggregate> col="service_name" label="Service" sort={sort} toggle={toggle} width={220} />
+          <SortHeader<ServiceAggregate> col="display_name" label="Display name" sort={sort} toggle={toggle} />
+          <SortHeader<ServiceAggregate> col="pc_count" label="# PCs" sort={sort} toggle={toggle} width={70} />
+          <SortHeader<ServiceAggregate> col="drift_count" label="Drift" sort={sort} toggle={toggle} width={70} />
+          <SortHeader<ServiceAggregate> col="ok_count" label="OK" sort={sort} toggle={toggle} width={60} />
+          <SortHeader<ServiceAggregate> col="unclassified_count" label="?" sort={sort} toggle={toggle} width={50} />
+          <th style={{ width: 110 }}>Start type</th>
+        </tr>
+      </thead>
+      <tbody>
+        {sorted.map((s) => (
+          <tr key={s.service_name}>
+            <td style={{ fontFamily: 'Consolas, monospace', fontSize: 11, fontWeight: 600 }}>{s.service_name}</td>
+            <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{s.display_name ?? '—'}</td>
+            <td style={{ fontWeight: 600 }}>{s.pc_count}</td>
+            <td style={{ color: s.drift_count > 0 ? 'var(--critical)' : 'var(--text-dim)' }}>{s.drift_count}</td>
+            <td style={{ color: s.ok_count > 0 ? 'var(--ok)' : 'var(--text-dim)' }}>{s.ok_count}</td>
+            <td style={{ color: s.unclassified_count > 0 ? 'var(--warning)' : 'var(--text-dim)' }}>{s.unclassified_count}</td>
+            <td style={{ fontSize: 10 }}>
+              {s.trigger_start && <span style={{ color: 'var(--accent)' }}>● Trigger</span>}
+              {s.delayed_start && <span style={{ color: 'var(--warning)' }}>● Delayed</span>}
+              {s.per_user_start && <span style={{ color: 'var(--text-dim)' }}>● Per-user</span>}
+              {!s.trigger_start && !s.delayed_start && !s.per_user_start && <span style={{ color: 'var(--critical)' }}>● Auto</span>}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

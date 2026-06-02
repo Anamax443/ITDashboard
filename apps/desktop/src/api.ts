@@ -54,6 +54,20 @@ export interface ServiceProblem {
   collected_at: string;
 }
 
+export interface ServiceAggregate {
+  service_name: string;
+  display_name: string | null;
+  start_mode: string;
+  pc_count: number;
+  drift_count: number;
+  ok_count: number;
+  unclassified_count: number;
+  trigger_start: boolean;
+  delayed_start: boolean;
+  per_user_start: boolean;
+  policy_id: number | null;
+}
+
 export interface DiskItem {
   id: number;
   computer_id: number;
@@ -216,6 +230,8 @@ export const api = {
   disksCollect: () => jpost<{ pcs: number; ok: number; fail: number; drives: number; durationMs: number }>('/disks/collect'),
   serviceProblems: () => jget<{ items: ServiceProblem[] }>('/services/problems'),
   servicesScan: () => jpost<{ pcs: number; ok: number; fail: number; problems: number; durationMs: number }>('/services/scan'),
+  servicesAggregate: () => jget<{ items: ServiceAggregate[] }>('/services/aggregate'),
+  servicesGpoScriptUrl: () => `${API_BASE}/services/gpo-script`,
   settings: () => jget<Record<string, string>>('/settings'),
   firewallWhitelist: () => jget<{ ips: string[] }>('/firewall/whitelist'),
   saveFirewallWhitelist: async (ips: string[]) => {

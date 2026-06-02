@@ -86,6 +86,7 @@ a.external { color: var(--accent); }
     <li><a href="#ui-tour">UI tour</a></li>
     <li><a href="#collector">Eventlog collector</a></li>
     <li><a href="#disk">Disk space collector</a></li>
+    <li><a href="#services">Services collector + policy</a></li>
     <li><a href="#ad-sync">AD sync</a></li>
     <li><a href="#scripts">Script runner</a></li>
     <li><a href="#settings">Settings</a></li>
@@ -316,6 +317,43 @@ service restarts on new dist/, in-memory state cleared</div>
   <li><strong>Either (most strict)</strong> — flag if either threshold tripped (recommended for mixed fleet — small workstations want %, large servers want GB)</li>
 </ul>
 
+<h2 id="services">Services collector + policy</h2>
+<p>Detects Windows services with <strong>StartMode = Automatic</strong> but <strong>State ≠ Running</strong> on every monitored PC. Filters legitimate cases (Trigger Start, Delayed Start, per-user instances) and compares the rest against a policy table.</p>
+<table>
+  <tr><th>Setting</th><th>Default</th></tr>
+  <tr><td>Schedule interval</td><td>900s (15 min)</td></tr>
+  <tr><td>Transport</td><td>Win32_Service via DCOM session (same RPC as eventlog/disk)</td></tr>
+  <tr><td>Trigger-start detection</td><td>Registry <code>HKLM\SYSTEM\CurrentControlSet\Services\&lt;svc&gt;\TriggerInfo</code> subkey exists</td></tr>
+  <tr><td>Delayed-start detection</td><td>Registry <code>DelayedAutostart = 1</code></td></tr>
+  <tr><td>Per-user detection</td><td>Service name matches <code>_[a-f0-9]{4,12}$</code> (LUID suffix)</td></tr>
+</table>
+
+<h3>Service policy + drift</h3>
+<p><code>service_policy</code> table holds rules: <code>pattern</code> (glob with <code>*</code>), <code>expected_start_mode</code>, <code>expected_state</code>, <code>priority</code> (lower wins), <code>reason</code>. Seeded with sensible defaults (Google updaters → Manual, CCAgent → Auto+Running, TrustedInstaller → Manual, etc).</p>
+<p>After every scan, each problem is classified:</p>
+<ul>
+  <li><strong style="color: #15803d">OK</strong> — service matches a policy and complies with it</li>
+  <li><strong style="color: #b91c1c">Drift</strong> — service matches a policy but doesn't comply (e.g. CCAgent should be Running, is Stopped)</li>
+  <li><strong style="color: #555">Unclassified</strong> — no policy rule matches; operator review required</li>
+</ul>
+
+<h3>UI: Services tab</h3>
+<ul>
+  <li><strong>By PC view (default)</strong> — flat list of all problems with computer / service / state / start type / drift</li>
+  <li><strong>By service view</strong> — aggregated; shows <code># PCs / Drift / OK / Unclassified</code> per service name — useful for "this service is stopped on 87 PCs"</li>
+  <li>Toggle <strong>📊 By service</strong> / <strong>📋 By PC</strong></li>
+  <li>Filters: Hide trigger-start (default ON), Hide delayed-start, Hide per-user (default ON), Hide compliant</li>
+  <li><strong>🔧 Scan services</strong> button with live <code>Scanning… Ns</code> status + button text</li>
+</ul>
+
+<h3>GPO export</h3>
+<p><strong>📤 GPO script</strong> button generates a PowerShell file (<code>itdashboard-service-policy.ps1</code>) that applies your current policy. Intended for:</p>
+<ul>
+  <li><strong>GPO Computer Startup Script</strong> — Computer Configuration → Policies → Windows Settings → Scripts → Startup → PowerShell tab → Add</li>
+  <li><strong>Ad-hoc run</strong> — PsExec / RDP to a single PC as admin, run the script</li>
+</ul>
+<p>Script iterates each policy pattern and calls <code>Set-Service -StartupType</code> for every matching local service. Idempotent and safe to re-run.</p>
+
 <h2 id="ad-sync">AD sync</h2>
 <p>Calls <code>Get-ADComputer -Filter * -Properties OperatingSystem, LastLogonDate, DistinguishedName</code> against the domain controller, MERGE-upserts into <code>computers</code> table.</p>
 <ul>
@@ -380,6 +418,14 @@ service restarts on new dist/, in-memory state cleared</div>
   <tr><td><span class="tag tag-post">POST</span></td><td><code>/collector/stop</code></td><td>Abort in-flight collector run</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/disks</code></td><td>Latest disk snapshot per PC/drive</td></tr>
   <tr><td><span class="tag tag-post">POST</span></td><td><code>/disks/collect</code></td><td>Trigger manual disk scan</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/services/problems</code></td><td>Flat list of stopped auto-services per PC + drift status</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/services/aggregate</code></td><td>Aggregated by service name (counts: pc / drift / ok / unclassified)</td></tr>
+  <tr><td><span class="tag tag-post">POST</span></td><td><code>/services/scan</code></td><td>Trigger services scan</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/services/policies</code></td><td>Current policy rows</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/services/gpo-script</code></td><td>Download PowerShell script applying current policy</td></tr>
+  <tr><td><span class="tag tag-patch">PATCH</span></td><td><code>/computers/:id/excluded</code></td><td>Toggle permanent exclude flag</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/firewall/whitelist</code></td><td>Current API IP whitelist</td></tr>
+  <tr><td><span class="tag tag-put">PUT</span></td><td><code>/firewall/whitelist</code></td><td>Replace whitelist (validates IP/CIDR)</td></tr>
   <tr><td colspan="3" style="background:var(--surface)">Other</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/activity/log?limit&amp;sinceSeq</code></td><td>Recent activity log (in-memory ring buffer)</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/settings</code></td><td>All settings</td></tr>
@@ -399,6 +445,8 @@ service restarts on new dist/, in-memory state cleared</div>
   <tr><td><code>ad_sync_runs</code></td><td>One row per AD sync</td></tr>
   <tr><td><code>scripts</code>, <code>script_runs</code></td><td>Script catalog metadata + run history</td></tr>
   <tr><td><code>credentials</code></td><td>DPAPI-encrypted credential blobs (opaque to DB; decrypted by service account)</td></tr>
+  <tr><td><code>service_problems</code></td><td>Per-PC snapshot of stopped auto-services + classification (trigger/delayed/per-user) + drift status vs policy</td></tr>
+  <tr><td><code>service_policy</code></td><td>Operator-defined rules: pattern, expected start mode/state, priority, reason</td></tr>
   <tr><td><code>schema_migrations</code></td><td>Migration tracking (applied <code>id</code> + timestamp)</td></tr>
 </table>
 
