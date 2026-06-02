@@ -70,6 +70,31 @@ export function parseDiskThresholds(settings: Record<string, string>): DiskThres
   };
 }
 
+export interface DiskSummary {
+  criticalDrives: number;
+  warningDrives: number;
+  criticalPcs: number;
+  warningPcs: number;
+}
+
+export function summarizeDisks(disks: DiskItem[], t: DiskThresholds): DiskSummary {
+  let criticalDrives = 0;
+  let warningDrives = 0;
+  const critPcs = new Set<number>();
+  const warnPcs = new Set<number>();
+  for (const d of disks) {
+    const s = evaluateDisk(d, t);
+    if (s === 'critical') {
+      criticalDrives++;
+      critPcs.add(d.computer_id);
+    } else if (s === 'warning') {
+      warningDrives++;
+      warnPcs.add(d.computer_id);
+    }
+  }
+  return { criticalDrives, warningDrives, criticalPcs: critPcs.size, warningPcs: warnPcs.size };
+}
+
 export function evaluateDisk(d: DiskItem, t: DiskThresholds): DiskStatus {
   if (d.total_bytes <= 0) return 'ok';
   const freePct = (d.free_bytes / d.total_bytes) * 100;

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem } from './api.js';
+import { parseDiskThresholds, summarizeDisks } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { EventsTable } from './components/EventsTable.js';
 import { TopEventIds } from './components/TopEventIds.js';
@@ -32,8 +33,18 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const [version, setVersion] = useState<VersionInfo | null>(null);
+  const [disks, setDisks] = useState<DiskItem[]>([]);
+  const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
+  const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | null>(null);
 
-  useEffect(() => { api.version().then(setVersion).catch(() => {}); }, []);
+  useEffect(() => {
+    api.version().then(setVersion).catch(() => {});
+    api.disks().then((r) => setDisks(r.items)).catch(() => {});
+    api.settings().then(setSettingsMap).catch(() => {});
+  }, []);
+
+  const thresholds = parseDiskThresholds(settingsMap);
+  const diskSummary = summarizeDisks(disks, thresholds);
 
   const refreshComputers = useCallback(async () => {
     try {
@@ -119,7 +130,13 @@ export function App() {
       {view === 'dashboard' && (
         <>
           <CollectorStatus />
-          <SummaryCards summary={summary} computers={computers} />
+          <SummaryCards
+            summary={summary}
+            computers={computers}
+            diskSummary={diskSummary}
+            onClickDiskCritical={() => { setComputersPreFilter('disk-critical'); setView('computers'); }}
+            onClickDiskWarning={() => { setComputersPreFilter('disk-warning'); setView('computers'); }}
+          />
           <div className="charts-row">
             <TimelineChart buckets={timeline} hours={filterHours} />
             <TopComputersChart items={topComputers} />
@@ -149,7 +166,7 @@ export function App() {
 
       {view === 'computers' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <ComputersPage items={computers} onRefreshLocal={refreshComputers} />
+          <ComputersPage items={computers} onRefreshLocal={refreshComputers} initialFilter={computersPreFilter} onFilterConsumed={() => setComputersPreFilter(null)} />
         </div>
       )}
 
