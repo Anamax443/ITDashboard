@@ -68,27 +68,14 @@ let currentProgress: InFlightProgress | null = null;
 async function collectFromPC(name: string, sinceUtc: Date, signal?: AbortSignal): Promise<RawEvent[]> {
   if (signal?.aborted) throw new Error('aborted');
   const sinceIso = sinceUtc.toISOString();
-  // (TCP probe happens before PS script below)
+  // Pre-flight TCP probe to RPC endpoint mapper — distinguishes offline from RPC misconfigured.
+  const tcpOk = await tcpProbe(name, 135, 2000);
+  if (!tcpOk) throw new Error('OFFLINE: TCP/135 unreachable');
+
   const ps = `
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
-# Quick TCP probe on RPC endpoint mapper (135) with 2s timeout — distinguishes offline from RPC misconfigured.
-$tcpOk = $false
-try {
-  $client = New-Object Net.Sockets.TcpClient
-  $iar = $client.BeginConnect('${name}', 135, $null, $null)
-  if ($iar.AsyncWaitHandle.WaitOne(2000, $false)) {
-    $client.EndConnect($iar)
-    $tcpOk = $true
-  }
-  $client.Close()
-} catch { }
-if (-not $tcpOk) {
-  Write-Error 'CLASS_OFFLINE: TCP/135 unreachable' -ErrorAction Stop
-}
-
 $startTime = [DateTime]::Parse('${sinceIso}').ToUniversalTime()
 try {
   Get-WinEvent -ComputerName '${name}' -FilterHashtable @{
