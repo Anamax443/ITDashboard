@@ -82,11 +82,15 @@ export async function runDiskCollectorOnce(): Promise<{ pcs: number; ok: number;
       }));
       for (let j = 0; j < results.length; j++) {
         const r2 = results[j]!;
+        const c = batch[j]!;
         if (r2.status === 'fulfilled') {
           ok++;
           totalDrives += r2.value;
+          logActivity('info', 'disk', `${c.name} → ${r2.value} drive${r2.value === 1 ? '' : 's'}`);
         } else {
           fail++;
+          const errMsg = String(r2.reason).split('\n')[0]?.slice(0, 200) ?? 'unknown';
+          logActivity('warn', 'disk', `${c.name} → ${errMsg}`);
         }
       }
     }

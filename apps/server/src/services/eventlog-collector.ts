@@ -233,7 +233,7 @@ export async function runCollectorOnce(triggerSource: 'scheduled' | 'manual' = '
           succeeded++;
           totalAdded += r.value;
           currentProgress.eventsAddedSoFar += r.value;
-          if (r.value > 0) logActivity('info', 'collector', `${c.name} → +${r.value} events`);
+          logActivity('info', 'collector', `${c.name} → ${r.value === 0 ? 'no new events' : `+${r.value} events`}`);
         } else {
           failed++;
           const errMsg = String(r.reason).split('\n')[0]?.slice(0, 200) ?? 'unknown';
