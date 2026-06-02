@@ -1,6 +1,24 @@
 import { spawn } from 'node:child_process';
+import { Socket } from 'node:net';
 import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
+
+function tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new Socket();
+    let settled = false;
+    const done = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    const t = setTimeout(() => done(false), timeoutMs);
+    socket.once('connect', () => { clearTimeout(t); done(true); });
+    socket.once('error', () => { clearTimeout(t); done(false); });
+    socket.connect(port, host);
+  });
+}
 
 interface ComputerRow {
   id: number;
@@ -50,6 +68,7 @@ let currentProgress: InFlightProgress | null = null;
 async function collectFromPC(name: string, sinceUtc: Date, signal?: AbortSignal): Promise<RawEvent[]> {
   if (signal?.aborted) throw new Error('aborted');
   const sinceIso = sinceUtc.toISOString();
+  // (TCP probe happens before PS script below)
   const ps = `
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -172,7 +191,7 @@ async function markSuccess(computerId: number, runStartedAt: Date): Promise<void
 }
 
 function classifyError(msg: string): 'offline' | 'rpc_unavailable' | 'access_denied' | 'unknown' {
-  if (msg.includes('CLASS_OFFLINE') || msg.includes('No such host') || msg.includes('network path was not found')) return 'offline';
+  if (msg.startsWith('OFFLINE') || msg.includes('No such host') || msg.includes('network path was not found')) return 'offline';
   if (msg.includes('RPC server is unavailable')) return 'rpc_unavailable';
   if (msg.includes('Access is denied') || msg.includes('Access denied')) return 'access_denied';
   return 'unknown';
