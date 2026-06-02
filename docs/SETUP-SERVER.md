@@ -175,6 +175,22 @@ Invoke-RestMethod http://localhost:4000/health
 Invoke-RestMethod http://localhost:4000/health/db   # → ok:true
 ```
 
+## 7b. Grant svc-itdashboard service control ACL (KRITICKÉ pro auto-deploy)
+
+Bez tohohle grantu deploy.yml-ový `sc stop/start` selže s "Access denied" → service nikdy nerestartuje na nový kód (jen tichý fail). Trvalo nás to objevit dlouho — udělej teď.
+
+```powershell
+$svcname = 'ITDashboardAPI'
+$account = 'AXINETWORK\svc-itdashboard'
+$sid = (New-Object System.Security.Principal.NTAccount($account)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+$current = (& sc.exe sdshow $svcname | Out-String).Trim()
+$newACE = "(A;;CCLCSWRPWPDTLOCRRC;;;$sid)"
+$new = if ($current -match 'S:') { $current -replace 'S:', "$newACE`S:" } else { $current + $newACE }
+& sc.exe sdset $svcname $new
+```
+
+ACE flags: `CC=QueryConfig, LC=QueryStatus, SW=EnumDeps, RP=Start, WP=Stop, DT=Pause, LO=Interrogate, CR=UserControl, RC=ReadControl`.
+
 ## 8. Firewall — whitelist konkrétních IP
 
 ```powershell

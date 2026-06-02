@@ -31,6 +31,8 @@ th { background: var(--surface); color: var(--text-dim); font-size: 12px; text-t
 .tag { display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: 600; margin-right: 4px; }
 .tag-get { background: var(--ok); color: white; }
 .tag-post { background: var(--accent); color: white; }
+.tag-patch { background: #a855f7; color: white; }
+.tag-put { background: #06b6d4; color: white; }
 .tag-crit { background: var(--critical); color: white; }
 .tag-warn { background: var(--warning); color: #422006; }
 .callout { padding: 12px 16px; border-radius: 6px; margin: 16px 0; border-left: 4px solid; }
@@ -55,10 +57,7 @@ a.external { color: var(--accent); }
   h2 { font-size: 14pt; color: #1d4ed8; page-break-before: auto; page-break-after: avoid; margin-top: 16pt; }
   h3 { font-size: 11pt; color: #111; page-break-after: avoid; }
   table, pre, .callout, .ascii { page-break-inside: avoid; }
-  pre, .ascii {
-    background: #f5f5f5 !important; color: black !important;
-    border: 1px solid #ccc; font-size: 9pt;
-  }
+  pre, .ascii { background: #f5f5f5 !important; color: black !important; border: 1px solid #ccc; font-size: 9pt; }
   pre code { color: black !important; }
   code { background: #f5f5f5; color: #b91c1c; padding: 1px 3px; }
   table { font-size: 9pt; }
@@ -66,17 +65,12 @@ a.external { color: var(--accent); }
   td, th { border: 1px solid #ccc; padding: 4px 6px; }
   a { color: black; text-decoration: none; }
   a.external, nav a { color: #1d4ed8; }
-  /* Show external URLs after the link text when printed */
   main a[href^="http"]:after { content: " (" attr(href) ")"; font-size: 8pt; color: #555; }
   main a[href^="#"]:after { content: ""; }
   .callout-info { background: #eff6ff !important; border-left-color: #1d4ed8; }
   .callout-warn { background: #fef9c3 !important; border-left-color: #ca8a04; }
   .callout-err { background: #fee2e2 !important; border-left-color: #b91c1c; }
   .tag { color: black !important; border: 1px solid #999; background: white !important; }
-  .tag-get { border-color: #15803d; color: #15803d !important; }
-  .tag-post { border-color: #1d4ed8; color: #1d4ed8 !important; }
-  .tag-crit { border-color: #b91c1c; color: #b91c1c !important; }
-  .tag-warn { border-color: #a16207; color: #a16207 !important; }
 }
 </style>
 </head>
@@ -89,12 +83,16 @@ a.external { color: var(--accent); }
     <li><a href="#architecture">Architecture</a></li>
     <li><a href="#deployment">Deployment workflow</a></li>
     <li><a href="#components">Components</a></li>
+    <li><a href="#ui-tour">UI tour</a></li>
     <li><a href="#collector">Eventlog collector</a></li>
+    <li><a href="#disk">Disk space collector</a></li>
     <li><a href="#ad-sync">AD sync</a></li>
     <li><a href="#scripts">Script runner</a></li>
+    <li><a href="#settings">Settings</a></li>
     <li><a href="#api">API reference</a></li>
     <li><a href="#db">Database schema</a></li>
     <li><a href="#retention">Retention policy</a></li>
+    <li><a href="#permissions">Required permissions</a></li>
     <li><a href="#troubleshooting">Troubleshooting</a></li>
     <li><a href="#security">Security model</a></li>
   </ul>
@@ -111,194 +109,371 @@ a.external { color: var(--accent); }
 <div style="display: flex; gap: 12px; margin-bottom: 16px;">
   <button onclick="window.print()" style="background: var(--surface-2); color: var(--text); border: 1px solid var(--border); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 13px;">🖨 Print / Save as PDF</button>
 </div>
-<p>Internal AD &amp; eventlog dashboard for IT operators. Eventlog analytics (Warning/Error/Critical focus), AD computer inventory, ad-hoc PowerShell/Python/C# script execution.</p>
+<p>Internal IT operations dashboard for the AXINETWORK domain. Provides cross-fleet eventlog visibility, AD-synced computer inventory, disk space monitoring, and per-PC reachability classification for ~225 domain machines.</p>
 
 <h2 id="overview">Overview</h2>
-<p>ITDashboard is a domain-aware diagnostic dashboard for the AXINETWORK environment. It centralises three IT-operator workflows:</p>
+<p>ITDashboard centralises four IT-operator workflows in one dark-themed dashboard:</p>
 <ul>
-  <li><strong>Cross-fleet eventlog visibility</strong> — pulls Warning/Error/Critical events from all domain PCs into a central DB, exposes them via a unified dashboard with filtering, sorting, and trend charts.</li>
-  <li><strong>AD inventory</strong> — keeps a synchronised list of domain computers with OS version, last logon, and enabled state.</li>
-  <li><strong>Audit-friendly script execution</strong> — versioned catalog of PS/Python/C# scripts runnable on demand with parameters, output captured to DB.</li>
+  <li><strong>Cross-fleet eventlog visibility</strong> — pulls Warning/Error/Critical events from every monitored PC into a central DB; dashboard provides filtering, search, sorting, time-bucket charts, and noisy-PC ranking.</li>
+  <li><strong>AD-synced inventory</strong> — keeps an up-to-date list of domain computers with OS, last logon, OU path, and operator-controlled monitor toggle (persists across syncs).</li>
+  <li><strong>Disk space monitoring</strong> — periodic DCOM-based scan of all monitored PCs; configurable thresholds (% free or GB free or either); colored progress bars per drive.</li>
+  <li><strong>Per-PC reachability classification</strong> — every collector run categorises each PC as online / offline / RPC fail / access denied, surfaced as clickable dashboard cards that drill down into filtered lists.</li>
 </ul>
-<p>It runs as a single Node.js API service on the internal admin server, with a per-PC Electron client distributed to IT specialists.</p>
+<p>Single Node.js API service on the internal admin server + per-PC Electron client (or browser via Vite dev) for IT specialists.</p>
 
 <h2 id="architecture">Architecture</h2>
 <div class="ascii">┌─────────────────┐       ┌──────────────────────┐       ┌─────────────────┐
 │ IT operator     │       │  10.8.2.213          │       │  10.8.2.225     │
 │ Electron client │◄─────►│  Node.js API svc     │◄─────►│  SQL Server     │
-│ (per-PC)        │ HTTPS │  Eventlog collector  │ TDS   │  DB: ITDashboard│
-│                 │       │  Script runner       │ Integ │                 │
-└─────────────────┘       │  (Windows Services)  │ Auth  └─────────────────┘
+│ or web browser  │ HTTPS │  Eventlog collector  │ TDS   │  DB: ITDashboard│
+│                 │       │  Disk collector      │ Integ │                 │
+│                 │       │  AD sync             │ Auth  │                 │
+└─────────────────┘       │  Activity log buffer │       └─────────────────┘
+                          │  (Windows Services)  │
                           └──────────────────────┘
                                     ▲
                                     │ Get-WinEvent -ComputerName (RPC/MS-EVEN6)
+                                    │ Get-CimInstance via DCOM session
+                                    │ TCP probe :135 (Node-side pre-flight)
                                     ▼
                           ┌──────────────────────┐
                           │ Target PCs / NTB     │
-                          │ Windows in AXINETWORK│
+                          │ AXINETWORK domain    │
                           └──────────────────────┘</div>
 
 <table>
   <tr><th>Component</th><th>Location</th><th>Runs as</th></tr>
-  <tr><td>API + collector + script runner</td><td><code>10.8.2.213</code> (B-S-W-MIKOS)</td><td>Windows Service <code>ITDashboardAPI</code> via NSSM, under <code>AXINETWORK\svc-itdashboard</code></td></tr>
-  <tr><td>SQL Server</td><td><code>10.8.2.225</code> (B-S-W-SQL-04, default instance)</td><td>DB <code>ITDashboard</code>, Integrated Auth (no passwords in config)</td></tr>
-  <tr><td>GitHub Actions runner</td><td><code>10.8.2.213</code></td><td>Windows Service, same service account</td></tr>
-  <tr><td>Desktop client</td><td>Per IT-operator PC</td><td>Electron app, talks to API over HTTPS</td></tr>
+  <tr><td>API + collectors + script runner</td><td><code>10.8.2.213</code> (B-S-W-MIKOS)</td><td>Windows Service <code>ITDashboardAPI</code> via NSSM under <code>AXINETWORK\svc-itdashboard</code></td></tr>
+  <tr><td>SQL Server</td><td><code>10.8.2.225</code> (B-S-W-SQL-04, default instance)</td><td>DB <code>ITDashboard</code>, Integrated Auth</td></tr>
+  <tr><td>GitHub Actions self-hosted runner</td><td><code>10.8.2.213</code></td><td>Windows Service, same service account</td></tr>
+  <tr><td>Desktop client</td><td>Per IT-operator PC</td><td>Electron app or browser; HTTPS to API</td></tr>
 </table>
 
 <h2 id="deployment">Deployment workflow</h2>
-<p>Push-to-deploy via GitHub Actions self-hosted runner. No manual server interventions.</p>
+<p>Push-to-deploy via GitHub Actions self-hosted runner. No manual server intervention.</p>
 <div class="ascii">local edit (d:/git/ITDashboard)
   ↓ git push origin main
 GitHub Actions
   ↓ self-hosted runner on 10.8.2.213 picks up job
 robocopy → C:\Apps\ITDashboard (runtime location)
-  ↓
-npm install + typecheck + build + migrate
-  ↓
-net stop ITDashboardAPI &amp;&amp; net start ITDashboardAPI</div>
+  ↓ npm install + typecheck + build + migrate
+  ↓ sc stop ITDashboardAPI → poll for STOPPED state → sc start
+service restarts on new dist/, in-memory state cleared</div>
+
 <div class="callout callout-info">
-<strong>Commit hash in topbar:</strong> The deployed commit SHA is displayed in the dashboard topbar. If after a push the hash doesn't change, the deploy failed silently. Click the hash to open the GitHub commit page.
+<strong>Commit hash in topbar</strong> — the deployed commit SHA is shown in the dashboard topbar (clickable → GitHub commit page). If after a push the hash doesn't change, the deploy didn't fully apply — check Actions logs.
+</div>
+
+<div class="callout callout-warn">
+<strong>Service control ACL gotcha</strong> — the runner is svc-itdashboard, which by default cannot stop/start a Windows Service it itself hosts. We grant explicit Stop/Start rights via <code>sc sdset</code> as a one-time setup step. Without it, deploys succeed at robocopy/build but the service keeps running the old code.
 </div>
 
 <h2 id="components">Components</h2>
 <h3>Server (<code>apps/server</code>)</h3>
 <ul>
   <li>Fastify + TypeScript HTTP API on port <code>4000</code></li>
-  <li>MSSQL via <strong><code>msnodesqlv8</code></strong> driver (Windows-native, supports SSPI Integrated Auth; the pure-JS <code>tedious</code> driver fails with "untrusted domain" in domain environments)</li>
-  <li>Background tasks: eventlog collector loop, retention purge</li>
-  <li>PowerShell child processes for AD queries and remote event reading</li>
+  <li>MSSQL via <strong><code>msnodesqlv8</code></strong> driver (Windows-native, SSPI Integrated Auth; the pure-JS <code>tedious</code> driver fails with "untrusted domain" in domain environments)</li>
+  <li>Background tasks: eventlog collector loop, disk collector loop, retention purge</li>
+  <li>PowerShell child processes for AD queries (<code>Get-ADComputer</code>), eventlog reads (<code>Get-WinEvent -ComputerName</code>), disk reads (<code>Get-CimInstance</code> via DCOM session)</li>
+  <li>Node-side TCP probe to port 135 before each PS spawn — fail-fast for offline targets, clean classification</li>
+  <li>In-memory ring buffer (500 entries) for activity log, polled by dashboard</li>
 </ul>
 <h3>Desktop client (<code>apps/desktop</code>)</h3>
 <ul>
   <li>Electron + React + Vite + TypeScript</li>
   <li>Pure consumer of the API — no business logic, no direct AD/DB access</li>
-  <li>Auto-refresh every 30s; collector status polled every 2s during in-flight runs</li>
+  <li>Auto-refresh dashboard every 30s; collector status polled every 2s during in-flight runs; activity log polled every 2s</li>
+  <li>5 navigation tabs: Dashboard, Events, Computers, Activity, Settings (+ external Docs link)</li>
 </ul>
 
+<h2 id="ui-tour">UI tour</h2>
+
+<h3>Dashboard tab</h3>
+<p>Summary-only overview, every card clickable for drill-down:</p>
+<ul>
+  <li><strong>Collector status bar</strong> — last run summary or in-flight progress (X/N PCs · ✓ OK / ✗ fail · +events · elapsed · current batch); ▶ Run now / ⏹ Stop buttons; last log line</li>
+  <li><strong>7 summary cards</strong>:
+    <ul>
+      <li>Critical events (24h) → click navigates to Events tab with level=Critical filter</li>
+      <li>Errors (24h) → Events tab + level=Error</li>
+      <li>Warnings (24h) → Events tab + level=Warning</li>
+      <li>Unreachable PCs — subtitle breaks down <code>X offline · Y RPC · Z auth</code> → Computers tab with failing filter</li>
+      <li>Disk critical (N PCs / M drives) → Computers tab with disk-critical filter</li>
+      <li>Disk warning → Computers tab with disk-warning filter</li>
+      <li>Computers (active/total) → Computers tab unfiltered</li>
+    </ul>
+  </li>
+  <li><strong>Events timeline (24h)</strong> — stacked hourly bars (Critical/Error/Warning), SVG</li>
+  <li><strong>Top noisy PCs (24h)</strong> — top 10 ranked, breakdown by level via colored progress bar</li>
+  <li><strong>Top event IDs (24h)</strong> — top 15 event IDs by count, sortable</li>
+  <li><strong>Computers list</strong> — quick summary, no filters</li>
+</ul>
+
+<h3>Events tab</h3>
+<p>Full-width detailed events table:</p>
+<ul>
+  <li>Search across message / PC name / event ID / source</li>
+  <li>Filters: Computer dropdown, Source/Provider dropdown, Level (Critical/Error/Warning), Time range (1h / 24h / 7d / 30d)</li>
+  <li>Sortable columns (click header): Time, Computer, Level, Event ID, Source, Log</li>
+  <li>Click any row → detail modal with full message, all metadata</li>
+</ul>
+
+<h3>Computers tab</h3>
+<p>Complete inventory with operator controls:</p>
+<ul>
+  <li><strong>Status chips in header</strong> — clickable filter pills: <em>active</em>, <em>monitored</em>, <em>unmonitored</em>, <em>failing</em>, <em>disk critical</em>, <em>disk warning</em>, <em>disabled</em></li>
+  <li>Search across name / FQDN / OS / OU path</li>
+  <li>Status dropdown filter (mirror of chips)</li>
+  <li>Sortable columns: Name, OU path, FQDN, OS, Last seen, Status</li>
+  <li>Monitor checkbox per row — toggles whether collector polls this PC; persists across AD syncs; works on disabled PCs too (intent preserved if PC reactivates)</li>
+  <li><strong>✓ All</strong> / <strong>✗ None</strong> bulk toggle (respects current filter — useful for "Search: SRV" → ✓ All to monitor only servers)</li>
+  <li><strong>↻ Sync from AD</strong> — refreshes inventory from <code>Get-ADComputer</code></li>
+  <li><strong>💾 Scan disks</strong> — manual disk space scan; status feedback inline (Scanning…, then OK/fail/drives count)</li>
+  <li><strong>History</strong> — expands to show last 20 AD sync runs</li>
+  <li>Disks column — colored progress bars per drive, status by current thresholds</li>
+  <li>Status column — Online / Offline / RPC fail / Access denied / Disabled</li>
+  <li>Last collected / Last error columns</li>
+</ul>
+
+<h3>Activity tab</h3>
+<p>Terminal-style live log, polled every 2s:</p>
+<ul>
+  <li>Filter input (matches source + message)</li>
+  <li>Level dropdown (Info / Success / Warning / Error)</li>
+  <li><strong>⏸ Pause / ▶ Resume</strong> — freeze auto-scroll for inspection</li>
+  <li><strong>📋 Copy</strong> — copies filtered entries as tab-separated text to clipboard</li>
+  <li><strong>Clear</strong> — wipes client-side buffer (server buffer untouched)</li>
+  <li>Color coded: success green, info dim, warning amber, error red</li>
+</ul>
+
+<h3>Settings tab</h3>
+<ul>
+  <li><strong>Collection intervals</strong> — eventlog collector (default 5 min), disk scan (default 30 min); unit selector (sec / min / hour); changes apply live (no service restart needed)</li>
+  <li><strong>Disk space thresholds</strong> — Mode (Percent free / GB free / Either most-strict), Critical & Warning values for both % and GB</li>
+  <li>Save button only enabled when there are unsaved changes</li>
+</ul>
+
+<h3>Docs link</h3>
+<p>📖 Docs in topbar opens this page in a new tab. Has a 🖨 Print button at top for PDF export with print-friendly stylesheet (light theme, page break hints, URL footnotes).</p>
+
 <h2 id="collector">Eventlog collector</h2>
-<p>Background job that pulls Warning/Error/Critical events from every <code>enabled = 1</code> computer in the <code>computers</code> table.</p>
+<p>Background job that pulls Warning/Error/Critical events from every monitored PC.</p>
 <table>
-  <tr><th>Setting</th><th>Default</th><th>Where</th></tr>
-  <tr><td>Schedule interval</td><td>300s</td><td><code>COLLECTOR_POLL_INTERVAL_SEC</code> env</td></tr>
-  <tr><td>Concurrency</td><td>5 PCs at a time</td><td><code>CONCURRENCY</code> constant</td></tr>
+  <tr><th>Setting</th><th>Default</th><th>Configurable in</th></tr>
+  <tr><td>Schedule interval</td><td>300s (5 min)</td><td>Settings → Collection intervals (live)</td></tr>
+  <tr><td>Concurrency</td><td>5 PCs simultaneously</td><td><code>CONCURRENCY</code> constant</td></tr>
   <tr><td>Max events per PC per run</td><td>500</td><td><code>MAX_EVENTS_PER_PC_PER_RUN</code></td></tr>
-  <tr><td>Skip after N consecutive failures</td><td>10</td><td><code>MAX_FAILURES_BEFORE_SKIP</code></td></tr>
-  <tr><td>Cold-start window</td><td>last 1 hour</td><td>per-PC <code>last_collected_at</code> cursor</td></tr>
-  <tr><td>Collected log names</td><td><code>System</code>, <code>Application</code></td><td>(<code>Security</code> requires extra privilege)</td></tr>
+  <tr><td>Skip threshold</td><td>10 consecutive failures</td><td><code>MAX_FAILURES_BEFORE_SKIP</code></td></tr>
+  <tr><td>Cold-start window</td><td>1 hour</td><td>per-PC <code>last_collected_at</code> cursor</td></tr>
+  <tr><td>Collected log names</td><td>System, Application</td><td>(Security needs SACL privilege — currently excluded)</td></tr>
   <tr><td>Collected levels</td><td>Critical (1), Error (2), Warning (3)</td><td>—</td></tr>
+  <tr><td>TCP probe timeout</td><td>2000ms</td><td>hardcoded</td></tr>
 </table>
+
 <h3>How it reaches each PC</h3>
-<p>The collector uses <code>Get-WinEvent -ComputerName &lt;PC&gt;</code> which talks <strong>MS-EVEN6 RPC over SMB</strong>. This protocol is enabled by default on domain-joined Windows machines and is more reliable than WinRM/PSRemoting in environments where WinRM hasn't been explicitly configured by GPO.</p>
-<div class="callout callout-warn">
-<strong>Required permission on target PC:</strong> <code>svc-itdashboard</code> must be a member of the local <code>Event Log Readers</code> group on each target PC. The standard way to deploy this is via Group Policy:
-<pre><code>Computer Configuration → Preferences → Control Panel Settings →
-  Local Users and Groups → Group "Event Log Readers" (Built-in) →
-  Add member: AXINETWORK\svc-itdashboard</code></pre>
-After GPO update (<code>gpupdate /force</code>), collector will start succeeding.
-</div>
+<ol>
+  <li>Node-side TCP probe to <code>${name}:135</code> with 2s timeout. If fails → <code>OFFLINE</code> status, skip PS spawn entirely.</li>
+  <li>Spawn <code>powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; $OutputEncoding=[UTF8]; Get-WinEvent -ComputerName '${name}' -FilterHashtable @{ LogName='System','Application'; Level=1,2,3; StartTime=$startTime } | ConvertTo-Json"</code></li>
+  <li>PS uses MS-EVEN6 RPC over SMB (enabled by default on domain-joined Windows; doesn't require WinRM listener)</li>
+  <li>Failures classified by exception message:
+    <ul>
+      <li><code>RPC server is unavailable</code> → <em>rpc_unavailable</em> (TCP/135 open but RPC layer blocked, typically firewall)</li>
+      <li><code>Access is denied</code> → <em>access_denied</em> (RPC OK but Event Log Readers membership missing)</li>
+      <li><code>No events found</code> → <em>online</em> with 0 events (counted as success)</li>
+      <li>otherwise → <em>unknown</em></li>
+    </ul>
+  </li>
+</ol>
 
 <h3>Operator controls</h3>
 <table>
   <tr><th>Action</th><th>Where</th></tr>
-  <tr><td><span class="tag tag-get">RUN</span> Trigger manual collection</td><td>Dashboard → Collector bar → <code>▶ Run now</code></td></tr>
-  <tr><td><span class="tag tag-crit">STOP</span> Abort in-flight run</td><td>Dashboard → Collector bar → <code>⏹ Stop</code> (visible only while running)</td></tr>
+  <tr><td><span class="tag tag-post">RUN</span> Trigger manual collection</td><td>Dashboard → Collector bar → <code>▶ Run now</code></td></tr>
+  <tr><td><span class="tag tag-crit">STOP</span> Abort in-flight run</td><td>Dashboard → Collector bar → <code>⏹ Stop</code> (kills spawned PS procs, marks run aborted)</td></tr>
   <tr><td>Watch live progress</td><td>Collector bar: <code>X/N PCs · ✓ OK / ✗ fail · +events · elapsed · now: …</code></td></tr>
   <tr><td>See log of every collector step</td><td>Activity tab</td></tr>
+  <tr><td>Filter to monitored PCs only</td><td>Computers tab → uncheck Monitor on PCs you don't want to poll</td></tr>
 </table>
 
-<h2 id="ad-sync">AD sync</h2>
-<p>Calls <code>Get-ADComputer -Filter *</code> against the domain controller and MERGE-upserts into the <code>computers</code> table.</p>
+<h2 id="disk">Disk space collector</h2>
+<p>Periodic scan of free/total bytes per drive on every monitored PC.</p>
+<table>
+  <tr><th>Setting</th><th>Default</th><th>Configurable</th></tr>
+  <tr><td>Schedule interval</td><td>1800s (30 min)</td><td>Settings → Collection intervals</td></tr>
+  <tr><td>Concurrency</td><td>5</td><td><code>CONCURRENCY</code></td></tr>
+  <tr><td>Drive filter</td><td>DriveType=3 (fixed local)</td><td>—</td></tr>
+  <tr><td>Pre-flight TCP probe</td><td>2s on port 135</td><td>same as eventlog collector</td></tr>
+</table>
+
+<h3>Transport</h3>
+<p>Uses <strong><code>New-CimSession -SessionOption (-Protocol Dcom)</code></strong> explicitly. The default Get-CimInstance transport is WinRM (port 5985), which is rarely enabled fleet-wide. DCOM uses the same RPC stack as Get-WinEvent → consistent reachability semantics across both collectors.</p>
+
+<h3>Thresholds</h3>
+<p>Configurable in Settings. Three modes:</p>
 <ul>
-  <li>Computers no longer present in AD are soft-disabled (<code>enabled = 0</code>) instead of deleted — preserves historical events.</li>
-  <li>History of every sync persists in <code>ad_sync_runs</code> table (fetched/inserted/updated/removed counts + duration).</li>
-  <li>Triggered manually from Computers tab → <code>↻ Sync from AD</code>. Currently not auto-scheduled (planned).</li>
+  <li><strong>Percent free only</strong> — flag if free space % below threshold</li>
+  <li><strong>GB free only</strong> — flag if free bytes below threshold</li>
+  <li><strong>Either (most strict)</strong> — flag if either threshold tripped (recommended for mixed fleet — small workstations want %, large servers want GB)</li>
+</ul>
+
+<h2 id="ad-sync">AD sync</h2>
+<p>Calls <code>Get-ADComputer -Filter * -Properties OperatingSystem, LastLogonDate, DistinguishedName</code> against the domain controller, MERGE-upserts into <code>computers</code> table.</p>
+<ul>
+  <li>Computers no longer present in AD are soft-disabled (<code>enabled = 0</code>) instead of deleted → preserves historical events.</li>
+  <li>AD sync intentionally <strong>does not touch</strong> <code>monitor_enabled</code> — operator decisions persist across syncs.</li>
+  <li>OU path parsed from DistinguishedName: <code>CN=PC1,OU=Sales,OU=Notebooks,DC=axinetwork,DC=loc → axinetwork.loc/Notebooks/Sales</code></li>
+  <li>History of every sync stored in <code>ad_sync_runs</code> (fetched/inserted/updated/removed counts + duration + error if any)</li>
+  <li>Currently triggered manually from Computers tab → <code>↻ Sync from AD</code>. Daily auto-sync planned.</li>
 </ul>
 
 <h2 id="scripts">Script runner</h2>
-<p>Versioned catalog at <code>scripts/</code> in the repo. Each entry described in <code>scripts/manifest.json</code> with name, language, path, and parameters.</p>
-<p>Currently shipped:</p>
-<ul>
-  <li><code>ad-user-info</code> — Get-ADUser + group membership</li>
-  <li><code>pc-services</code> — Remote PC services list</li>
-</ul>
-<p>Run history (invoker, target, params, stdout/stderr, exit code) persists in <code>script_runs</code> table.</p>
+<p>Versioned PS/Python/C# script catalog at <code>scripts/</code> in the repo. Each script described in <code>scripts/manifest.json</code>:</p>
+<pre><code>{
+  "scripts": [
+    {
+      "slug": "ad-user-info",
+      "name": "AD User info",
+      "language": "powershell",
+      "path": "powershell/ad-user-info.ps1",
+      "params": [{ "name": "SamAccountName", "type": "string", "required": true }]
+    }
+  ]
+}</code></pre>
+<p>Run history persists in <code>script_runs</code> (invoker, target, params, exit code, stdout/stderr). UI for spawning is planned.</p>
+
+<h2 id="settings">Settings</h2>
+<p>Key-value store in <code>settings</code> table. All values persist in DB and survive service restarts. Some keys also live-reschedule when changed:</p>
+<table>
+  <tr><th>Key</th><th>Default</th><th>Effect on change</th></tr>
+  <tr><td><code>collector.interval_sec</code></td><td>300</td><td>Live reschedule of eventlog collector timer</td></tr>
+  <tr><td><code>disk.interval_sec</code></td><td>1800</td><td>Live reschedule of disk collector timer</td></tr>
+  <tr><td><code>disk.threshold_mode</code></td><td><code>pct</code></td><td>UI re-evaluates on next refresh</td></tr>
+  <tr><td><code>disk.critical_pct</code></td><td>5</td><td>UI re-evaluates</td></tr>
+  <tr><td><code>disk.warning_pct</code></td><td>15</td><td>UI re-evaluates</td></tr>
+  <tr><td><code>disk.critical_gb</code></td><td>5</td><td>UI re-evaluates</td></tr>
+  <tr><td><code>disk.warning_gb</code></td><td>20</td><td>UI re-evaluates</td></tr>
+</table>
 
 <h2 id="api">API reference</h2>
 <table>
   <tr><th>Method</th><th>Path</th><th>Description</th></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/health</code></td><td>Liveness ping</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/health/db</code></td><td>DB connectivity check</td></tr>
-  <tr><td><span class="tag tag-get">GET</span></td><td><code>/version</code></td><td>Current commit SHA + branch</td></tr>
-  <tr><td><span class="tag tag-get">GET</span></td><td><code>/events?computer&amp;level&amp;hours&amp;limit</code></td><td>Recent events with optional filters</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/version</code></td><td>Current commit SHA + branch (read fresh from .git on every call)</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/docs</code></td><td>Serves this HTML documentation</td></tr>
+  <tr><td colspan="3" style="background:var(--surface)">Events</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/events?computer&amp;level&amp;hours&amp;limit</code></td><td>Recent events</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/events/summary</code></td><td>24h Critical/Error/Warning counts</td></tr>
-  <tr><td><span class="tag tag-get">GET</span></td><td><code>/events/top-ids?hours&amp;limit</code></td><td>Top event IDs by count</td></tr>
-  <tr><td><span class="tag tag-get">GET</span></td><td><code>/events/timeline?hours</code></td><td>Hourly bucketed counts per level (for timeline chart)</td></tr>
-  <tr><td><span class="tag tag-get">GET</span></td><td><code>/events/top-computers?hours&amp;limit</code></td><td>Top noisy PCs by event count</td></tr>
-  <tr><td><span class="tag tag-get">GET</span></td><td><code>/computers</code></td><td>All computers (active first)</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/events/top-ids?hours&amp;limit</code></td><td>Top event IDs</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/events/timeline?hours</code></td><td>Hourly bucketed counts per level</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/events/top-computers?hours&amp;limit</code></td><td>Noisiest PCs</td></tr>
+  <tr><td colspan="3" style="background:var(--surface)">Computers</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/computers</code></td><td>All (active first)</td></tr>
   <tr><td><span class="tag tag-post">POST</span></td><td><code>/computers/sync</code></td><td>Trigger AD sync</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/computers/sync/last</code></td><td>Last AD sync record</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/computers/sync/history</code></td><td>Last 20 sync runs</td></tr>
-  <tr><td><span class="tag tag-get">GET</span></td><td><code>/collector/status</code></td><td>In-flight progress + last run summary</td></tr>
-  <tr><td><span class="tag tag-post">POST</span></td><td><code>/collector/run</code></td><td>Trigger manual collector run</td></tr>
+  <tr><td><span class="tag tag-patch">PATCH</span></td><td><code>/computers/:id/monitor</code></td><td>Toggle single PC's monitor flag</td></tr>
+  <tr><td><span class="tag tag-post">POST</span></td><td><code>/computers/monitor/bulk</code></td><td>Bulk toggle (body: <code>{ ids: [...], monitor: bool }</code>)</td></tr>
+  <tr><td colspan="3" style="background:var(--surface)">Collectors</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/collector/status</code></td><td>In-flight progress + last run</td></tr>
+  <tr><td><span class="tag tag-post">POST</span></td><td><code>/collector/run</code></td><td>Trigger manual eventlog collector</td></tr>
   <tr><td><span class="tag tag-post">POST</span></td><td><code>/collector/stop</code></td><td>Abort in-flight collector run</td></tr>
-  <tr><td><span class="tag tag-get">GET</span></td><td><code>/activity/log?limit&amp;sinceSeq</code></td><td>Recent in-memory activity log entries</td></tr>
-  <tr><td><span class="tag tag-get">GET</span></td><td><code>/scripts</code></td><td>Available script catalog (TODO: run endpoint)</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/disks</code></td><td>Latest disk snapshot per PC/drive</td></tr>
+  <tr><td><span class="tag tag-post">POST</span></td><td><code>/disks/collect</code></td><td>Trigger manual disk scan</td></tr>
+  <tr><td colspan="3" style="background:var(--surface)">Other</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/activity/log?limit&amp;sinceSeq</code></td><td>Recent activity log (in-memory ring buffer)</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/settings</code></td><td>All settings</td></tr>
+  <tr><td><span class="tag tag-put">PUT</span></td><td><code>/settings</code></td><td>Bulk update (body: <code>{ key: value, ... }</code>)</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/scripts</code></td><td>Script catalog (UI for run pending)</td></tr>
 </table>
 
 <h2 id="db">Database schema</h2>
 <table>
   <tr><th>Table</th><th>Purpose</th></tr>
-  <tr><td><code>computers</code></td><td>Inventory; columns <code>name</code>, <code>fqdn</code>, <code>os_version</code>, <code>last_seen</code>, <code>enabled</code>, <code>last_collected_at</code>, <code>last_error</code>, <code>consecutive_failures</code></td></tr>
-  <tr><td><code>events</code></td><td>Raw collected events; unique index on (<code>computer_id</code>, <code>event_id</code>, <code>log_name</code>, <code>time_created</code>) with <code>IGNORE_DUP_KEY</code> for idempotency</td></tr>
-  <tr><td><code>event_daily_agg</code></td><td>Daily counts per (computer, log_name, event_id, level) — kept forever after raw events are purged</td></tr>
-  <tr><td><code>collector_runs</code></td><td>One row per collector run (manual or scheduled) with counts, duration, abort notes</td></tr>
-  <tr><td><code>ad_sync_runs</code></td><td>One row per AD sync with fetched/inserted/updated/removed counts</td></tr>
-  <tr><td><code>scripts</code></td><td>Script catalog metadata (slug, language, params)</td></tr>
-  <tr><td><code>script_runs</code></td><td>Run history (invoker, target, params, exit code, stdout/stderr)</td></tr>
-  <tr><td><code>credentials</code></td><td>DPAPI-encrypted credential blobs (opaque to DB; decrypted by service account at use site)</td></tr>
+  <tr><td><code>computers</code></td><td>Inventory + state. Columns: <code>id, name, fqdn, os_version, last_seen, enabled, monitor_enabled, last_collected_at, last_error, consecutive_failures, distinguished_name, ou_path, last_status</code></td></tr>
+  <tr><td><code>events</code></td><td>Raw collected events; unique index on (<code>computer_id, event_id, log_name, time_created</code>) with <code>IGNORE_DUP_KEY</code> for idempotency</td></tr>
+  <tr><td><code>event_daily_agg</code></td><td>Daily aggregates per (computer, log_name, event_id, level) — kept forever after raw events are purged</td></tr>
+  <tr><td><code>disks</code></td><td>Per-drive snapshot: drive_letter, volume_label, filesystem, total_bytes, free_bytes, collected_at. Unique (computer_id, drive_letter)</td></tr>
+  <tr><td><code>settings</code></td><td>Key-value store; UI Settings tab edits this</td></tr>
+  <tr><td><code>collector_runs</code></td><td>One row per eventlog collector run (started_at, finished_at, pcs_total/succeeded/failed, events_added, trigger_source, notes)</td></tr>
+  <tr><td><code>ad_sync_runs</code></td><td>One row per AD sync</td></tr>
+  <tr><td><code>scripts</code>, <code>script_runs</code></td><td>Script catalog metadata + run history</td></tr>
+  <tr><td><code>credentials</code></td><td>DPAPI-encrypted credential blobs (opaque to DB; decrypted by service account)</td></tr>
   <tr><td><code>schema_migrations</code></td><td>Migration tracking (applied <code>id</code> + timestamp)</td></tr>
 </table>
 
 <h2 id="retention">Retention policy</h2>
 <table>
   <tr><th>Data</th><th>Retention</th><th>Mechanism</th></tr>
-  <tr><td>Raw <code>events</code></td><td>90 days</td><td><code>sp_purge_old_events @retention_days = 90</code> (daily)</td></tr>
+  <tr><td>Raw <code>events</code></td><td>90 days</td><td><code>sp_purge_old_events @retention_days = 90</code> daily</td></tr>
   <tr><td><code>event_daily_agg</code></td><td>forever</td><td>no purge</td></tr>
   <tr><td><code>collector_runs</code></td><td>forever</td><td>no purge</td></tr>
   <tr><td><code>ad_sync_runs</code></td><td>forever</td><td>no purge</td></tr>
+  <tr><td><code>disks</code></td><td>only latest per (PC, drive)</td><td>MERGE replaces row on each scan</td></tr>
   <tr><td><code>script_runs</code></td><td>1 year (planned)</td><td>TODO</td></tr>
 </table>
 
-<h2 id="troubleshooting">Troubleshooting</h2>
-<h3>Collector failing on all PCs with "Connecting to remote server failed"</h3>
-<p><strong>Cause:</strong> Old code used WinRM/PSRemoting which is rarely enabled by default. <strong>Fix:</strong> Already deployed switch to <code>Get-WinEvent -ComputerName</code> (RPC). If still failing fleet-wide after fix, <code>svc-itdashboard</code> needs <code>Event Log Readers</code> membership on target PCs — deploy via GPO (see Collector section).</p>
+<h2 id="permissions">Required permissions on target PCs</h2>
+<p>For both eventlog + disk collectors to succeed against a target PC, the service account <code>AXINETWORK\svc-itdashboard</code> needs:</p>
+<table>
+  <tr><th>Permission</th><th>For</th><th>Granted via</th></tr>
+  <tr><td>TCP/135 reachable</td><td>RPC endpoint mapper</td><td>Network / firewall: PC online and Domain profile firewall allows in</td></tr>
+  <tr><td>Firewall rule <em>Remote Event Log Management</em> enabled</td><td>Get-WinEvent over RPC</td><td>GPO: Computer Config → Policies → Windows Settings → Security Settings → Windows Firewall with Advanced Security → Inbound Rules → New Rule → Predefined</td></tr>
+  <tr><td>Member of local <em>Event Log Readers</em> group</td><td>Get-WinEvent ACL</td><td>GPO: Restricted Groups → Add svc-itdashboard to Event Log Readers (or transitively via existing IT group like <code>ITC</code>)</td></tr>
+  <tr><td>Member of local <em>Performance Monitor Users</em></td><td>Get-CimInstance Win32_LogicalDisk</td><td>Same Restricted Groups GPO</td></tr>
+  <tr><td>WMI namespace ACL on <code>Root\CIMV2</code> — Remote Enable</td><td>DCOM remote query</td><td>GPO: wmimgmt.msc Security tab or PowerShell <code>Set-WmiNamespaceSecurity</code> via script</td></tr>
+</table>
 
-<h3>Deploy succeeds but new endpoint returns 404</h3>
-<p><strong>Cause:</strong> Robocopy in deploy.yml failed silently (typically NTFS access denied — <code>svc-itdashboard</code> lacks Modify rights on <code>C:\Apps\ITDashboard</code>). <strong>Fix:</strong></p>
-<pre><code>icacls 'C:\Apps\ITDashboard' /grant 'AXINETWORK\svc-itdashboard:(OI)(CI)M' /T</code></pre>
+<div class="callout callout-info">
+<strong>Best-case fleet rollout</strong> — group all four GPO settings into one "ITDashboard collection" policy linked to all OUs containing target PCs. After <code>gpupdate /force</code>, collectors should reach 80–90% success rate (remaining failures will be offline PCs and individual ACL exceptions).
+</div>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+
+<h3>Topbar SHA doesn't match latest pushed commit</h3>
+<p><strong>Cause:</strong> deploy ran but service didn't restart cleanly (race in <code>net stop / net start</code>) OR service account lacks Stop/Start ACL on its own service. <strong>Fix:</strong> deploy.yml uses <code>sc stop</code> + polling for STOPPED state since commit <code>4779579</code>; the explicit ACL grant is documented in SETUP-SERVER.md.</p>
+
+<h3>Collector says "Connecting to remote server failed"</h3>
+<p><strong>Cause:</strong> old code used WinRM/PSRemoting. <strong>Fix:</strong> already deployed — uses <code>Get-WinEvent -ComputerName</code> (RPC). If still failing fleet-wide, see permissions section.</p>
+
+<h3>Disk scan says "WinRM cannot connect" or "Get-CimInstance: cannot connect to destination"</h3>
+<p><strong>Cause:</strong> old <code>Get-CimInstance</code> used default WinRM transport (port 5985). <strong>Fix:</strong> already deployed — uses explicit DCOM session option, same RPC stack as eventlog collector.</p>
+
+<h3>Czech diacritics garbled in event messages</h3>
+<p><strong>Cause:</strong> PowerShell stdout defaulted to Windows-1250, Node read as UTF-8. <strong>Fix:</strong> already deployed — PS scripts set <code>$OutputEncoding = [Console]::OutputEncoding = [UTF8]</code> at start.</p>
+
+<h3>Some PCs return "Access denied" — not all</h3>
+<p>That's the classification working — it means: TCP/135 OK, RPC OK, but ACL missing on that specific PC. Either:
+<ul>
+<li>That PC is in an OU not covered by your Restricted Groups GPO</li>
+<li>The PC was provisioned before the GPO existed and needs <code>gpupdate /force</code></li>
+<li>Local group membership was manually overridden</li>
+</ul>
+</p>
+
+<h3>"A security package specific error occurred"</h3>
+<p>Kerberos / SSPI authentication issue specific to that target. Common causes: duplicate SPN registered, stale computer account, time skew &gt; 5 min, two A-records pointing to the same host. <strong>Try:</strong> <code>Test-ComputerSecureChannel -ComputerName X -Verbose</code>; reset the computer account password if it returns false.</p>
 
 <h3>SQL connection fails with "untrusted domain"</h3>
-<p><strong>Cause:</strong> Using pure-JS <code>tedious</code> driver instead of <code>msnodesqlv8</code>. <strong>Fix:</strong> Already in code — <code>pool.ts</code> imports <code>mssql/msnodesqlv8.js</code>.</p>
+<p><strong>Cause:</strong> using pure-JS <code>tedious</code> driver instead of <code>msnodesqlv8</code>. <strong>Fix:</strong> already in code — <code>pool.ts</code> imports <code>mssql/msnodesqlv8.js</code>.</p>
 
 <h3>GitHub Actions workflow fails immediately with UnauthorizedAccess on .ps1</h3>
-<p><strong>Cause:</strong> Group Policy enforces <code>AllSigned</code> ExecutionPolicy on AXINETWORK servers. Runner saves each step as temp .ps1, which can't load. <strong>Fix:</strong> Already in deploy.yml — <code>defaults.run.shell: cmd</code>.</p>
+<p><strong>Cause:</strong> AXINETWORK Group Policy enforces <code>AllSigned</code> ExecutionPolicy. Runner saves each step as temp .ps1, which can't load. <strong>Fix:</strong> already deployed — deploy.yml uses <code>defaults.run.shell: cmd</code>.</p>
 
-<h3>SQL_INSTANCE GitHub variable can't be empty</h3>
-<p><strong>Cause:</strong> The dedicated SQL server uses the default instance (no <code>\BCNEW</code>), but GitHub Actions variables can't be empty. <strong>Fix:</strong> Set <code>SQL_INSTANCE = _</code> (sentinel value); server interprets <code>_</code> or empty as "no instance".</p>
-
-<h3>PCs disappear from list after Sync from AD</h3>
-<p><strong>Behaviour, not bug:</strong> PCs no longer present in AD are soft-disabled (<code>enabled = 0</code>), shown with reduced opacity at the bottom of the Computers tab. This preserves their historical events. Use the Status filter to focus on active PCs only.</p>
+<h3>Operator-set Monitor checkbox keeps getting reset</h3>
+<p>It shouldn't — AD sync explicitly does not touch <code>monitor_enabled</code>. If a PC's checkbox reverts, check if someone else is editing via direct DB or if a custom script is running. The PATCH endpoint always stores the new value verbatim.</p>
 
 <h2 id="security">Security model</h2>
 <table>
   <tr><th>Concern</th><th>Mitigation</th></tr>
   <tr><td>DB credentials in config</td><td>None — Integrated Auth (SSPI) under service account</td></tr>
-  <tr><td>Stored credentials for remote operations</td><td>DPAPI CurrentUser scope — only the service account that ran the encryption can decrypt; rotating the service account invalidates all stored secrets</td></tr>
-  <tr><td>Script execution authorisation</td><td>Audit log in <code>script_runs</code> (invoker, target, params, output). Destructive scripts (reset password, disable account) planned to require a confirmation flag in the UI</td></tr>
-  <tr><td>API exposure</td><td>Firewall rule whitelist (only specific IT-operator IPs allowed on port 4000)</td></tr>
-  <tr><td>Service account scope</td><td>Domain user (not Domain Admin); needs only Event Log Readers + DB <code>db_owner</code></td></tr>
+  <tr><td>Stored credentials for remote operations</td><td>DPAPI CurrentUser scope; rotating service account invalidates secrets</td></tr>
+  <tr><td>Script execution authorisation</td><td>Audit log in <code>script_runs</code>; destructive scripts require UI confirmation flag (planned)</td></tr>
+  <tr><td>API network exposure</td><td>Firewall rule whitelist: only specific IT-operator IPs allowed on port 4000</td></tr>
+  <tr><td>Service account scope</td><td>Domain user (not Domain Admin); only Event Log Readers + Performance Monitor Users + DB <code>db_owner</code> + Service Stop/Start on ITDashboardAPI</td></tr>
   <tr><td>GitHub runner auth</td><td>Outbound HTTPS only; no inbound holes. Runner polls GitHub from inside the network.</td></tr>
+  <tr><td>Code-in-transit</td><td>All git operations + Actions runner traffic uses HTTPS (TLS 1.2+) to github.com</td></tr>
+  <tr><td>HTTPS on API → desktop</td><td>Currently HTTP on port 4000. Production TLS termination planned (Caddy / IIS reverse proxy)</td></tr>
 </table>
 
 </main>

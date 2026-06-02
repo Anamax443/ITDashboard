@@ -1,74 +1,86 @@
 # ITDashboard
 
-Domain & PC admin dashboard. AD insight, eventlog analytics (warning/critical focus), and a script runner for IT operators.
+Internal IT operations dashboard for the **AXINETWORK** domain. Eventlog analytics, AD-synced computer inventory, disk space monitoring, per-PC reachability classification — ~225 domain machines.
 
-## Architecture
+## What it does
+
+- **Eventlog visibility** — pulls Warning/Error/Critical events from every monitored PC into a central DB. Filter, search, sort, drill down.
+- **AD-synced inventory** — keeps a current list of domain computers (OS, last logon, OU path) with operator-controlled per-PC monitor toggle.
+- **Disk space monitoring** — periodic DCOM scan; configurable thresholds (% / GB); colored progress bars; drill-down filter.
+- **Reachability classification** — every collector run categorises each PC as `online` / `offline` / `rpc_unavailable` / `access_denied`. Dashboard surfaces breakdown.
+- **Activity log** — terminal-style live view of every collector / sync / disk-scan action with filter, pause, copy-to-clipboard.
+- **Settings page** — collection intervals + disk thresholds, applied live without service restart.
+
+## Live topology
 
 ```
 ┌─────────────────┐       ┌──────────────────────┐       ┌─────────────────┐
-│ IT specialista  │       │  10.8.2.213          │       │  10.8.2.225      │
-│ Electron client │◄─────►│  Node.js API svc     │◄─────►│  SQL Server      │
-│ (per-PC install)│ HTTPS │  Eventlog collector  │ TDS   │  DB: ITDashboard │
-│                 │       │  Script runner       │ Integ │                  │
-└─────────────────┘       │  (Windows Services)  │ Auth  │                  │
-                          └──────────────────────┘       └─────────────────┘
-                                    ▲
-                                    │ WinRM (Get-WinEvent)
+│ IT operator     │       │  10.8.2.213 (MIKOS)  │       │  10.8.2.225     │
+│ Electron client │◄─────►│  Node.js API svc     │◄─────►│  SQL Server     │
+│ or browser      │ HTTPS │  Eventlog collector  │ TDS   │  DB: ITDashboard│
+│                 │       │  Disk collector      │ Integ │                 │
+└─────────────────┘       │  AD sync             │ Auth  └─────────────────┘
+                          │  (Windows Services)  │
+                          └──────────────────────┘
+                                    ▲ Get-WinEvent / Get-CimInstance via DCOM
+                                    │ TCP probe :135 for fail-fast offline detect
                                     ▼
                           ┌──────────────────────┐
-                          │ Target PCs / NTB     │
-                          │ (Windows in doméně)  │
+                          │ Target PCs (AXINET)  │
                           └──────────────────────┘
 ```
 
-- **Klient:** Electron + React + TypeScript. Per-PC install pro IT operátory.
-- **API + collector:** Node.js + Fastify + TypeScript. Běží jako Windows Service na `10.8.2.213`.
-- **DB:** MSSQL na `10.8.2.225\BCNEW`. Windows Integrated Auth (service account).
-- **Sběr eventlogů:** Pull přes WinRM (`Get-WinEvent`), focus na Warning/Error/Critical.
-- **Retence:** Raw events 90 dní, denní agregáty napořád.
+## Stack
+
+- **Server (`apps/server`)** — Node.js 20 + Fastify + TypeScript. Runs as Windows Service `ITDashboardAPI` (NSSM) under `AXINETWORK\svc-itdashboard`.
+- **DB** — MSSQL on `10.8.2.225` (default instance), DB `ITDashboard`, Integrated Auth via `msnodesqlv8` driver (NOT pure-JS tedious — that fails with "untrusted domain" in domain envs).
+- **Desktop client (`apps/desktop`)** — Electron + React + Vite + TypeScript. Per-PC install or accessed via browser through Vite.
+- **Deploy** — GitHub Actions self-hosted runner on 10.8.2.213. Push to `main` → auto-deploy.
 
 ## Layout
 
 ```
 ITDashboard/
   apps/
-    desktop/                  # Electron + React (klient)
-    server/                   # Fastify API + collector + retention jobs
-      migrations/             # MSSQL SQL files
+    desktop/                       # Electron + React UI (Dashboard, Events, Computers, Activity, Settings)
+    server/                        # Fastify API + collectors + AD sync
+      migrations/                  # MSSQL migrations 001–009
   packages/
-    ad-bridge/                # PS wrapper pro Get-ADComputer, Get-ADUser
-    eventlog-collector/       # PS wrapper pro Get-WinEvent přes WinRM
-    credential-vault/         # DPAPI encrypt/decrypt (CurrentUser scope)
-  scripts/                    # Versionovaný katalog PS/Python/C# skriptů
+    ad-bridge/                     # AD wrapper (Get-ADComputer)
+    eventlog-collector/            # standalone wrapper (currently inlined in server)
+    credential-vault/              # DPAPI wrapper
+  scripts/                         # Versionovaný katalog PS/Python/C# skriptů
     powershell/
     manifest.json
   docs/
-    ARCHITECTURE.md
-    SETUP-SERVER.md           # Jednorázový setup 10.8.2.213
+    dashboard.html                 # Comprehensive user-facing doc (served at /docs)
+    ARCHITECTURE.md                # Architecture decisions
+    SETUP-SERVER.md                # One-time server bootstrap
   .github/workflows/
-    ci.yml                    # typecheck + build na PR
-    deploy.yml                # self-hosted runner → 10.8.2.213
+    deploy.yml                     # self-hosted runner → 10.8.2.213
 ```
 
 ## Development workflow
 
 ```
-local edit → git push → GitHub Actions (self-hosted runner) → 10.8.2.213 auto-deploy
+local edit (d:/git/ITDashboard) → git push origin main → GitHub Actions → 10.8.2.213 auto-deploy
 ```
 
-Local dev:
+For UI work (frontend HMR):
+```powershell
+cd apps/desktop
+npm install   # if first time
+npm run dev   # opens http://localhost:5173/
 ```
-npm install
-cp .env.example .env       # nastav SQL_HOST etc.
-npm run dev --workspace @itdashboard/server
-npm run dev --workspace @itdashboard/desktop
-```
+
+The browser UI talks to API at `http://10.8.2.213:4000` (CORS open). Your dev PC's IP must be in the firewall whitelist on the server.
 
 ## Status
 
-`0.0.1` — scaffold. Žádný produkční nasazený kód.
+**LIVE since 2026-06-01.** Auto-deploy pipeline green. 211 monitored PCs covered by eventlog + disk collectors. See [docs/dashboard.html](docs/dashboard.html) for full feature reference.
 
 ## Setup
 
-- [docs/SETUP-SERVER.md](docs/SETUP-SERVER.md) — jednorázový setup admin serveru `10.8.2.213`
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — design decisions, retention, security
+- [docs/SETUP-SERVER.md](docs/SETUP-SERVER.md) — one-time server bootstrap (Node, NSSM, DB, runner registration, ACL grants)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — design decisions
+- [docs/dashboard.html](docs/dashboard.html) — full user/operator documentation (also served live at `http://10.8.2.213:4000/docs`)
