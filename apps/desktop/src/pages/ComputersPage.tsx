@@ -37,14 +37,22 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     disksByComputer.get(d.computer_id)!.push(d);
   }
 
+  const [diskScanState, setDiskScanState] = useState<'idle' | 'scanning' | 'done'>('idle');
+  const [diskScanResult, setDiskScanResult] = useState<{ ok: number; fail: number; drives: number; durationMs: number } | null>(null);
+
   const triggerDiskScan = async () => {
     setError(null);
+    setDiskScanState('scanning');
     try {
-      await api.disksCollect();
+      const result = await api.disksCollect();
+      setDiskScanResult({ ok: result.ok, fail: result.fail, drives: result.drives, durationMs: result.durationMs });
+      setDiskScanState('done');
       const r = await api.disks();
       setDisks(r.items);
+      setTimeout(() => setDiskScanState('idle'), 10000);
     } catch (err) {
       setError(String(err));
+      setDiskScanState('idle');
     }
   };
   const [search, setSearch] = useState('');
@@ -188,8 +196,18 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
           <button className="refresh-btn" onClick={() => bulkSetMonitor(false)} title="Disable monitoring for all visible active PCs">
             ✗ None
           </button>
-          <button className="refresh-btn" onClick={triggerDiskScan} title="Scan disk space on all monitored PCs">
-            💾 Scan disks
+          {diskScanState === 'scanning' && (
+            <span style={{ color: 'var(--accent)', fontSize: 11 }}>● Scanning disks…</span>
+          )}
+          {diskScanState === 'done' && diskScanResult && (
+            <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>
+              <span style={{ color: 'var(--ok)' }}>{diskScanResult.ok} OK</span>
+              {diskScanResult.fail > 0 && <> · <span style={{ color: 'var(--critical)' }}>{diskScanResult.fail} fail</span></>}
+              {' · '}{diskScanResult.drives} drives ({(diskScanResult.durationMs / 1000).toFixed(1)}s)
+            </span>
+          )}
+          <button className="refresh-btn" onClick={triggerDiskScan} disabled={diskScanState === 'scanning'} title="Scan disk space on all monitored PCs">
+            {diskScanState === 'scanning' ? '…' : '💾 Scan disks'}
           </button>
           <button className="refresh-btn" onClick={() => setShowHistory((s) => !s)}>
             {showHistory ? 'Hide history' : 'History'}

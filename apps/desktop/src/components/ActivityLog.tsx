@@ -14,6 +14,7 @@ export function ActivityLog({ height = 400, autoScroll = true }: { height?: numb
   const [filter, setFilter] = useState('');
   const [filterLevel, setFilterLevel] = useState<'' | ActivityLogEntry['level']>('');
   const [paused, setPaused] = useState(false);
+  const [copied, setCopied] = useState(false);
   const seqRef = useRef<number>(0);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -76,6 +77,22 @@ export function ActivityLog({ height = 400, autoScroll = true }: { height?: numb
           </select>
           <button className="refresh-btn" onClick={() => setPaused((p) => !p)}>
             {paused ? '▶ Resume' : '⏸ Pause'}
+          </button>
+          <button
+            className="refresh-btn"
+            onClick={() => {
+              const text = filtered.map((e) =>
+                `${new Date(e.ts).toLocaleString('cs-CZ')}\t[${e.source}]\t${e.level.toUpperCase()}\t${e.message}`
+              ).join('\n');
+              navigator.clipboard.writeText(text).then(
+                () => setCopied(true),
+                () => setCopied(false)
+              );
+              setTimeout(() => setCopied(false), 2000);
+            }}
+            title="Copy filtered log lines to clipboard"
+          >
+            {copied ? '✓ Copied' : '📋 Copy'}
           </button>
           <button className="refresh-btn" onClick={() => setEntries([])}>Clear</button>
         </div>
