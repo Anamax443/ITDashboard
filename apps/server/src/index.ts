@@ -23,7 +23,16 @@ const BIND = process.env.API_BIND ?? '0.0.0.0';
 
 const app = Fastify({ logger: true });
 
-await app.register(helmet);
+await app.register(helmet, {
+  contentSecurityPolicy: {
+    directives: {
+      // The dashboard is intentionally served over internal HTTP on :4000.
+      // Helmet's default CSP upgrades same-origin assets to HTTPS, which breaks
+      // the browser UI until TLS termination is added in front of the API.
+      'upgrade-insecure-requests': null,
+    },
+  },
+});
 await app.register(cors, { origin: true, credentials: true });
 
 await registerHealthRoutes(app);
