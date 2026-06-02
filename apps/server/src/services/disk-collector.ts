@@ -1,6 +1,24 @@
 import { spawn } from 'node:child_process';
+import { Socket } from 'node:net';
 import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
+
+function tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new Socket();
+    let settled = false;
+    const done = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    const t = setTimeout(() => done(false), timeoutMs);
+    socket.once('connect', () => { clearTimeout(t); done(true); });
+    socket.once('error', () => { clearTimeout(t); done(false); });
+    socket.connect(port, host);
+  });
+}
 
 interface RawDisk {
   DeviceID: string;
@@ -14,15 +32,27 @@ const CONCURRENCY = 5;
 let runInFlight = false;
 
 async function fetchDisks(name: string): Promise<RawDisk[]> {
+  // Pre-flight TCP probe — same as eventlog collector, fail-fast for offline PCs
+  const tcpOk = await tcpProbe(name, 135, 2000);
+  if (!tcpOk) throw new Error('OFFLINE: TCP/135 unreachable');
+
+  // Use DCOM session option (default Get-CimInstance uses WinRM which isn't
+  // configured on most domain PCs). DCOM is the same transport as Get-WinEvent.
   const ps = `
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Get-CimInstance -ComputerName '${name}' -ClassName Win32_LogicalDisk -Filter "DriveType=3" |
-  Select-Object DeviceID, VolumeName, FileSystem,
-    @{n='Size';e={[int64]$_.Size}},
-    @{n='FreeSpace';e={[int64]$_.FreeSpace}} |
-  ConvertTo-Json -Compress -Depth 3
+$opt = New-CimSessionOption -Protocol Dcom
+$session = New-CimSession -ComputerName '${name}' -SessionOption $opt -ErrorAction Stop
+try {
+  Get-CimInstance -CimSession $session -ClassName Win32_LogicalDisk -Filter "DriveType=3" |
+    Select-Object DeviceID, VolumeName, FileSystem,
+      @{n='Size';e={[int64]$_.Size}},
+      @{n='FreeSpace';e={[int64]$_.FreeSpace}} |
+    ConvertTo-Json -Compress -Depth 3
+} finally {
+  Remove-CimSession $session
+}
 `;
   return new Promise((resolve, reject) => {
     const proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps]);
