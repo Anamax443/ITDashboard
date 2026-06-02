@@ -11,6 +11,7 @@ import { registerActivityRoutes } from './routes/activity.js';
 import { registerVersionRoutes } from './routes/version.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerDisksRoutes } from './routes/disks.js';
+import { registerFirewallRoutes } from './routes/firewall.js';
 import { startCollectorSchedule } from './services/eventlog-collector.js';
 import { startDiskSchedule } from './services/disk-collector.js';
 
@@ -31,6 +32,7 @@ await registerActivityRoutes(app);
 await registerVersionRoutes(app);
 await registerSettingsRoutes(app);
 await registerDisksRoutes(app);
+await registerFirewallRoutes(app);
 
 app.listen({ port: PORT, host: BIND }).then(async () => {
   await startCollectorSchedule();

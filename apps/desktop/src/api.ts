@@ -189,6 +189,19 @@ export const api = {
   disks: () => jget<{ items: DiskItem[] }>('/disks'),
   disksCollect: () => jpost<{ pcs: number; ok: number; fail: number; drives: number; durationMs: number }>('/disks/collect'),
   settings: () => jget<Record<string, string>>('/settings'),
+  firewallWhitelist: () => jget<{ ips: string[] }>('/firewall/whitelist'),
+  saveFirewallWhitelist: async (ips: string[]) => {
+    const r = await fetch(`${API_BASE}/firewall/whitelist`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ips }),
+    });
+    if (!r.ok) {
+      const text = await r.text().catch(() => '');
+      throw new Error(`PUT /firewall/whitelist → ${r.status} ${text}`);
+    }
+    return r.json() as Promise<{ ips: string[] }>;
+  },
   saveSettings: async (values: Record<string, string>) => {
     const r = await fetch(`${API_BASE}/settings`, {
       method: 'PUT',

@@ -1,6 +1,88 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 
+function NetworkAccessSection() {
+  const [ips, setIps] = useState<string[]>([]);
+  const [draft, setDraft] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.firewallWhitelist()
+      .then((r) => { setIps(r.ips); setDraft(r.ips.join('\n')); })
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const list = draft.split(/[\n,\s]+/).map((s) => s.trim()).filter(Boolean);
+      const result = await api.saveFirewallWhitelist(list);
+      setIps(result.ips);
+      setDraft(result.ips.join('\n'));
+      setMessage(`Saved ${result.ips.length} IP entries`);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const dirty = draft.trim() !== ips.join('\n');
+
+  return (
+    <div style={{ marginBottom: 32, paddingBottom: 24, borderBottom: '1px solid var(--border)' }}>
+      <h3 style={{ margin: '0 0 4px 0', fontSize: 16 }}>Network access (API firewall whitelist)</h3>
+      <p style={{ margin: '0 0 16px 0', color: 'var(--text-dim)', fontSize: 12 }}>
+        Only listed IPs / CIDRs can reach the API on port 4000. Domain profile only.
+        Changes apply immediately to the Windows Firewall rule "ITDashboard API (4000)".
+      </p>
+      {loading ? (
+        <div style={{ color: 'var(--text-dim)' }}>Loading current whitelist…</div>
+      ) : (
+        <>
+          <label style={{ display: 'block', fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>
+            One per line (IP or CIDR, e.g. 10.8.2.50 or 10.8.2.0/24)
+          </label>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={8}
+            spellCheck={false}
+            style={{
+              width: '100%', maxWidth: 400,
+              background: 'var(--bg)', color: 'var(--text)',
+              border: '1px solid var(--border)', borderRadius: 4, padding: 8,
+              fontFamily: 'Consolas, monospace', fontSize: 12,
+            }}
+          />
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
+            <button
+              className="refresh-btn"
+              onClick={save}
+              disabled={!dirty || saving}
+              style={{ minWidth: 80 }}
+            >
+              {saving ? 'Saving…' : 'Apply'}
+            </button>
+            {dirty && <span style={{ color: 'var(--warning)', fontSize: 11 }}>unsaved changes</span>}
+            {message && <span style={{ color: 'var(--ok)', fontSize: 11 }}>✓ {message}</span>}
+            {error && <span style={{ color: 'var(--critical)', fontSize: 11 }}>⚠ {error}</span>}
+          </div>
+          <div style={{ marginTop: 6, color: 'var(--text-dim)', fontSize: 11 }}>
+            Current ({ips.length}): {ips.join(', ') || '(none)'}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState<Record<string, string>>({});
@@ -58,6 +140,8 @@ export function SettingsPage() {
             </Field>
           </FieldGroup>
         </Section>
+
+        <NetworkAccessSection />
 
         <Section title="Disk space thresholds" description="When a disk drops below these levels, it's flagged on the dashboard.">
           <Field label="Threshold mode">
