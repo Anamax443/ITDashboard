@@ -56,7 +56,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     }
   };
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'disabled' | 'monitored' | 'unmonitored' | 'failing' | 'disk-critical' | 'disk-warning'>('');
+  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'disabled' | 'monitored' | 'unmonitored' | 'failing' | 'disk-critical' | 'disk-warning' | 'excluded'>('');
   const { sort, toggle } = useSort<ComputerItem>({ col: 'name', dir: 'asc' });
 
   const runSync = async () => {
@@ -99,6 +99,9 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
   }
 
   const filtered = items.filter((c) => {
+    // Hide excluded by default unless filter is set to 'excluded'
+    if (statusFilter !== 'excluded' && c.excluded) return false;
+    if (statusFilter === 'excluded' && !c.excluded) return false;
     if (statusFilter === 'active' && !c.enabled) return false;
     if (statusFilter === 'disabled' && c.enabled) return false;
     if (statusFilter === 'monitored' && (!c.enabled || !c.monitor_enabled)) return false;
@@ -121,13 +124,23 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
   const sorted = useSortedItems(filtered, sort);
   const enabled = items.filter((c) => c.enabled);
   const disabled = items.filter((c) => !c.enabled);
-  const monitored = items.filter((c) => c.enabled && c.monitor_enabled).length;
-  const unmonitored = items.filter((c) => c.enabled && !c.monitor_enabled).length;
-  const failing = items.filter((c) => c.enabled && (c.consecutive_failures ?? 0) > 0).length;
+  const monitored = items.filter((c) => c.enabled && !c.excluded && c.monitor_enabled).length;
+  const unmonitored = items.filter((c) => c.enabled && !c.excluded && !c.monitor_enabled).length;
+  const failing = items.filter((c) => c.enabled && !c.excluded && (c.consecutive_failures ?? 0) > 0).length;
+  const excludedCount = items.filter((c) => c.excluded).length;
 
   const toggleMonitor = async (c: ComputerItem) => {
     try {
       await api.setMonitor(c.id, !c.monitor_enabled);
+      onRefreshLocal();
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  const toggleExcluded = async (c: ComputerItem) => {
+    try {
+      await api.setExcluded(c.id, !c.excluded);
       onRefreshLocal();
     } catch (err) {
       setError(String(err));
@@ -162,6 +175,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
           <StatusChip label="disk critical" count={Array.from(worstDiskByComputer.values()).filter((s) => s === 'critical').length} active={statusFilter === 'disk-critical'} color="var(--critical)" onClick={() => setStatusFilter(statusFilter === 'disk-critical' ? '' : 'disk-critical')} />
           <StatusChip label="disk warning" count={Array.from(worstDiskByComputer.values()).filter((s) => s === 'warning').length} active={statusFilter === 'disk-warning'} color="var(--warning)" onClick={() => setStatusFilter(statusFilter === 'disk-warning' ? '' : 'disk-warning')} />
           <StatusChip label="disabled" count={disabled.length} active={statusFilter === 'disabled'} color="var(--text-dim)" onClick={() => setStatusFilter(statusFilter === 'disabled' ? '' : 'disabled')} />
+          <StatusChip label="excluded" count={excludedCount} active={statusFilter === 'excluded'} color="var(--text-dim)" onClick={() => setStatusFilter(statusFilter === 'excluded' ? '' : 'excluded')} />
         </h2>
         <div className="panel-actions filters">
           <input
@@ -253,6 +267,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
               <tr>
                 <th style={{ width: 24 }}></th>
                 <th style={{ width: 70, textAlign: 'center' }} title="Collect events from this PC">Monitor</th>
+                <th style={{ width: 70, textAlign: 'center' }} title="Permanently exclude from all stats and views">Exclude</th>
                 <SortHeader<ComputerItem> col="name" label="Name" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="ou_path" label="OU path" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="fqdn" label="FQDN" sort={sort} toggle={toggle} />
@@ -276,6 +291,15 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                       title={c.enabled
                         ? (c.monitor_enabled ? 'Click to stop monitoring' : 'Click to start monitoring')
                         : 'PC is currently disabled in AD — monitoring will activate when it reappears'}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={c.excluded}
+                      onChange={() => toggleExcluded(c)}
+                      title={c.excluded ? 'Excluded — click to re-include in stats' : 'Click to exclude from all dashboards and stats'}
                       style={{ cursor: 'pointer' }}
                     />
                   </td>

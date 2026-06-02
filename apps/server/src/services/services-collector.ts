@@ -134,7 +134,7 @@ export async function runServicesScanOnce(): Promise<{ pcs: number; ok: number; 
     const pool = await getPool();
     const r = await pool.request().query<Target>(`
       SELECT id, name FROM computers
-      WHERE enabled = 1 AND monitor_enabled = 1 AND consecutive_failures < 10
+      WHERE enabled = 1 AND monitor_enabled = 1 AND excluded = 0 AND consecutive_failures < 10
     `);
     const targets = r.recordset;
     logActivity('info', 'services', `Starting service scan — ${targets.length} PCs`);

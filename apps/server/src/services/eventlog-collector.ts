@@ -155,6 +155,7 @@ async function listTargets(): Promise<ComputerRow[]> {
     FROM computers
     WHERE enabled = 1
       AND monitor_enabled = 1
+      AND excluded = 0
       AND consecutive_failures < ${MAX_FAILURES_BEFORE_SKIP}
     ORDER BY ISNULL(last_collected_at, '1900-01-01') ASC;
   `);

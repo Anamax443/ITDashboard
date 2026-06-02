@@ -133,6 +133,7 @@ export interface ComputerItem {
   last_seen: string | null;
   enabled: boolean;
   monitor_enabled: boolean;
+  excluded: boolean;
   last_collected_at?: string | null;
   last_error?: string | null;
   consecutive_failures?: number;
@@ -191,6 +192,15 @@ export const api = {
   syncHistory: () => jget<{ items: AdSyncRun[] }>('/computers/sync/history'),
   lastSync: () => jget<{ last: AdSyncRun | null }>('/computers/sync/last'),
   version: () => jget<VersionInfo>('/version'),
+  setExcluded: async (id: number, excluded: boolean) => {
+    const r = await fetch(`${API_BASE}/computers/${id}/excluded`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ excluded }),
+    });
+    if (!r.ok) throw new Error(`PATCH /computers/${id}/excluded → ${r.status}`);
+    return r.json() as Promise<{ id: number; name: string; excluded: boolean }>;
+  },
   setMonitor: async (id: number, monitor: boolean) => {
     const r = await fetch(`${API_BASE}/computers/${id}/monitor`, {
       method: 'PATCH',
