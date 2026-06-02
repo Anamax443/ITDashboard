@@ -93,8 +93,9 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
   };
 
   const bulkSetMonitor = async (monitor: boolean) => {
-    // Apply only to currently visible (filtered) + enabled rows
-    const targetIds = sorted.filter((c) => c.enabled).map((c) => c.id);
+    // Apply to ALL currently visible (filtered) rows — incl. disabled,
+    // because the operator's choice should persist if PC reactivates later.
+    const targetIds = sorted.map((c) => c.id);
     if (targetIds.length === 0) return;
     try {
       const result = await api.setMonitorBulk(targetIds, monitor);
@@ -204,10 +205,11 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
                     <input
                       type="checkbox"
                       checked={c.monitor_enabled}
-                      disabled={!c.enabled}
                       onChange={() => toggleMonitor(c)}
-                      title={c.monitor_enabled ? 'Click to stop monitoring' : 'Click to start monitoring'}
-                      style={{ cursor: c.enabled ? 'pointer' : 'not-allowed' }}
+                      title={c.enabled
+                        ? (c.monitor_enabled ? 'Click to stop monitoring' : 'Click to start monitoring')
+                        : 'PC is currently disabled in AD — monitoring will activate when it reappears'}
+                      style={{ cursor: 'pointer' }}
                     />
                   </td>
                   <td style={{ fontWeight: 600 }}>{c.name}</td>
