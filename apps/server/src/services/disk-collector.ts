@@ -16,6 +16,8 @@ let runInFlight = false;
 async function fetchDisks(name: string): Promise<RawDisk[]> {
   const ps = `
 $ErrorActionPreference = 'Stop'
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Get-CimInstance -ComputerName '${name}' -ClassName Win32_LogicalDisk -Filter "DriveType=3" |
   Select-Object DeviceID, VolumeName, FileSystem,
     @{n='Size';e={[int64]$_.Size}},

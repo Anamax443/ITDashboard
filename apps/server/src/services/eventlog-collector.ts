@@ -52,6 +52,8 @@ async function collectFromPC(name: string, sinceUtc: Date, signal?: AbortSignal)
   const sinceIso = sinceUtc.toISOString();
   const ps = `
 $ErrorActionPreference = 'Stop'
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $startTime = [DateTime]::Parse('${sinceIso}').ToUniversalTime()
 try {
   Get-WinEvent -ComputerName '${name}' -FilterHashtable @{

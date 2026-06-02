@@ -39,6 +39,8 @@ export function dnToOuPath(dn: string | null): string | null {
 function fetchFromAD(): Promise<ADComputer[]> {
   const ps = `
 $ErrorActionPreference = 'Stop'
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Import-Module ActiveDirectory
 Get-ADComputer -Filter * -Properties OperatingSystem, LastLogonDate, DistinguishedName |
   Select-Object Name, DNSHostName, OperatingSystem,
