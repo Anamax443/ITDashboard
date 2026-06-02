@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { ActivityLogEntry } from '../api.js';
 import { api } from '../api.js';
+import { HelpBox } from './HelpBox.js';
 
 const LEVEL_COLORS: Record<ActivityLogEntry['level'], string> = {
   info: 'var(--text-dim)',
@@ -58,6 +59,15 @@ export function ActivityLog({ height = 400, autoScroll = true }: { height?: numb
 
   return (
     <div className="panel" style={{ minHeight: 0 }}>
+      <div style={{ padding: 12 }}>
+        <HelpBox title="What this tab shows">
+          <p>Real-time stream of every background action: eventlog collector, AD sync, disk scan, services scan, firewall changes. Polled every 2s.</p>
+          <p><strong>Source tags:</strong> <code>[collector]</code>, <code>[disk]</code>, <code>[services]</code>, <code>[ad-sync]</code>, <code>[firewall]</code></p>
+          <p><strong>Levels:</strong> Success (green) · Info (dim) · Warning (amber) · Error (red)</p>
+          <p>Buffer is in-memory (last 500 entries), lost on service restart. For permanent audit see DB tables <code>collector_runs</code>, <code>ad_sync_runs</code>.</p>
+          <p><strong>📋 Copy</strong> exports filtered lines as tab-separated text to clipboard.</p>
+        </HelpBox>
+      </div>
       <div className="panel-header">
         <h2>Activity log ({filtered.length})</h2>
         <div className="panel-actions filters">

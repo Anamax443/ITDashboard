@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { ServiceProblem } from '../api.js';
 import { api, timeAgo } from '../api.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
+import { HelpBox } from '../components/HelpBox.js';
 
 export function ServicesPage() {
   const [items, setItems] = useState<ServiceProblem[]>([]);
@@ -56,10 +57,32 @@ export function ServicesPage() {
   const sorted = useSortedItems(filtered, sort);
   const affectedPcs = new Set(items.map((i) => i.computer_id)).size;
 
+  const driftCount = items.filter((s) => s.is_compliant === false).length;
+  const compliantNoise = items.filter((s) => s.is_compliant === true).length;
+  const unclassified = items.filter((s) => s.is_compliant === null).length;
+
   return (
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1' }}>
+      <div style={{ padding: 12 }}>
+        <HelpBox title="What this tab shows">
+          <p>Lists Windows services whose <strong>StartMode = Automatic</strong> but <strong>State ≠ Running</strong> on each monitored PC.</p>
+          <p><strong>Drift</strong> column compares each row against your <code>service_policy</code> rules (DB-backed, seeded with known noise patterns like <code>GoogleUpdater*</code>, <code>Intel(R)*</code>, etc):</p>
+          <ul style={{ marginLeft: 16 }}>
+            <li><span style={{ color: 'var(--ok)' }}>● OK</span> — service matches an expected pattern (e.g. GoogleUpdater is allowed to be Manual+Stopped)</li>
+            <li><span style={{ color: 'var(--critical)' }}>● Drift</span> — service violates its policy (e.g. CCAgent should be Running but is Stopped)</li>
+            <li><span style={{ color: 'var(--text-dim)' }}>● Unclassified</span> — no policy rule matches this service yet; review manually</li>
+          </ul>
+          <p>Categories:</p>
+          <ul style={{ marginLeft: 16 }}>
+            <li><strong>Auto</strong> (red) — pure Automatic, should be running; real candidates for investigation</li>
+            <li><strong>Trigger</strong> (blue) — Auto+Trigger Start: designed to start only on events (device plug-in, GPO change). Legitimately stopped.</li>
+            <li><strong>Delayed</strong> (amber) — Auto+Delayed: starts ~2 min after boot. May still be in delay window.</li>
+            <li><strong>Per-user</strong> (grey) — per-user service instance (suffix is LUID). Stopped when no user is logged on. Filtered by default.</li>
+          </ul>
+        </HelpBox>
+      </div>
       <div className="panel-header">
-        <h2>Stopped auto-services ({items.length} problems · {affectedPcs} PCs · {sorted.length} shown)</h2>
+        <h2>Stopped auto-services ({items.length} total · <span style={{ color: 'var(--critical)' }}>{driftCount} drift</span> · <span style={{ color: 'var(--ok)' }}>{compliantNoise} OK</span> · <span style={{ color: 'var(--text-dim)' }}>{unclassified} unclassified</span> · {affectedPcs} PCs · {sorted.length} shown)</h2>
         <div className="panel-actions filters">
           <input
             type="text"
@@ -110,6 +133,7 @@ export function ServicesPage() {
                 <SortHeader<ServiceProblem> col="display_name" label="Display name" sort={sort} toggle={toggle} />
                 <SortHeader<ServiceProblem> col="state" label="State" sort={sort} toggle={toggle} width={90} />
                 <th style={{ width: 110 }}>Start type</th>
+                <th style={{ width: 80 }}>Drift</th>
                 <SortHeader<ServiceProblem> col="collected_at" label="Last scan" sort={sort} toggle={toggle} width={100} />
               </tr>
             </thead>
@@ -130,6 +154,11 @@ export function ServicesPage() {
                     {s.delayed_start && <span style={{ color: 'var(--warning)' }}>● Delayed</span>}
                     {s.per_user_start && <span style={{ color: 'var(--text-dim)' }}>● Per-user</span>}
                     {!s.trigger_start && !s.delayed_start && !s.per_user_start && <span style={{ color: 'var(--critical)' }}>● Auto</span>}
+                  </td>
+                  <td style={{ fontSize: 10 }}>
+                    {s.is_compliant === true && <span style={{ color: 'var(--ok)' }}>● OK</span>}
+                    {s.is_compliant === false && <span style={{ color: 'var(--critical)' }}>● Drift</span>}
+                    {s.is_compliant === null && <span style={{ color: 'var(--text-dim)' }}>● ?</span>}
                   </td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{timeAgo(s.collected_at)}</td>
                 </tr>

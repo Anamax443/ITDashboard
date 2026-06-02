@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { HelpBox } from '../components/HelpBox.js';
 
 function NetworkAccessSection() {
   const [ips, setIps] = useState<string[]>([]);
@@ -129,6 +130,13 @@ export function SettingsPage() {
         </div>
       </div>
       <div className="panel-body" style={{ padding: 24 }}>
+
+        <HelpBox title="What this tab does">
+          <p>Configure all background-scan intervals, dashboard thresholds, and which IPs may reach the API. All settings persist in the DB and apply live — no service restart needed.</p>
+          <p><strong>Collection intervals</strong> — how often eventlog / disk / services collectors run against monitored PCs.</p>
+          <p><strong>Network access</strong> — Windows Firewall whitelist for inbound 4000. Be careful: removing your own IP locks you out (you'd need RDP to fix it).</p>
+          <p><strong>Disk space thresholds</strong> — when a drive's free % or GB drops below the threshold, it's flagged Critical / Warning on the dashboard and in Computers tab.</p>
+        </HelpBox>
 
         <Section title="Collection intervals" description="How often each background task runs. Changes apply immediately, no service restart needed.">
           <FieldGroup>

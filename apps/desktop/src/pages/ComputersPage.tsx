@@ -3,6 +3,7 @@ import type { ComputerItem as CI, SyncResult, AdSyncRun, DiskItem } from '../api
 type ComputerItem = CI;
 import { api, timeAgo, parseDiskThresholds } from '../api.js';
 import { DisksCell } from '../components/DiskBar.js';
+import { HelpBox } from '../components/HelpBox.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
 export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | 'failing' | null; onFilterConsumed?: () => void }) {
@@ -164,6 +165,20 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
 
   return (
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1' }}>
+      <div style={{ padding: 12 }}>
+        <HelpBox title="What this tab shows">
+          <p>Full inventory of domain computers synced from <code>Get-ADComputer</code>. Use this tab to decide which PCs to actively monitor and which to permanently exclude.</p>
+          <p><strong>Three operator-controlled flags:</strong></p>
+          <ul style={{ marginLeft: 16 }}>
+            <li><strong>Monitor</strong> checkbox — pause/resume collectors for this PC (e.g. PC in maintenance). Persists across AD syncs.</li>
+            <li><strong>Exclude</strong> checkbox — permanently hide from all stats, dashboard cards, lists. For decommissioned PCs / test VMs.</li>
+            <li><strong>Active</strong> status — set by AD sync; reflects whether PC exists in AD. PCs removed from AD become Disabled but their events are preserved.</li>
+          </ul>
+          <p><strong>Bulk operations:</strong> use search/status chips to narrow the visible list, then <strong>✓ All</strong> or <strong>✗ None</strong> to toggle Monitor for all visible rows.</p>
+          <p><strong>Disks column</strong> — colored bars per drive (red = critical, amber = warning, green = OK). Thresholds configurable in Settings → Disk space.</p>
+          <p><strong>Status column</strong> — last collector reachability: Online / Offline (TCP/135 unreachable) / RPC fail (firewall) / Access denied (Event Log Readers missing).</p>
+        </HelpBox>
+      </div>
       <div className="panel-header">
         <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span>Computers</span>

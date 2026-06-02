@@ -49,6 +49,8 @@ export interface ServiceProblem {
   delayed_start: boolean;
   trigger_start: boolean;
   per_user_start: boolean;
+  is_compliant: boolean | null;
+  policy_id: number | null;
   collected_at: string;
 }
 

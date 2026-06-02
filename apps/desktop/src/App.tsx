@@ -13,6 +13,7 @@ import { ActivityLog } from './components/ActivityLog.js';
 import { ComputersPage } from './pages/ComputersPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { ServicesPage } from './pages/ServicesPage.js';
+import { HelpBox } from './components/HelpBox.js';
 
 const REFRESH_MS = 30_000;
 
@@ -133,6 +134,18 @@ export function App() {
 
       {view === 'dashboard' && (
         <>
+          <HelpBox title="What this dashboard shows">
+            <p><strong>Summary overview</strong> of fleet health. Each card is clickable and drills down to the relevant tab with the appropriate filter pre-applied.</p>
+            <ul style={{ marginLeft: 16 }}>
+              <li><strong>Critical / Errors / Warnings (24h)</strong> — click → Events tab pre-filtered by level</li>
+              <li><strong>Unreachable</strong> — PCs where collectors fail; subtitle breaks down offline / RPC fail / auth → Computers tab</li>
+              <li><strong>Disk critical / warning</strong> — PCs with drives below thresholds → Computers tab</li>
+              <li><strong>Stopped services</strong> — PCs with non-noise stopped auto-services → Services tab</li>
+              <li><strong>Computers</strong> — active / total inventory → Computers tab</li>
+            </ul>
+            <p><strong>Events timeline</strong> shows stacked hourly bars for the last 24h. <strong>Collector bar</strong> shows live progress of the eventlog scan (▶ Run now / ⏹ Stop).</p>
+            <p>The detailed lists (Events, Computers, Services, Activity, Settings) have their own tabs.</p>
+          </HelpBox>
           <CollectorStatus />
           <SummaryCards
             summary={summary}

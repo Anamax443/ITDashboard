@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { EventItem, ComputerItem } from '../api.js';
 import { levelName, levelLabel } from '../api.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
+import { HelpBox } from './HelpBox.js';
 
 interface Props {
   events: EventItem[];
@@ -41,6 +42,14 @@ export function EventsTable(props: Props) {
 
   return (
     <div className="panel events-panel">
+      <div style={{ padding: 12 }}>
+        <HelpBox title="What this tab shows">
+          <p>Windows event log entries (Critical / Error / Warning) collected from monitored PCs. Each PC's <code>System</code> + <code>Application</code> logs are queried via <code>Get-WinEvent</code> over RPC every 5 min (configurable in Settings).</p>
+          <p><strong>Filters:</strong> Computer dropdown, Source/Provider, Level, Time range. Search box matches message, PC name, event ID, or source.</p>
+          <p><strong>Click any row</strong> to open detail modal with full message + all metadata.</p>
+          <p>Raw events retained 90 days; daily aggregates kept forever for trend analysis.</p>
+        </HelpBox>
+      </div>
       <div className="panel-header">
         <h2>Recent events ({sorted.length})</h2>
         <div className="panel-actions filters">

@@ -7,11 +7,21 @@ export async function registerServicesRoutes(app: FastifyInstance) {
     const pool = await getPool();
     const r = await pool.request().query(`
       SELECT sp.id, sp.computer_id, c.name AS computer, sp.service_name, sp.display_name,
-             sp.start_mode, sp.state, sp.delayed_start, sp.trigger_start, sp.per_user_start, sp.collected_at
+             sp.start_mode, sp.state, sp.delayed_start, sp.trigger_start, sp.per_user_start,
+             sp.is_compliant, sp.policy_id, sp.collected_at
       FROM service_problems sp
       JOIN computers c ON c.id = sp.computer_id
       WHERE c.enabled = 1 AND c.monitor_enabled = 1
       ORDER BY c.name, sp.service_name
+    `);
+    return { items: r.recordset };
+  });
+
+  app.get('/services/policies', async () => {
+    const pool = await getPool();
+    const r = await pool.request().query(`
+      SELECT id, pattern, expected_start_mode, expected_state, priority, reason, created_at
+      FROM service_policy ORDER BY priority, pattern
     `);
     return { items: r.recordset };
   });

@@ -104,10 +104,48 @@ try {
   });
 }
 
+interface PolicyRow { id: number; pattern: string; expected_start_mode: string | null; expected_state: string | null; priority: number; }
+let policyCache: PolicyRow[] | null = null;
+let policyCacheTs = 0;
+
+async function loadPolicies(): Promise<PolicyRow[]> {
+  // Refresh every 60s
+  if (policyCache && Date.now() - policyCacheTs < 60_000) return policyCache;
+  const pool = await getPool();
+  const r = await pool.request().query<PolicyRow>(`
+    SELECT id, pattern, expected_start_mode, expected_state, priority
+    FROM service_policy
+    ORDER BY priority ASC, id ASC
+  `);
+  policyCache = r.recordset;
+  policyCacheTs = Date.now();
+  return policyCache;
+}
+
+function globMatch(pattern: string, str: string): boolean {
+  // Support * and ? wildcards; otherwise plain text
+  const re = '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$';
+  return new RegExp(re, 'i').test(str);
+}
+
+function classifyAgainstPolicy(svc: RawService, policies: PolicyRow[]): { isCompliant: boolean | null; policyId: number | null } {
+  for (const p of policies) {
+    if (globMatch(p.pattern, svc.Name) || (svc.DisplayName && globMatch(p.pattern, svc.DisplayName))) {
+      const startOk = p.expected_start_mode == null || p.expected_start_mode === svc.StartMode;
+      const stateOk = p.expected_state == null || p.expected_state === svc.State;
+      return { isCompliant: startOk && stateOk, policyId: p.id };
+    }
+  }
+  // No policy matched → unclassified
+  return { isCompliant: null, policyId: null };
+}
+
 async function replaceProblems(computerId: number, services: RawService[]): Promise<void> {
   const pool = await getPool();
+  const policies = await loadPolicies();
   await pool.request().input('cid', computerId).query(`DELETE FROM service_problems WHERE computer_id = @cid`);
   for (const s of services) {
+    const cls = classifyAgainstPolicy(s, policies);
     await pool.request()
       .input('cid', computerId)
       .input('name', s.Name)
@@ -117,9 +155,11 @@ async function replaceProblems(computerId: number, services: RawService[]): Prom
       .input('del', s.DelayedAutoStart ? 1 : 0)
       .input('trg', s.TriggerStart ? 1 : 0)
       .input('pu', isPerUserService(s.Name) ? 1 : 0)
+      .input('comp', cls.isCompliant == null ? null : (cls.isCompliant ? 1 : 0))
+      .input('pid', cls.policyId)
       .query(`
-        INSERT INTO service_problems (computer_id, service_name, display_name, start_mode, state, delayed_start, trigger_start, per_user_start)
-        VALUES (@cid, @name, @dn, @sm, @st, @del, @trg, @pu);
+        INSERT INTO service_problems (computer_id, service_name, display_name, start_mode, state, delayed_start, trigger_start, per_user_start, is_compliant, policy_id)
+        VALUES (@cid, @name, @dn, @sm, @st, @del, @trg, @pu, @comp, @pid);
       `);
   }
 }
