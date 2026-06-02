@@ -1,10 +1,11 @@
 import React from 'react';
-import type { Summary, ComputerItem, DiskSummary } from '../api.js';
+import type { Summary, ComputerItem, DiskSummary, ServiceProblem } from '../api.js';
 
 interface Props {
   summary: Summary | null;
   computers: ComputerItem[];
   diskSummary: DiskSummary | null;
+  serviceProblems: ServiceProblem[];
   onClickCritical?: () => void;
   onClickError?: () => void;
   onClickWarning?: () => void;
@@ -12,13 +13,17 @@ interface Props {
   onClickDiskCritical?: () => void;
   onClickDiskWarning?: () => void;
   onClickUnreachable?: () => void;
+  onClickServices?: () => void;
 }
 
 export function SummaryCards({
-  summary, computers, diskSummary,
+  summary, computers, diskSummary, serviceProblems,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
-  onClickDiskCritical, onClickDiskWarning, onClickUnreachable,
+  onClickDiskCritical, onClickDiskWarning, onClickUnreachable, onClickServices,
 }: Props) {
+  // Service problems: count real (not trigger/delayed/per-user)
+  const realServiceProblems = serviceProblems.filter((s) => !s.trigger_start && !s.delayed_start && !s.per_user_start);
+  const servicesPcsAffected = new Set(realServiceProblems.map((s) => s.computer_id)).size;
   const enabledCount = computers.filter((c) => c.enabled).length;
   const total = computers.length;
   const monitoredFailing = computers.filter((c) => c.enabled && c.monitor_enabled && (c.consecutive_failures ?? 0) > 0);
@@ -35,7 +40,7 @@ export function SummaryCards({
       unknownCount > 0 ? `${unknownCount} other` : null,
     ].filter(Boolean).join(' · ') || 'RPC fail / offline';
   return (
-    <div className="cards" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
+    <div className="cards" style={{ gridTemplateColumns: 'repeat(8, 1fr)' }}>
       <Card label="Critical events (24h)" value={summary?.critical_24h ?? '—'} kind="critical"
         onClick={summary && summary.critical_24h > 0 ? onClickCritical : undefined} />
       <Card label="Errors (24h)" value={summary?.error_24h ?? '—'} kind="error"
@@ -62,6 +67,13 @@ export function SummaryCards({
         sub={diskSummary ? `${diskSummary.warningDrives} drives` : undefined}
         kind="warning"
         onClick={diskSummary && diskSummary.warningPcs > 0 ? onClickDiskWarning : undefined}
+      />
+      <Card
+        label="Stopped services"
+        value={servicesPcsAffected}
+        sub={realServiceProblems.length > 0 ? `${realServiceProblems.length} service${realServiceProblems.length === 1 ? '' : 's'}` : 'all healthy'}
+        kind="error"
+        onClick={servicesPcsAffected > 0 ? onClickServices : undefined}
       />
       <Card label="Computers" value={`${enabledCount}/${total}`} kind="info"
         onClick={onClickComputers} />

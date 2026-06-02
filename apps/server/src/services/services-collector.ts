@@ -29,6 +29,14 @@ interface RawService {
   TriggerStart: boolean;
 }
 
+// Per-user service instances have a LUID suffix that changes per user session,
+// e.g. CDPUserSvc_d666212, cbdhsvc_d666212, OneSyncSvc_d666212.
+// They're legitimately stopped when no user is logged on.
+const PER_USER_SUFFIX = /_[a-f0-9]{4,12}$/i;
+function isPerUserService(name: string): boolean {
+  return PER_USER_SUFFIX.test(name);
+}
+
 const CONCURRENCY = 5;
 let runInFlight = false;
 
@@ -108,9 +116,10 @@ async function replaceProblems(computerId: number, services: RawService[]): Prom
       .input('st', s.State)
       .input('del', s.DelayedAutoStart ? 1 : 0)
       .input('trg', s.TriggerStart ? 1 : 0)
+      .input('pu', isPerUserService(s.Name) ? 1 : 0)
       .query(`
-        INSERT INTO service_problems (computer_id, service_name, display_name, start_mode, state, delayed_start, trigger_start)
-        VALUES (@cid, @name, @dn, @sm, @st, @del, @trg);
+        INSERT INTO service_problems (computer_id, service_name, display_name, start_mode, state, delayed_start, trigger_start, per_user_start)
+        VALUES (@cid, @name, @dn, @sm, @st, @del, @trg, @pu);
       `);
   }
 }
@@ -148,20 +157,21 @@ export async function runServicesScanOnce(): Promise<{ pcs: number; ok: number; 
           if (all.length === 0) {
             logActivity('info', 'services', `${c.name} → all healthy`);
           } else {
-            const real = all.filter((s) => !s.TriggerStart && !s.DelayedAutoStart);
+            const real = all.filter((s) => !s.TriggerStart && !s.DelayedAutoStart && !isPerUserService(s.Name));
             const trigger = all.filter((s) => s.TriggerStart).length;
             const delayed = all.filter((s) => s.DelayedAutoStart).length;
+            const perUser = all.filter((s) => isPerUserService(s.Name)).length;
             const parts: string[] = [];
             if (real.length > 0) parts.push(`${real.length} real`);
             if (trigger > 0) parts.push(`${trigger} trigger`);
             if (delayed > 0) parts.push(`${delayed} delayed`);
+            if (perUser > 0) parts.push(`${perUser} per-user`);
             const breakdown = parts.join(' / ');
             if (real.length > 0) {
               const names = real.slice(0, 5).map((s) => s.Name).join(', ');
               const more = real.length > 5 ? ` (+${real.length - 5})` : '';
               logActivity('warn', 'services', `${c.name} → ${breakdown}: ${names}${more}`);
             } else {
-              // Only trigger/delayed — informational
               logActivity('info', 'services', `${c.name} → ${breakdown} (all legitimate)`);
             }
           }

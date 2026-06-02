@@ -48,6 +48,7 @@ export interface ServiceProblem {
   state: string;
   delayed_start: boolean;
   trigger_start: boolean;
+  per_user_start: boolean;
   collected_at: string;
 }
 

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem } from './api.js';
 import { parseDiskThresholds, summarizeDisks } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { EventsTable } from './components/EventsTable.js';
@@ -35,12 +35,14 @@ export function App() {
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [disks, setDisks] = useState<DiskItem[]>([]);
+  const [serviceProblems, setServiceProblems] = useState<ServiceProblem[]>([]);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
   const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'failing' | null>(null);
 
   useEffect(() => {
     api.version().then(setVersion).catch(() => {});
     api.disks().then((r) => setDisks(r.items)).catch(() => {});
+    api.serviceProblems().then((r) => setServiceProblems(r.items)).catch(() => {});
     api.settings().then(setSettingsMap).catch(() => {});
   }, []);
 
@@ -136,6 +138,8 @@ export function App() {
             summary={summary}
             computers={computers}
             diskSummary={diskSummary}
+            serviceProblems={serviceProblems}
+            onClickServices={() => setView('services')}
             onClickCritical={() => { setFilterLevel('critical'); setFilterHours(24); setView('events'); }}
             onClickError={() => { setFilterLevel('error'); setFilterHours(24); setView('events'); }}
             onClickWarning={() => { setFilterLevel('warning'); setFilterHours(24); setView('events'); }}

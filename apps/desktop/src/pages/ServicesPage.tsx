@@ -11,6 +11,7 @@ export function ServicesPage() {
   const [search, setSearch] = useState('');
   const [hideTriggerStart, setHideTriggerStart] = useState(true);
   const [hideDelayedStart, setHideDelayedStart] = useState(false);
+  const [hidePerUser, setHidePerUser] = useState(true);
   const { sort, toggle } = useSort<ServiceProblem>({ col: 'computer', dir: 'asc' });
 
   const refresh = () => {
@@ -40,6 +41,7 @@ export function ServicesPage() {
   const filtered = items.filter((s) => {
     if (hideTriggerStart && s.trigger_start) return false;
     if (hideDelayedStart && s.delayed_start) return false;
+    if (hidePerUser && s.per_user_start) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -73,6 +75,10 @@ export function ServicesPage() {
           <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }} title="Delayed-start services may still be in the delay window">
             <input type="checkbox" checked={hideDelayedStart} onChange={(e) => setHideDelayedStart(e.target.checked)} />
             Hide delayed-start
+          </label>
+          <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }} title="Per-user service instances (suffix is LUID) — legitimately stopped when no user is logged on">
+            <input type="checkbox" checked={hidePerUser} onChange={(e) => setHidePerUser(e.target.checked)} />
+            Hide per-user
           </label>
           {scanning && <span style={{ color: 'var(--accent)', fontSize: 11 }}>● Scanning…</span>}
           {!scanning && lastResult && (
@@ -122,7 +128,8 @@ export function ServicesPage() {
                   <td style={{ fontSize: 10 }}>
                     {s.trigger_start && <span style={{ color: 'var(--accent)' }}>● Trigger</span>}
                     {s.delayed_start && <span style={{ color: 'var(--warning)' }}>● Delayed</span>}
-                    {!s.trigger_start && !s.delayed_start && <span style={{ color: 'var(--critical)' }}>● Auto</span>}
+                    {s.per_user_start && <span style={{ color: 'var(--text-dim)' }}>● Per-user</span>}
+                    {!s.trigger_start && !s.delayed_start && !s.per_user_start && <span style={{ color: 'var(--critical)' }}>● Auto</span>}
                   </td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{timeAgo(s.collected_at)}</td>
                 </tr>
