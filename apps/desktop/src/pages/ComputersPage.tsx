@@ -41,7 +41,7 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
     }
   };
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'disabled'>('');
+  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'disabled' | 'monitored' | 'unmonitored' | 'failing'>('');
   const { sort, toggle } = useSort<ComputerItem>({ col: 'name', dir: 'asc' });
 
   const runSync = async () => {
@@ -66,6 +66,9 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
   const filtered = items.filter((c) => {
     if (statusFilter === 'active' && !c.enabled) return false;
     if (statusFilter === 'disabled' && c.enabled) return false;
+    if (statusFilter === 'monitored' && (!c.enabled || !c.monitor_enabled)) return false;
+    if (statusFilter === 'unmonitored' && (!c.enabled || c.monitor_enabled)) return false;
+    if (statusFilter === 'failing' && (!c.enabled || (c.consecutive_failures ?? 0) === 0)) return false;
     if (search) {
       const q = search.toLowerCase();
       if (
@@ -82,6 +85,8 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
   const enabled = items.filter((c) => c.enabled);
   const disabled = items.filter((c) => !c.enabled);
   const monitored = items.filter((c) => c.enabled && c.monitor_enabled).length;
+  const unmonitored = items.filter((c) => c.enabled && !c.monitor_enabled).length;
+  const failing = items.filter((c) => c.enabled && (c.consecutive_failures ?? 0) > 0).length;
 
   const toggleMonitor = async (c: ComputerItem) => {
     try {
@@ -110,7 +115,15 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
   return (
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1' }}>
       <div className="panel-header">
-        <h2>Computers ({enabled.length} active · {monitored} monitored · {disabled.length} disabled)</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>Computers</span>
+          <span style={{ color: 'var(--text-dim)', fontSize: 12, fontWeight: 400 }}>({items.length} total · {sorted.length} shown)</span>
+          <StatusChip label="active" count={enabled.length} active={statusFilter === 'active'} color="var(--ok)" onClick={() => setStatusFilter(statusFilter === 'active' ? '' : 'active')} />
+          <StatusChip label="monitored" count={monitored} active={statusFilter === 'monitored'} color="var(--accent)" onClick={() => setStatusFilter(statusFilter === 'monitored' ? '' : 'monitored')} />
+          <StatusChip label="unmonitored" count={unmonitored} active={statusFilter === 'unmonitored'} color="var(--warning)" onClick={() => setStatusFilter(statusFilter === 'unmonitored' ? '' : 'unmonitored')} />
+          <StatusChip label="failing" count={failing} active={statusFilter === 'failing'} color="var(--critical)" onClick={() => setStatusFilter(statusFilter === 'failing' ? '' : 'failing')} />
+          <StatusChip label="disabled" count={disabled.length} active={statusFilter === 'disabled'} color="var(--text-dim)" onClick={() => setStatusFilter(statusFilter === 'disabled' ? '' : 'disabled')} />
+        </h2>
         <div className="panel-actions filters">
           <input
             type="text"
@@ -119,10 +132,13 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: 160 }}
           />
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'active' | 'disabled' | '')}>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}>
             <option value="">All status</option>
-            <option value="active">Active</option>
-            <option value="disabled">Disabled</option>
+            <option value="active">Active (in AD)</option>
+            <option value="disabled">Disabled (gone from AD)</option>
+            <option value="monitored">Monitored</option>
+            <option value="unmonitored">Unmonitored</option>
+            <option value="failing">Failing collector</option>
           </select>
           {(lastSync || lastSyncRun) && (
             <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>
@@ -232,5 +248,27 @@ export function ComputersPage({ items, onRefreshLocal }: { items: ComputerItem[]
         )}
       </div>
     </div>
+  );
+}
+
+function StatusChip({ label, count, active, color, onClick }: { label: string; count: number; active: boolean; color: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: active ? color : 'transparent',
+        color: active ? 'white' : color,
+        border: `1px solid ${color}`,
+        borderRadius: 12,
+        padding: '2px 10px',
+        cursor: 'pointer',
+        fontSize: 11,
+        fontFamily: 'inherit',
+        fontWeight: active ? 700 : 500,
+      }}
+      title={`Filter by ${label}`}
+    >
+      {count} {label}
+    </button>
   );
 }
