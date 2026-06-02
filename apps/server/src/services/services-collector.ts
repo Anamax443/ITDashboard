@@ -136,16 +136,35 @@ export async function runServicesScanOnce(): Promise<{ pcs: number; ok: number; 
       const results = await Promise.allSettled(batch.map(async (c) => {
         const services = await fetchProblems(c.name);
         await replaceProblems(c.id, services);
-        return services.length;
+        return services;
       }));
       for (let j = 0; j < results.length; j++) {
         const r2 = results[j]!;
         const c = batch[j]!;
         if (r2.status === 'fulfilled') {
           ok++;
-          totalProblems += r2.value;
-          if (r2.value > 0) logActivity('warn', 'services', `${c.name} → ${r2.value} stopped auto-service${r2.value === 1 ? '' : 's'}`);
-          else logActivity('info', 'services', `${c.name} → all healthy`);
+          const all = r2.value;
+          totalProblems += all.length;
+          if (all.length === 0) {
+            logActivity('info', 'services', `${c.name} → all healthy`);
+          } else {
+            const real = all.filter((s) => !s.TriggerStart && !s.DelayedAutoStart);
+            const trigger = all.filter((s) => s.TriggerStart).length;
+            const delayed = all.filter((s) => s.DelayedAutoStart).length;
+            const parts: string[] = [];
+            if (real.length > 0) parts.push(`${real.length} real`);
+            if (trigger > 0) parts.push(`${trigger} trigger`);
+            if (delayed > 0) parts.push(`${delayed} delayed`);
+            const breakdown = parts.join(' / ');
+            if (real.length > 0) {
+              const names = real.slice(0, 5).map((s) => s.Name).join(', ');
+              const more = real.length > 5 ? ` (+${real.length - 5})` : '';
+              logActivity('warn', 'services', `${c.name} → ${breakdown}: ${names}${more}`);
+            } else {
+              // Only trigger/delayed — informational
+              logActivity('info', 'services', `${c.name} → ${breakdown} (all legitimate)`);
+            }
+          }
         } else {
           fail++;
           const errMsg = String(r2.reason).split('\n')[0]?.slice(0, 200) ?? 'unknown';
