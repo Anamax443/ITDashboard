@@ -46,6 +46,8 @@ export interface ServiceProblem {
   display_name: string | null;
   start_mode: string;
   state: string;
+  delayed_start: boolean;
+  trigger_start: boolean;
   collected_at: string;
 }
 

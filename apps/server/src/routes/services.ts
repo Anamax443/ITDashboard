@@ -7,7 +7,7 @@ export async function registerServicesRoutes(app: FastifyInstance) {
     const pool = await getPool();
     const r = await pool.request().query(`
       SELECT sp.id, sp.computer_id, c.name AS computer, sp.service_name, sp.display_name,
-             sp.start_mode, sp.state, sp.collected_at
+             sp.start_mode, sp.state, sp.delayed_start, sp.trigger_start, sp.collected_at
       FROM service_problems sp
       JOIN computers c ON c.id = sp.computer_id
       WHERE c.enabled = 1 AND c.monitor_enabled = 1

@@ -25,6 +25,8 @@ interface RawService {
   DisplayName: string | null;
   StartMode: string;
   State: string;
+  DelayedAutoStart: boolean;
+  TriggerStart: boolean;
 }
 
 const CONCURRENCY = 5;
@@ -34,6 +36,8 @@ async function fetchProblems(name: string): Promise<RawService[]> {
   const tcpOk = await tcpProbe(name, 135, 2000);
   if (!tcpOk) throw new Error('OFFLINE: TCP/135 unreachable');
 
+  // Read Win32_Service for Auto + non-running, then check each one's registry
+  // TriggerInfo and DelayedAutoStart flag to distinguish legitimate stopped states.
   const ps = `
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -41,9 +45,35 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $opt = New-CimSessionOption -Protocol Dcom
 $session = New-CimSession -ComputerName '${name}' -SessionOption $opt -ErrorAction Stop
 try {
-  Get-CimInstance -CimSession $session -ClassName Win32_Service -Filter "StartMode='Auto' AND State<>'Running'" |
-    Select-Object Name, DisplayName, StartMode, State |
-    ConvertTo-Json -Compress -Depth 3
+  $svcs = Get-CimInstance -CimSession $session -ClassName Win32_Service -Filter "StartMode='Auto' AND State<>'Running'"
+
+  # For each, query registry remotely via WMI StdRegProv to check DelayedAutoStart + TriggerInfo
+  $reg = Get-CimClass -CimSession $session -Namespace root\\default -ClassName StdRegProv -ErrorAction SilentlyContinue
+
+  $result = @()
+  foreach ($s in $svcs) {
+    $path = "SYSTEM\\\\CurrentControlSet\\\\Services\\\\$($s.Name)"
+    $delayed = $false
+    $trigger = $false
+    if ($reg) {
+      try {
+        $d = Invoke-CimMethod -CimSession $session -Namespace root\\default -ClassName StdRegProv -MethodName GetDWORDValue -Arguments @{ hDefKey = [uint32]2147483650; sSubKeyName = $path; sValueName = 'DelayedAutostart' } -ErrorAction SilentlyContinue
+        if ($d -and $d.uValue -eq 1) { $delayed = $true }
+
+        $t = Invoke-CimMethod -CimSession $session -Namespace root\\default -ClassName StdRegProv -MethodName EnumKey -Arguments @{ hDefKey = [uint32]2147483650; sSubKeyName = "$path\\\\TriggerInfo" } -ErrorAction SilentlyContinue
+        if ($t -and $t.sNames -and $t.sNames.Count -gt 0) { $trigger = $true }
+      } catch { }
+    }
+    $result += [pscustomobject]@{
+      Name = $s.Name
+      DisplayName = $s.DisplayName
+      StartMode = $s.StartMode
+      State = $s.State
+      DelayedAutoStart = $delayed
+      TriggerStart = $trigger
+    }
+  }
+  $result | ConvertTo-Json -Compress -Depth 3
 } finally {
   Remove-CimSession $session
 }
@@ -76,9 +106,11 @@ async function replaceProblems(computerId: number, services: RawService[]): Prom
       .input('dn', s.DisplayName)
       .input('sm', s.StartMode)
       .input('st', s.State)
+      .input('del', s.DelayedAutoStart ? 1 : 0)
+      .input('trg', s.TriggerStart ? 1 : 0)
       .query(`
-        INSERT INTO service_problems (computer_id, service_name, display_name, start_mode, state)
-        VALUES (@cid, @name, @dn, @sm, @st);
+        INSERT INTO service_problems (computer_id, service_name, display_name, start_mode, state, delayed_start, trigger_start)
+        VALUES (@cid, @name, @dn, @sm, @st, @del, @trg);
       `);
   }
 }
