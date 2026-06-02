@@ -134,6 +134,10 @@ export function App() {
             summary={summary}
             computers={computers}
             diskSummary={diskSummary}
+            onClickCritical={() => { setFilterLevel('critical'); setFilterHours(24); setView('events'); }}
+            onClickError={() => { setFilterLevel('error'); setFilterHours(24); setView('events'); }}
+            onClickWarning={() => { setFilterLevel('warning'); setFilterHours(24); setView('events'); }}
+            onClickComputers={() => setView('computers')}
             onClickDiskCritical={() => { setComputersPreFilter('disk-critical'); setView('computers'); }}
             onClickDiskWarning={() => { setComputersPreFilter('disk-warning'); setView('computers'); }}
           />

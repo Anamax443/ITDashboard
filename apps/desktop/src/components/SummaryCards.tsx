@@ -5,18 +5,29 @@ interface Props {
   summary: Summary | null;
   computers: ComputerItem[];
   diskSummary: DiskSummary | null;
+  onClickCritical?: () => void;
+  onClickError?: () => void;
+  onClickWarning?: () => void;
+  onClickComputers?: () => void;
   onClickDiskCritical?: () => void;
   onClickDiskWarning?: () => void;
 }
 
-export function SummaryCards({ summary, computers, diskSummary, onClickDiskCritical, onClickDiskWarning }: Props) {
+export function SummaryCards({
+  summary, computers, diskSummary,
+  onClickCritical, onClickError, onClickWarning, onClickComputers,
+  onClickDiskCritical, onClickDiskWarning,
+}: Props) {
   const enabledCount = computers.filter((c) => c.enabled).length;
   const total = computers.length;
   return (
     <div className="cards" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
-      <Card label="Critical events (24h)" value={summary?.critical_24h ?? '—'} kind="critical" />
-      <Card label="Errors (24h)" value={summary?.error_24h ?? '—'} kind="error" />
-      <Card label="Warnings (24h)" value={summary?.warning_24h ?? '—'} kind="warning" />
+      <Card label="Critical events (24h)" value={summary?.critical_24h ?? '—'} kind="critical"
+        onClick={summary && summary.critical_24h > 0 ? onClickCritical : undefined} />
+      <Card label="Errors (24h)" value={summary?.error_24h ?? '—'} kind="error"
+        onClick={summary && summary.error_24h > 0 ? onClickError : undefined} />
+      <Card label="Warnings (24h)" value={summary?.warning_24h ?? '—'} kind="warning"
+        onClick={summary && summary.warning_24h > 0 ? onClickWarning : undefined} />
       <Card
         label="Disk critical"
         value={diskSummary ? `${diskSummary.criticalPcs} PC` : '—'}
@@ -31,7 +42,8 @@ export function SummaryCards({ summary, computers, diskSummary, onClickDiskCriti
         kind="warning"
         onClick={diskSummary && diskSummary.warningPcs > 0 ? onClickDiskWarning : undefined}
       />
-      <Card label="Computers" value={`${enabledCount}/${total}`} kind="info" />
+      <Card label="Computers" value={`${enabledCount}/${total}`} kind="info"
+        onClick={onClickComputers} />
     </div>
   );
 }
@@ -42,7 +54,7 @@ function Card({ label, value, sub, kind, onClick }: { label: string; value: numb
       className={`card ${kind}`}
       onClick={onClick}
       style={{ cursor: onClick ? 'pointer' : 'default', userSelect: 'none' }}
-      title={onClick ? 'Click to filter computers' : undefined}
+      title={onClick ? 'Click to drill down' : undefined}
     >
       <div className="label">{label}</div>
       <div className="value">{value}</div>
