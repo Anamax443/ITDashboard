@@ -66,6 +66,15 @@ HKCU protocol handlers automatically. Download and run
 `/actions/install-handlers.cmd` again on the workstation to overwrite the
 old generated launchers.
 
+Docs/UI sync for this fix completed:
+- `README.md` documents the `0cc27a3` installer fix and reinstall instruction.
+- `docs/ARCHITECTURE.md` records CRLF as load-bearing for `.cmd/.bat` and notes
+  that HKCU handlers require manual reinstall after installer changes.
+- `docs/dashboard.html` has CS/EN Per-PC Actions callouts and a CS/EN
+  Troubleshooting entry for "CMD window flashes and closes".
+- `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show the reinstall guidance in
+  the Actions modal warning block.
+
 ## Deployment Model
 
 - Local edit in `D:\git\ITDashboard`

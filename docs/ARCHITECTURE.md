@@ -105,6 +105,8 @@ Security posture:
 - PsExec is not installed by default because it opens `cmd.exe` on the remote PC; opt-in requires `/with-psexec`.
 - `itd-explorer://HOST/LETTER` intentionally supports only administrative drive shares (`C$`, `D$`). It is not a generic UNC share launcher.
 - `ITD_ADMIN_USER` is optional. When set, launchers wrap commands in `runas /user:%ITD_ADMIN_USER% /netonly`, so the expected password prompt is accepted UX friction instead of storing credentials locally.
+- Batch installer/launcher files are pinned to CRLF through `.gitattributes`. This is load-bearing: `cmd.exe` can misparse LF-only `.cmd` files and appear as a flashing window that immediately closes.
+- Generated launchers leave the console open only on validation/setup failure and append diagnostics to `%LOCALAPPDATA%\ITDashboard\launchers\last-itd-*.log`. Existing HKCU handlers are not self-updating; after deploying installer fixes, each operator workstation must run `/actions/install-handlers.cmd` again.
 
 This design was reviewed twice on 2026-06-03: first as an RCE fix review, then as a follow-up confirming the hardened installer is OK to deploy. The follow-up response is archived in `docs/oponentury/2026-06-03-reakce-3-protocol-handlers-followup.md`.
 

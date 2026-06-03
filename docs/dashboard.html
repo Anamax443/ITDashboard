@@ -358,6 +358,9 @@ service restarts on new dist/, in-memory state cleared</div>
   <div class="callout callout-info">
     <strong>Follow-up review verdict (2026-06-03):</strong> the hardened handler is OK to deploy. Explorer launch intentionally supports only administrative drive shares such as <code>C$</code> / <code>D$</code>, not arbitrary UNC share names. PsExec is not installed by default and requires <code>/with-psexec</code>. If <code>ITD_ADMIN_USER</code> is set, launchers use <code>runas /netonly</code>; the password prompt is expected and avoids storing credentials in the local launcher.
   </div>
+  <div class="callout callout-info">
+    <strong>If a CMD window only flashes and closes:</strong> download and run <code>/actions/install-handlers.cmd</code> again on the workstation. Older generated HKCU launchers do not self-update. The fixed installer pins <code>.cmd/.bat</code> files to CRLF and generated launchers now keep the window open on failure with diagnostics in <code>%LOCALAPPDATA%\ITDashboard\launchers\last-itd-*.log</code>.
+  </div>
 </div>
 <div data-lang="cs">
   <p>V tabu Počítače je u každého řádku tlačítko <strong>Akce</strong> pro běžné remote-admin workflow. Dashboard zůstává observer: akce otevírají nástroje pro operátora, ale samy neopravují ani nemění cílové PC.</p>
@@ -376,6 +379,9 @@ service restarts on new dist/, in-memory state cleared</div>
   </div>
   <div class="callout callout-info">
     <strong>Verdikt follow-up review (2026-06-03):</strong> hardened handler je OK k nasazení. Explorer launch záměrně podporuje jen administrativní drive shares typu <code>C$</code> / <code>D$</code>, ne libovolné UNC share názvy. PsExec se neinstaluje defaultně a vyžaduje <code>/with-psexec</code>. Pokud je nastavené <code>ITD_ADMIN_USER</code>, launchery používají <code>runas /netonly</code>; prompt na heslo je očekávaný a brání ukládání credentials v lokálním launcheru.
+  </div>
+  <div class="callout callout-info">
+    <strong>Když CMD okno jen blikne a zavře se:</strong> stáhnout a znovu spustit <code>/actions/install-handlers.cmd</code> na dané stanici. Staré vygenerované HKCU launchery se samy neaktualizují. Opravený installer pinuje <code>.cmd/.bat</code> soubory na CRLF a nové launchery při chybě nechají okno otevřené s diagnostikou v <code>%LOCALAPPDATA%\ITDashboard\launchers\last-itd-*.log</code>.
   </div>
 </div>
 
@@ -845,6 +851,16 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <span data-lang="cs">Nemělo by — AD sync explicitně netýká <code>monitor_enabled</code>. Pokud se checkbox revertuje, zkontroluj jestli někdo jiný needituje přes přímou DB nebo jestli neběží custom skript. PATCH endpoint vždy ukládá novou hodnotu verbatim.</span>
   <span data-lang="en">It shouldn't — AD sync explicitly does not touch <code>monitor_enabled</code>. If a PC's checkbox reverts, check if someone else is editing via direct DB or if a custom script is running. The PATCH endpoint always stores the new value verbatim.</span>
 </p>
+
+<h3><span data-lang="cs">Launch handler otevře CMD okno a hned se zavře</span><span data-lang="en">Launch handler opens a CMD window and immediately closes</span></h3>
+<div data-lang="en">
+  <p><strong>Cause:</strong> older generated HKCU launchers or an older LF-only installer. Windows <code>cmd.exe</code> can misparse LF-only <code>.cmd</code> files, so the window appears to flash and exit before showing a useful message.</p>
+  <p><strong>Fix:</strong> download and run <code>/actions/install-handlers.cmd</code> again on that workstation. The new installer overwrites the launchers under <code>%LOCALAPPDATA%\ITDashboard\launchers</code>, keeps batch files CRLF, and writes <code>last-itd-*.log</code> when validation/setup fails.</p>
+</div>
+<div data-lang="cs">
+  <p><strong>Příčina:</strong> staré vygenerované HKCU launchery nebo starší LF-only installer. Windows <code>cmd.exe</code> umí LF-only <code>.cmd</code> soubor špatně parsovat, takže okno jen blikne a skončí bez užitečné zprávy.</p>
+  <p><strong>Fix:</strong> stáhnout a znovu spustit <code>/actions/install-handlers.cmd</code> na dané stanici. Nový installer přepíše launchery v <code>%LOCALAPPDATA%\ITDashboard\launchers</code>, drží batch soubory v CRLF a při validation/setup chybě zapisuje <code>last-itd-*.log</code>.</p>
+</div>
 
 <h2 id="security"><span data-lang="cs">Bezpečnostní model</span><span data-lang="en">Security model</span></h2>
 <div class="callout callout-info" data-lang="cs">

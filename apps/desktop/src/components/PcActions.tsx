@@ -216,6 +216,7 @@ export function PcActionsButton({ name, fqdn, ipAddress, disks, computerId, onRe
                 <div style={{ color: 'var(--text-dim)' }}>{t('actions.psexecOptIn')}</div>
                 <div style={{ color: 'var(--text-dim)', marginTop: 4 }}>{t('actions.adminUserHint')}</div>
                 <div style={{ color: 'var(--text-dim)', marginTop: 4 }}>{t('actions.followupNote')}</div>
+                <div style={{ color: 'var(--text-dim)', marginTop: 4 }}>{t('actions.reinstallNote')}</div>
               </div>
 
               <Section title={t('actions.section.remote')}>
