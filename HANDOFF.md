@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (installer console reflection hardening)
+Last updated: 2026-06-03 (3-mode ITD_ADMIN_USER dispatch + itd-ps PowerShell Remote launcher)
 
 ## Current Live State
 
@@ -117,6 +117,74 @@ Docs/UI sync for this fix completed:
   a CS/EN troubleshooting entry "URL line missing from fail screen".
 - `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show a one-line note in the
   Actions modal warning block.
+
+## 3-mode ITD_ADMIN_USER dispatch + itd-ps PowerShell Remote (NEW since 2026-06-03)
+
+Operator reported: clicked Launch (Computer Management) for a remote PC, MMC
+opened but Shared Folders subtree threw "K zobrazení seznamu sdílených složek
+nemáte oprávnění" because MMC ran as the operator's own (non-admin) Windows
+account. The pre-existing ITD_ADMIN_USER mechanism only had 2 modes (unset =
+current user, or a fixed pre-set value pre-filled into runas), neither of
+which fits a multi-admin workstation where several IT specialists share the
+same operator PC and each one needs to type their OWN admin login on every
+remote-admin session.
+
+New 3rd mode added: `ITD_ADMIN_USER=ask`. When set:
+- CMD opens and prompts for the admin account (`Admin account [DOMAIN\user]:`).
+- First time: prompt is empty. Specialist types e.g. `AXINETWORK\trnka_admin`.
+- Subsequent times: prompt shows `Admin account [Enter = <lastuser>]:` —
+  Enter accepts the cached value, typing a different account replaces it.
+- The typed account is persisted to
+  `%LOCALAPPDATA%\ITDashboard\launchers\last-admin-user.txt` (per-Windows-user
+  file, shared across all itd-* launchers so the cache is consistent).
+- Password is **never** persisted. `runas /netonly /user:<typed>` opens the
+  standard Windows credential dialog for the password on every launch.
+- Validation: empty typed user fails with `admin_user_not_entered`; >128 char
+  user fails with `admin_user_too_long`. Both go through the existing :fail
+  block with the log file + visible reason.
+
+New launcher added: **itd-ps** for remote PowerShell access via Enter-PSSession.
+Registers as HKCU URL handler `itd-ps://`. Cmd window opens briefly, then
+spawns `powershell -NoExit -Command "..."` with:
+- ask mode: `Get-Credential -UserName <lastuser-or-empty> -Message 'Admin
+  credentials for <host>'` opens a native Windows credential dialog (both
+  fields visible, password masked). Returned UserName is validated against
+  `^[A-Za-z0-9._@\\-]+$` before being persisted to the same shared
+  last-admin-user.txt cache.
+- preset mode: `Get-Credential -UserName '<ITD_ADMIN_USER>' ...` pre-fills the
+  fixed user.
+- no-admin mode: `Enter-PSSession -ComputerName <host>` with no -Credential
+  (current Windows user used implicitly for WinRM).
+- Final step: `Enter-PSSession -ComputerName '<host>' -Credential $c`.
+
+PowerShell -Command is used because GPO AllSigned ExecutionPolicy applies to
+.ps1 files, not to inline -Command strings.
+
+Files touched:
+- `apps/server/scripts/install-itd-handlers.cmd`: 3-mode dispatch added to all
+  4 existing launchers (mmc/rdp/explorer/psexec); new `:write_ps_launcher`
+  subroutine; wired in main dispatch + HKCU register block.
+- `apps/desktop/src/components/PcActions.tsx`: new ActionRow for PowerShell
+  Remote in the "access" section, between PsExec and the shares list.
+- `apps/desktop/src/i18n.tsx`: new `actions.psRemote` label (CS+EN); expanded
+  `actions.adminUserHint` (CS+EN) to describe all 3 modes + multi-admin use
+  case.
+- `docs/ARCHITECTURE.md`: 3-mode dispatch + itd-ps note in security posture.
+- `docs/dashboard.html`: CS+EN row in Per-PC Actions table + CS+EN callout for
+  3-mode dispatch + CS+EN troubleshooting entry "no admin prompt on Launch".
+- `README.md`: short note pointing at the 3-mode dispatch + itd-ps.
+
+After deploy: operator workstation needs to re-download and re-run
+`/actions/install-handlers.cmd` (HKCU launchers are non-self-updating, same
+pattern as previous fixes). Then `setx ITD_ADMIN_USER ask` (or `setx
+ITD_ADMIN_USER AXINETWORK\trnka_admin` for single-admin) and restart browser
+so new env var propagates.
+
+Local sandbox-tested before push: installer ran clean against a temp
+LOCALAPPDATA; generated itd-mmc.cmd + itd-ps.cmd inspected for syntax
+correctness (no stray `^|` carets in PS -Command string after a v2 fix; goto
+labels intact; runas /netonly path uses delayed-expanded !adminuser! from
+typed prompt).
 
 ## Frontend build not found after green deploy (NEW since 2026-06-03)
 

@@ -272,6 +272,14 @@ export function PcActionsButton({ name, fqdn, ipAddress, disks, computerId, onRe
                   buttonLabel={t('actions.downloadBat')}
                   onClick={() => { downloadBlob(`psexec-${name}.bat`, psexecBat(name)); flash(t('actions.downloaded')); }}
                 />
+                <ActionRow
+                  label={t('actions.psRemote')}
+                  hint={`Enter-PSSession -ComputerName ${name} -Credential (Get-Credential)`}
+                  launchUrl={`itd-ps://${name}`}
+                  launchLabel={t('actions.launch')}
+                  buttonLabel={t('actions.copyCmd')}
+                  onClick={async () => { (await copyText(`Enter-PSSession -ComputerName ${name} -Credential (Get-Credential)`)) ? flash(t('actions.copied')) : flash(t('actions.failed')); }}
+                />
               </Section>
 
               <Section title={t('actions.section.shares')}>

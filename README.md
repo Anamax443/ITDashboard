@@ -90,6 +90,10 @@ Deploy smoke tests now verify both the running `/version/sha` and the browser UI
 
 Protocol handler oponentura 4 from 2026-06-03 is archived in [docs/oponentury/2026-06-03-oponentura-4-installer-v2-review.md](docs/oponentury/2026-06-03-oponentura-4-installer-v2-review.md) with response [docs/oponentury/2026-06-03-reakce-4-installer-v2-review.md](docs/oponentury/2026-06-03-reakce-4-installer-v2-review.md). Verdict: production enterprise-ready, one accepted hardening — generated launcher fail screens no longer echo the raw URL to console (console reflected injection eliminated). Full URL is still recorded in `%LOCALAPPDATA%\ITDashboard\launchers\last-itd-*.log` for helpdesk diagnosis. Reinstall via `/actions/install-handlers.cmd` on each operator workstation to pick up the change.
 
+`ITD_ADMIN_USER` now has 3 modes (was 2): unset = run as current user; concrete value e.g. `AXINETWORK\trnka_admin` = `runas /netonly` with that pre-filled user prompting for password; **`ask`** = prompt for admin account each launch (empty first time, pre-fills last typed user on subsequent runs from `%LOCALAPPDATA%\ITDashboard\launchers\last-admin-user.txt`), then Windows credential dialog for password. Password is never persisted. The `ask` mode is the right pick for multi-admin workstations where several IT specialists share the operator PC.
+
+New `itd-ps://` launcher for remote PowerShell via `Enter-PSSession`. Registered alongside the existing handlers; PowerShell `Get-Credential` is used for the native both-fields credential dialog (PS `-Command` inline form bypasses ExecutionPolicy / AllSigned restrictions). The same `last-admin-user.txt` cache is shared with the cmd-side ask mode.
+
 ## Setup
 
 - [docs/SETUP-SERVER.md](docs/SETUP-SERVER.md) — one-time server bootstrap (Node, NSSM, DB, runner registration, ACL grants)

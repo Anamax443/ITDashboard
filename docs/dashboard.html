@@ -350,6 +350,7 @@ service restarts on new dist/, in-memory state cleared</div>
     <tr><td>Task Scheduler</td><td><code>itd-taskschd://NAME</code></td><td>Copy <code>mmc.exe taskschd.msc /computer=NAME</code></td></tr>
     <tr><td>RDP</td><td><code>itd-rdp://NAME</code></td><td>Download <code>.rdp</code> file</td></tr>
     <tr><td>PsExec cmd</td><td><code>itd-psexec://NAME</code> only after opt-in install</td><td>Download <code>.bat</code></td></tr>
+    <tr><td>PowerShell Remote</td><td><code>itd-ps://NAME</code></td><td>Copy <code>Enter-PSSession -ComputerName NAME -Credential (Get-Credential)</code></td></tr>
     <tr><td>Admin drive share</td><td><code>itd-explorer://NAME/LETTER</code></td><td>Copy UNC / download <code>.bat</code></td></tr>
   </table>
   <div class="callout callout-warn">
@@ -364,6 +365,12 @@ service restarts on new dist/, in-memory state cleared</div>
   <div class="callout callout-info">
     <strong>Oponentura 4 verdict (2026-06-03):</strong> production enterprise-ready. One hardening accepted — generated launcher fail screens no longer echo the raw URL to the console (the URL is attacker-controllable and could embed ANSI escape sequences for terminal manipulation). Fail screen now shows only validated fields (<code>reason</code>, <code>host</code>, <code>letter</code>). The raw URL is still recorded in <code>last-itd-*.log</code> for helpdesk diagnosis. Reinstall via <code>/actions/install-handlers.cmd</code> on each operator workstation to pick up the change.
   </div>
+  <div class="callout callout-info">
+    <strong>ITD_ADMIN_USER 3 modes:</strong> <strong>(a)</strong> unset = launchers run as your logged-in account (typically no admin rights on remote); <strong>(b)</strong> concrete value e.g. <code>AXINETWORK\trnka_admin</code> = <code>runas /netonly</code> with that user pre-filled, Windows credential dialog asks for the password only; <strong>(c)</strong> literal value <code>ask</code> = each launch prompts in CMD for the admin account (empty first time, pre-fills the last typed user on subsequent runs — Enter accepts the cached value from <code>%LOCALAPPDATA%\ITDashboard\launchers\last-admin-user.txt</code>), then Windows credential dialog for the password. Password is never persisted. Use <code>ask</code> when several IT specialists share one operator workstation.
+  </div>
+  <div class="callout callout-info">
+    <strong>New <code>itd-ps://</code> launcher:</strong> opens a PowerShell console with <code>Enter-PSSession -ComputerName HOST</code>. In ask/preset mode, credentials are collected via <code>Get-Credential</code> — a native single-dialog Windows credential UI showing both user and password fields. The PowerShell <code>-Command</code> inline form bypasses the <code>.ps1</code> ExecutionPolicy / AllSigned GPO requirement, so this works on workstations without signed-script provisions.
+  </div>
 </div>
 <div data-lang="cs">
   <p>V tabu Počítače je u každého řádku tlačítko <strong>Akce</strong> pro běžné remote-admin workflow. Dashboard zůstává observer: akce otevírají nástroje pro operátora, ale samy neopravují ani nemění cílové PC.</p>
@@ -375,6 +382,7 @@ service restarts on new dist/, in-memory state cleared</div>
     <tr><td>Plánovač úloh</td><td><code>itd-taskschd://NAME</code></td><td>Kopírovat <code>mmc.exe taskschd.msc /computer=NAME</code></td></tr>
     <tr><td>RDP</td><td><code>itd-rdp://NAME</code></td><td>Stáhnout <code>.rdp</code> soubor</td></tr>
     <tr><td>PsExec cmd</td><td><code>itd-psexec://NAME</code> jen po opt-in installu</td><td>Stáhnout <code>.bat</code></td></tr>
+    <tr><td>PowerShell Remote</td><td><code>itd-ps://NAME</code></td><td>Kopírovat <code>Enter-PSSession -ComputerName NAME -Credential (Get-Credential)</code></td></tr>
     <tr><td>Admin drive share</td><td><code>itd-explorer://NAME/LETTER</code></td><td>Kopírovat UNC / stáhnout <code>.bat</code></td></tr>
   </table>
   <div class="callout callout-warn">
@@ -388,6 +396,12 @@ service restarts on new dist/, in-memory state cleared</div>
   </div>
   <div class="callout callout-info">
     <strong>Verdikt oponentury 4 (2026-06-03):</strong> production enterprise-ready. Přijatý jeden hardening — vygenerované launchery už nevypisují raw URL na konzoli (URL je attacker-controllable přes protocol handler invocation a může obsahovat ANSI escape sekvence pro manipulaci s operátorovým terminálem). Chybový výstup teď ukazuje jen validované pole (<code>reason</code>, <code>host</code>, <code>letter</code>). Raw URL je dál zapisováno do <code>last-itd-*.log</code> pro helpdesk diagnostiku. Reinstall přes <code>/actions/install-handlers.cmd</code> na každé operátorské stanici pro vyzvednutí změny.
+  </div>
+  <div class="callout callout-info">
+    <strong>ITD_ADMIN_USER 3 módy:</strong> <strong>(a)</strong> nenastavená = launchery běží jako tvůj přihlášený účet (typicky bez admin práv na cíli); <strong>(b)</strong> konkrétní hodnota např. <code>AXINETWORK\trnka_admin</code> = <code>runas /netonly</code> s předvyplněným userem, Windows credential dialog žádá jen heslo; <strong>(c)</strong> hodnota <code>ask</code> = pro každý launch CMD nejprve vyzve k zadání admin účtu (poprvé prázdné, příště pre-fill posledně zadaného z <code>%LOCALAPPDATA%\ITDashboard\launchers\last-admin-user.txt</code> — Enter potvrdí), pak Windows credential dialog na heslo. Heslo se NIKDY nepamatuje. Použij <code>ask</code> když více IT specialistů sdílí jednu operátorskou stanici.
+  </div>
+  <div class="callout callout-info">
+    <strong>Nový <code>itd-ps://</code> launcher:</strong> otevře PowerShell konzoli s <code>Enter-PSSession -ComputerName HOST</code>. V módu ask/preset se credentials sbírají přes <code>Get-Credential</code> — native single-dialog Windows credential UI ukazující obě pole (user i heslo). PowerShell <code>-Command</code> inline forma obchází <code>.ps1</code> ExecutionPolicy / AllSigned GPO požadavek, takže funguje na stanicích bez signed-script provisions.
   </div>
 </div>
 
@@ -872,6 +886,24 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
 <div data-lang="cs">
   <p><strong>Příčina:</strong> staré vygenerované HKCU launchery nebo starší LF-only installer. Windows <code>cmd.exe</code> umí LF-only <code>.cmd</code> soubor špatně parsovat, takže okno jen blikne a skončí bez užitečné zprávy.</p>
   <p><strong>Fix:</strong> stáhnout a znovu spustit <code>/actions/install-handlers.cmd</code> na dané stanici. Nový installer přepíše launchery v <code>%LOCALAPPDATA%\ITDashboard\launchers</code>, drží batch soubory v CRLF a při validation/setup chybě zapisuje <code>last-itd-*.log</code>.</p>
+</div>
+
+<h3><span data-lang="cs">Launch otevře MMC ale Sdílené složky / Services říkají "nemáte oprávnění"</span><span data-lang="en">Launch opens MMC but Shared Folders / Services say "no permission"</span></h3>
+<div data-lang="en">
+  <p><strong>Cause:</strong> <code>ITD_ADMIN_USER</code> env var is unset, so the launcher runs MMC as your current logged-in account, which typically does not have admin rights on remote PCs.</p>
+  <p><strong>Fix:</strong> set the env var to one of two values and restart the browser so it picks up the change:</p>
+  <ul>
+    <li>Single-admin workstation: <code>setx ITD_ADMIN_USER AXINETWORK\trnka_admin</code> — every Launch then opens Windows credential dialog with your admin user pre-filled, asking only for the password.</li>
+    <li>Multi-admin workstation: <code>setx ITD_ADMIN_USER ask</code> — CMD prompts for the admin account on every Launch (empty first time, pre-fills last typed user next time). Use this when several IT specialists share the same operator PC.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p><strong>Příčina:</strong> <code>ITD_ADMIN_USER</code> env var není nastavená, takže launcher spustí MMC jako tvůj aktuální přihlášený účet, který obvykle nemá admin práva na vzdálených PC.</p>
+  <p><strong>Fix:</strong> nastav env var na jednu ze dvou hodnot a restartuj browser, aby ji vyzvedl:</p>
+  <ul>
+    <li>Single-admin workstation: <code>setx ITD_ADMIN_USER AXINETWORK\trnka_admin</code> — každý Launch pak otevře Windows credential dialog s předvyplněným admin userem, žádá jen heslo.</li>
+    <li>Multi-admin workstation: <code>setx ITD_ADMIN_USER ask</code> — CMD vyzve k zadání admin účtu při každém Launch (prázdné poprvé, příště pre-fill posledně zadaného). Použij když více IT specialistů sdílí jednu operátorskou stanici.</li>
+  </ul>
 </div>
 
 <h3><span data-lang="cs">Chybový výstup launcheru už nezobrazuje řádek URL</span><span data-lang="en">Launcher fail screen no longer shows the URL line</span></h3>

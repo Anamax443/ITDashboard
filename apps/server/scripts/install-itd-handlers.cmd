@@ -31,6 +31,7 @@ call :write_mmc_launcher itd-eventvwr eventvwr.msc
 call :write_mmc_launcher itd-taskschd taskschd.msc
 call :write_rdp_launcher
 call :write_explorer_launcher
+call :write_ps_launcher
 if "%WITH_PSEXEC%"=="1" call :write_psexec_launcher
 
 echo Registering protocol handlers under HKCU ...
@@ -41,6 +42,7 @@ call :register eventvwr  "ITDashboard MMC (Event Viewer)"
 call :register taskschd  "ITDashboard MMC (Task Scheduler)"
 call :register rdp       "ITDashboard RDP (mstsc)"
 call :register explorer  "ITDashboard explorer share"
+call :register ps        "ITDashboard PowerShell Remote (Enter-PSSession)"
 if "%WITH_PSEXEC%"=="1" call :register psexec "ITDashboard PsExec cmd"
 
 echo.
@@ -95,11 +97,30 @@ exit /b 0
 >>"%BASE%\%1.cmd" echo if not "!host:~63,1!"=="" ^(set "reason=host_too_long" ^& goto :fail^)
 >>"%BASE%\%1.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
 >>"%BASE%\%1.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching %1 url="!url!" host="!host!"
->>"%BASE%\%1.cmd" echo if defined ITD_ADMIN_USER ^(
->>"%BASE%\%1.cmd" echo   start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "mmc.exe %2 /computer=!host!"
+>>"%BASE%\%1.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
+>>"%BASE%\%1.cmd" echo if defined ITD_ADMIN_USER goto :preset_mode
+>>"%BASE%\%1.cmd" echo goto :no_admin_mode
+>>"%BASE%\%1.cmd" echo :ask_mode
+>>"%BASE%\%1.cmd" echo set "lastuserfile=%%LOCALAPPDATA%%\ITDashboard\launchers\last-admin-user.txt"
+>>"%BASE%\%1.cmd" echo set "lastuser="
+>>"%BASE%\%1.cmd" echo if exist "!lastuserfile!" set /p lastuser=^<"!lastuserfile!"
+>>"%BASE%\%1.cmd" echo if defined lastuser ^(
+>>"%BASE%\%1.cmd" echo   set /p adminuser=Admin account [Enter ^= !lastuser!]:
 >>"%BASE%\%1.cmd" echo ^) else ^(
->>"%BASE%\%1.cmd" echo   start "" mmc.exe %2 /computer="!host!"
+>>"%BASE%\%1.cmd" echo   set /p adminuser=Admin account [DOMAIN\user]:
 >>"%BASE%\%1.cmd" echo ^)
+>>"%BASE%\%1.cmd" echo if not defined adminuser if defined lastuser set "adminuser=!lastuser!"
+>>"%BASE%\%1.cmd" echo if not defined adminuser ^(set "reason=admin_user_not_entered" ^& goto :fail^)
+>>"%BASE%\%1.cmd" echo if not "!adminuser:~128,1!"=="" ^(set "reason=admin_user_too_long" ^& goto :fail^)
+>>"%BASE%\%1.cmd" echo ^>"!lastuserfile!" echo !adminuser!
+>>"%BASE%\%1.cmd" echo start "" runas /user:"!adminuser!" /netonly "mmc.exe %2 /computer=!host!"
+>>"%BASE%\%1.cmd" echo goto :eof
+>>"%BASE%\%1.cmd" echo :preset_mode
+>>"%BASE%\%1.cmd" echo start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "mmc.exe %2 /computer=!host!"
+>>"%BASE%\%1.cmd" echo goto :eof
+>>"%BASE%\%1.cmd" echo :no_admin_mode
+>>"%BASE%\%1.cmd" echo start "" mmc.exe %2 /computer="!host!"
+>>"%BASE%\%1.cmd" echo goto :eof
 call :append_common_footer "%BASE%\%1.cmd"
 goto :eof
 
@@ -114,11 +135,30 @@ goto :eof
 >>"%BASE%\itd-rdp.cmd" echo if not "!host:~63,1!"=="" ^(set "reason=host_too_long" ^& goto :fail^)
 >>"%BASE%\itd-rdp.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
 >>"%BASE%\itd-rdp.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-rdp url="!url!" host="!host!"
->>"%BASE%\itd-rdp.cmd" echo if defined ITD_ADMIN_USER ^(
->>"%BASE%\itd-rdp.cmd" echo   start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "mstsc.exe /v:!host!"
+>>"%BASE%\itd-rdp.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
+>>"%BASE%\itd-rdp.cmd" echo if defined ITD_ADMIN_USER goto :preset_mode
+>>"%BASE%\itd-rdp.cmd" echo goto :no_admin_mode
+>>"%BASE%\itd-rdp.cmd" echo :ask_mode
+>>"%BASE%\itd-rdp.cmd" echo set "lastuserfile=%%LOCALAPPDATA%%\ITDashboard\launchers\last-admin-user.txt"
+>>"%BASE%\itd-rdp.cmd" echo set "lastuser="
+>>"%BASE%\itd-rdp.cmd" echo if exist "!lastuserfile!" set /p lastuser=^<"!lastuserfile!"
+>>"%BASE%\itd-rdp.cmd" echo if defined lastuser ^(
+>>"%BASE%\itd-rdp.cmd" echo   set /p adminuser=Admin account [Enter ^= !lastuser!]:
 >>"%BASE%\itd-rdp.cmd" echo ^) else ^(
->>"%BASE%\itd-rdp.cmd" echo   start "" mstsc.exe /v:"!host!"
+>>"%BASE%\itd-rdp.cmd" echo   set /p adminuser=Admin account [DOMAIN\user]:
 >>"%BASE%\itd-rdp.cmd" echo ^)
+>>"%BASE%\itd-rdp.cmd" echo if not defined adminuser if defined lastuser set "adminuser=!lastuser!"
+>>"%BASE%\itd-rdp.cmd" echo if not defined adminuser ^(set "reason=admin_user_not_entered" ^& goto :fail^)
+>>"%BASE%\itd-rdp.cmd" echo if not "!adminuser:~128,1!"=="" ^(set "reason=admin_user_too_long" ^& goto :fail^)
+>>"%BASE%\itd-rdp.cmd" echo ^>"!lastuserfile!" echo !adminuser!
+>>"%BASE%\itd-rdp.cmd" echo start "" runas /user:"!adminuser!" /netonly "mstsc.exe /v:!host!"
+>>"%BASE%\itd-rdp.cmd" echo goto :eof
+>>"%BASE%\itd-rdp.cmd" echo :preset_mode
+>>"%BASE%\itd-rdp.cmd" echo start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "mstsc.exe /v:!host!"
+>>"%BASE%\itd-rdp.cmd" echo goto :eof
+>>"%BASE%\itd-rdp.cmd" echo :no_admin_mode
+>>"%BASE%\itd-rdp.cmd" echo start "" mstsc.exe /v:"!host!"
+>>"%BASE%\itd-rdp.cmd" echo goto :eof
 call :append_common_footer "%BASE%\itd-rdp.cmd"
 goto :eof
 
@@ -137,11 +177,30 @@ goto :eof
 >>"%BASE%\itd-explorer.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
 >>"%BASE%\itd-explorer.cmd" echo echo !letter!^| findstr /R /X "[a-zA-Z]" ^>nul ^|^| ^(set "reason=invalid_drive_letter" ^& goto :fail^)
 >>"%BASE%\itd-explorer.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-explorer url="!url!" host="!host!" letter="!letter!"
->>"%BASE%\itd-explorer.cmd" echo if defined ITD_ADMIN_USER ^(
->>"%BASE%\itd-explorer.cmd" echo   start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "explorer.exe \\!host!\!letter!$"
+>>"%BASE%\itd-explorer.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
+>>"%BASE%\itd-explorer.cmd" echo if defined ITD_ADMIN_USER goto :preset_mode
+>>"%BASE%\itd-explorer.cmd" echo goto :no_admin_mode
+>>"%BASE%\itd-explorer.cmd" echo :ask_mode
+>>"%BASE%\itd-explorer.cmd" echo set "lastuserfile=%%LOCALAPPDATA%%\ITDashboard\launchers\last-admin-user.txt"
+>>"%BASE%\itd-explorer.cmd" echo set "lastuser="
+>>"%BASE%\itd-explorer.cmd" echo if exist "!lastuserfile!" set /p lastuser=^<"!lastuserfile!"
+>>"%BASE%\itd-explorer.cmd" echo if defined lastuser ^(
+>>"%BASE%\itd-explorer.cmd" echo   set /p adminuser=Admin account [Enter ^= !lastuser!]:
 >>"%BASE%\itd-explorer.cmd" echo ^) else ^(
->>"%BASE%\itd-explorer.cmd" echo   start "" explorer.exe "\\!host!\!letter!$"
+>>"%BASE%\itd-explorer.cmd" echo   set /p adminuser=Admin account [DOMAIN\user]:
 >>"%BASE%\itd-explorer.cmd" echo ^)
+>>"%BASE%\itd-explorer.cmd" echo if not defined adminuser if defined lastuser set "adminuser=!lastuser!"
+>>"%BASE%\itd-explorer.cmd" echo if not defined adminuser ^(set "reason=admin_user_not_entered" ^& goto :fail^)
+>>"%BASE%\itd-explorer.cmd" echo if not "!adminuser:~128,1!"=="" ^(set "reason=admin_user_too_long" ^& goto :fail^)
+>>"%BASE%\itd-explorer.cmd" echo ^>"!lastuserfile!" echo !adminuser!
+>>"%BASE%\itd-explorer.cmd" echo start "" runas /user:"!adminuser!" /netonly "explorer.exe \\!host!\!letter!$"
+>>"%BASE%\itd-explorer.cmd" echo goto :eof
+>>"%BASE%\itd-explorer.cmd" echo :preset_mode
+>>"%BASE%\itd-explorer.cmd" echo start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "explorer.exe \\!host!\!letter!$"
+>>"%BASE%\itd-explorer.cmd" echo goto :eof
+>>"%BASE%\itd-explorer.cmd" echo :no_admin_mode
+>>"%BASE%\itd-explorer.cmd" echo start "" explorer.exe "\\!host!\!letter!$"
+>>"%BASE%\itd-explorer.cmd" echo goto :eof
 call :append_common_footer "%BASE%\itd-explorer.cmd"
 goto :eof
 
@@ -158,12 +217,63 @@ goto :eof
 >>"%BASE%\itd-psexec.cmd" echo if not "!host:~63,1!"=="" ^(set "reason=host_too_long" ^& goto :fail^)
 >>"%BASE%\itd-psexec.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
 >>"%BASE%\itd-psexec.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-psexec url="!url!" host="!host!"
->>"%BASE%\itd-psexec.cmd" echo if defined ITD_ADMIN_USER ^(
->>"%BASE%\itd-psexec.cmd" echo   start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "cmd /k psexec /accepteula \\!host! cmd.exe"
+>>"%BASE%\itd-psexec.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
+>>"%BASE%\itd-psexec.cmd" echo if defined ITD_ADMIN_USER goto :preset_mode
+>>"%BASE%\itd-psexec.cmd" echo goto :no_admin_mode
+>>"%BASE%\itd-psexec.cmd" echo :ask_mode
+>>"%BASE%\itd-psexec.cmd" echo set "lastuserfile=%%LOCALAPPDATA%%\ITDashboard\launchers\last-admin-user.txt"
+>>"%BASE%\itd-psexec.cmd" echo set "lastuser="
+>>"%BASE%\itd-psexec.cmd" echo if exist "!lastuserfile!" set /p lastuser=^<"!lastuserfile!"
+>>"%BASE%\itd-psexec.cmd" echo if defined lastuser ^(
+>>"%BASE%\itd-psexec.cmd" echo   set /p adminuser=Admin account [Enter ^= !lastuser!]:
 >>"%BASE%\itd-psexec.cmd" echo ^) else ^(
->>"%BASE%\itd-psexec.cmd" echo   start "" cmd /k psexec /accepteula "\\!host!" cmd.exe
+>>"%BASE%\itd-psexec.cmd" echo   set /p adminuser=Admin account [DOMAIN\user]:
 >>"%BASE%\itd-psexec.cmd" echo ^)
+>>"%BASE%\itd-psexec.cmd" echo if not defined adminuser if defined lastuser set "adminuser=!lastuser!"
+>>"%BASE%\itd-psexec.cmd" echo if not defined adminuser ^(set "reason=admin_user_not_entered" ^& goto :fail^)
+>>"%BASE%\itd-psexec.cmd" echo if not "!adminuser:~128,1!"=="" ^(set "reason=admin_user_too_long" ^& goto :fail^)
+>>"%BASE%\itd-psexec.cmd" echo ^>"!lastuserfile!" echo !adminuser!
+>>"%BASE%\itd-psexec.cmd" echo start "" runas /user:"!adminuser!" /netonly "cmd /k psexec /accepteula \\!host! cmd.exe"
+>>"%BASE%\itd-psexec.cmd" echo goto :eof
+>>"%BASE%\itd-psexec.cmd" echo :preset_mode
+>>"%BASE%\itd-psexec.cmd" echo start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "cmd /k psexec /accepteula \\!host! cmd.exe"
+>>"%BASE%\itd-psexec.cmd" echo goto :eof
+>>"%BASE%\itd-psexec.cmd" echo :no_admin_mode
+>>"%BASE%\itd-psexec.cmd" echo start "" cmd /k psexec /accepteula "\\!host!" cmd.exe
+>>"%BASE%\itd-psexec.cmd" echo goto :eof
 call :append_common_footer "%BASE%\itd-psexec.cmd"
+goto :eof
+
+:write_ps_launcher
+:: Opens a PowerShell console with Enter-PSSession -ComputerName !host! and a
+:: native Windows Get-Credential dialog. The dialog is empty on first use and
+:: pre-fills the last typed UserName on subsequent runs (per-Windows-user cache
+:: at %LOCALAPPDATA%\ITDashboard\launchers\last-admin-user.txt, shared with the
+:: cmd ask-mode dispatch above). Password is never persisted.
+> "%BASE%\itd-ps.cmd" echo @echo off
+>>"%BASE%\itd-ps.cmd" echo setlocal EnableExtensions EnableDelayedExpansion
+>>"%BASE%\itd-ps.cmd" echo set "log=%%LOCALAPPDATA%%\ITDashboard\launchers\last-%%~n0.log"
+>>"%BASE%\itd-ps.cmd" echo set "url=%%~1"
+>>"%BASE%\itd-ps.cmd" echo set "host=%%url:itd-ps://=%%"
+>>"%BASE%\itd-ps.cmd" echo set "host=%%host:/=%%"
+>>"%BASE%\itd-ps.cmd" echo if not defined host ^(set "reason=empty_host" ^& goto :fail^)
+>>"%BASE%\itd-ps.cmd" echo if not "!host:~63,1!"=="" ^(set "reason=host_too_long" ^& goto :fail^)
+>>"%BASE%\itd-ps.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
+>>"%BASE%\itd-ps.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-ps url="!url!" host="!host!"
+>>"%BASE%\itd-ps.cmd" echo set "lastuserfile=%%LOCALAPPDATA%%\ITDashboard\launchers\last-admin-user.txt"
+>>"%BASE%\itd-ps.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
+>>"%BASE%\itd-ps.cmd" echo if defined ITD_ADMIN_USER goto :preset_mode
+>>"%BASE%\itd-ps.cmd" echo goto :no_admin_mode
+>>"%BASE%\itd-ps.cmd" echo :ask_mode
+>>"%BASE%\itd-ps.cmd" echo start "" powershell -NoExit -Command "$f='!lastuserfile!'; $u=if(Test-Path $f){(Get-Content $f -TotalCount 1).Trim()}else{''}; $c=Get-Credential -UserName $u -Message 'Admin credentials for !host!'; if($c -and $c.UserName -match '^[A-Za-z0-9._@\\-]+$'){$c.UserName | Out-File -Encoding ASCII -NoNewline $f}; if($c){Enter-PSSession -ComputerName '!host!' -Credential $c}"
+>>"%BASE%\itd-ps.cmd" echo goto :eof
+>>"%BASE%\itd-ps.cmd" echo :preset_mode
+>>"%BASE%\itd-ps.cmd" echo start "" powershell -NoExit -Command "$c=Get-Credential -UserName '%%ITD_ADMIN_USER%%' -Message 'Admin credentials for !host!'; if($c){Enter-PSSession -ComputerName '!host!' -Credential $c}"
+>>"%BASE%\itd-ps.cmd" echo goto :eof
+>>"%BASE%\itd-ps.cmd" echo :no_admin_mode
+>>"%BASE%\itd-ps.cmd" echo start "" powershell -NoExit -Command "Enter-PSSession -ComputerName '!host!'"
+>>"%BASE%\itd-ps.cmd" echo goto :eof
+call :append_common_footer "%BASE%\itd-ps.cmd"
 goto :eof
 
 :append_common_footer
