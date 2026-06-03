@@ -212,6 +212,23 @@ export function SettingsPage() {
         </Section>
 
         <Section
+          title="Perf-events lookback"
+          description="How far back to scan on the very first sweep of a PC (cold-start). Subsequent sweeps go incrementally from the last collected event."
+        >
+          <Field label="Cold-start lookback (days)">
+            <NumberInput
+              v={value('perf.cold_start_days', '30')}
+              onChange={(v) => set('perf.cold_start_days', v)}
+              suffix="days"
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '0' }}>
+            Default 30. Workstations are typically rebooted infrequently — a 7-day window often misses
+            the previous boot's events. Range 1–365.
+          </p>
+        </Section>
+
+        <Section
           title="AD sync defaults"
           description='Applied when AD sync discovers a new computer (existing PCs keep their current monitor flag — operator intent persists across syncs).'
         >

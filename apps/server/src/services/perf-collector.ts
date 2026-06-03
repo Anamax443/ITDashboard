@@ -35,7 +35,7 @@ interface Target { id: number; name: string; }
 
 const CONCURRENCY = 5;
 const MAX_EVENTS_PER_PC_PER_RUN = 200;
-const COLD_START_HOURS = 24 * 7; // first sweep pulls last 7 days
+const COLD_START_DAYS_DEFAULT = 30; // setting perf.cold_start_days overrides
 
 let runInFlight = false;
 
@@ -167,6 +167,14 @@ export async function runPerfCollectorOnce(): Promise<PerfCollectResult | null> 
   runInFlight = true;
   const t0 = Date.now();
   try {
+    const { getSetting } = await import('./settings.js');
+    const coldStartRaw = await getSetting('perf.cold_start_days').catch(() => undefined);
+    const coldStartDays = (() => {
+      const n = Number(coldStartRaw);
+      return Number.isFinite(n) && n > 0 ? Math.min(n, 365) : COLD_START_DAYS_DEFAULT;
+    })();
+    const coldStartMs = coldStartDays * 24 * 3600 * 1000;
+
     const pool = await getPool();
     const r = await pool.request().query<Target & { last_perf_collected_at: Date | null }>(`
       SELECT id, name,
@@ -175,13 +183,13 @@ export async function runPerfCollectorOnce(): Promise<PerfCollectResult | null> 
       WHERE enabled = 1 AND monitor_enabled = 1 AND excluded = 0 AND consecutive_failures < 10
     `);
     const targets = r.recordset;
-    logActivity('info', 'perf', `Starting perf scan — ${targets.length} PCs`);
+    logActivity('info', 'perf', `Starting perf scan — ${targets.length} PCs (cold-start ${coldStartDays}d)`);
 
     let ok = 0, fail = 0, channelDisabled = 0, totalEvents = 0;
     for (let i = 0; i < targets.length; i += CONCURRENCY) {
       const batch = targets.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(batch.map(async (c) => {
-        const since = c.last_perf_collected_at ?? new Date(Date.now() - COLD_START_HOURS * 3600 * 1000);
+        const since = c.last_perf_collected_at ?? new Date(Date.now() - coldStartMs);
         const events = await fetchPerfEvents(c.name, since);
         const added = await insertPerfEvents(c.id, events);
         return added;

@@ -171,3 +171,4 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 015_periodic_checks | unified periodic check scheduler settings |
 | 016_perf_events | perf_events table (Diagnostics-Performance channel) + checks.run_perf setting |
 | 017_adsync_in_runall | checks.run_adsync (default false) + adsync.default_monitor_enabled (default true) |
+| 018_perf_cold_start_days | perf.cold_start_days (default 30) — configurable first-sweep lookback for perf-events collector |

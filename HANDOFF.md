@@ -80,6 +80,7 @@ Settings keys:
 - `checks.run_perf`
 - `checks.run_adsync` (default `false` in periodic — fleet AD MERGE is overkill every 15 min)
 - `adsync.default_monitor_enabled` (default `true`) — applied to newly INSERTed PCs by AD sync. Existing PCs keep their current `monitor_enabled` flag (operator intent persists).
+- `perf.cold_start_days` (default `30`) — how far back the perf-events collector reaches on the very first sweep of a PC. Subsequent sweeps go incrementally from the last collected event. Range 1–365.
 
 Behavior:
 - Scheduled checks run only inside the selected day/time window.
@@ -157,10 +158,17 @@ Implemented in:
 - `apps/desktop/src/pages/PerfPage.tsx`
 
 Source channel: `Microsoft-Windows-Diagnostics-Performance/Operational`,
-enabled by default on Windows 10/11 and Server. The collector pulls slow-event
-records via `Get-WinEvent -ComputerName ...` (same RPC path as eventlog
-collector — needs Event Log Readers + RPC). EventData is parsed from XML to
-extract `TotalTime`, `DegradationTime`, `Name`, `FriendlyName`.
+enabled by default on Windows 10/11 (off by default on Server SKU, see below).
+The collector pulls slow-event records via `Get-WinEvent -ComputerName ...`
+(same RPC path as eventlog collector — needs Event Log Readers + RPC).
+EventData is parsed from XML to extract `TotalTime`, `DegradationTime`,
+`Name`, `FriendlyName`.
+
+Cold-start window: configurable via `perf.cold_start_days` setting (default
+30). Workstations are typically rebooted infrequently — events are sparse —
+so a short window risks missing the previous reboot's events. After the first
+successful sweep per PC, subsequent runs go incrementally since
+`MAX(time_created)` for that computer.
 
 Event ID ranges:
 - 100–199 = boot (101 app-caused, 102 driver, 103 service, 108/109 slow service/device, 150 degradation)
