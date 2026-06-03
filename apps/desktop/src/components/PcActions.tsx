@@ -197,13 +197,30 @@ export function PcActionsButton({ name, fqdn, ipAddress, disks, computerId, onRe
                 borderRadius: 4, padding: '8px 12px', marginBottom: 12, fontSize: 11,
               }}>
                 <div>{t('actions.installBanner')}</div>
-                <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <a
                     href={`${API_BASE}/actions/install-handlers.cmd`}
                     className="refresh-btn"
                     style={{ padding: '2px 10px', fontSize: 11, textDecoration: 'none', color: 'var(--text)' }}
                   >📦 {t('actions.installDownload')}</a>
+                  <button
+                    className="refresh-btn"
+                    style={{ padding: '2px 10px', fontSize: 11, border: '1px solid var(--accent)' }}
+                    onClick={async () => {
+                      const cmd = `Invoke-WebRequest ${API_BASE}/actions/install-handlers.cmd -OutFile $env:TEMP\\install-handlers.cmd; & $env:TEMP\\install-handlers.cmd`;
+                      (await copyText(cmd)) ? flash(t('actions.installCopiedPerUser')) : flash(t('actions.failed'));
+                    }}
+                  >📋 {t('actions.installCopyPerUser')}</button>
+                  <button
+                    className="refresh-btn"
+                    style={{ padding: '2px 10px', fontSize: 11, border: '1px solid var(--accent)' }}
+                    onClick={async () => {
+                      const cmd = `Invoke-WebRequest ${API_BASE}/actions/install-handlers.cmd -OutFile $env:TEMP\\install-handlers.cmd; Start-Process cmd -ArgumentList "/c \`"$env:TEMP\\install-handlers.cmd\`" /machine" -Verb RunAs`;
+                      (await copyText(cmd)) ? flash(t('actions.installCopiedMachine')) : flash(t('actions.failed'));
+                    }}
+                  >🛡 {t('actions.installCopyMachine')}</button>
                 </div>
+                <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text-dim)' }}>{t('actions.installScopeHint')}</div>
               </div>
               <div style={{
                 background: 'rgba(234, 179, 8, 0.10)',
