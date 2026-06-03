@@ -26,9 +26,9 @@ export async function registerServicesRoutes(app: FastifyInstance) {
              SUM(CASE WHEN sp.is_compliant = 0 THEN 1 ELSE 0 END) AS drift_count,
              SUM(CASE WHEN sp.is_compliant = 1 THEN 1 ELSE 0 END) AS ok_count,
              SUM(CASE WHEN sp.is_compliant IS NULL THEN 1 ELSE 0 END) AS unclassified_count,
-             MAX(sp.trigger_start) AS trigger_start,
-             MAX(sp.delayed_start) AS delayed_start,
-             MAX(sp.per_user_start) AS per_user_start,
+             CAST(MAX(CAST(sp.trigger_start AS TINYINT)) AS BIT) AS trigger_start,
+             CAST(MAX(CAST(sp.delayed_start AS TINYINT)) AS BIT) AS delayed_start,
+             CAST(MAX(CAST(sp.per_user_start AS TINYINT)) AS BIT) AS per_user_start,
              MAX(sp.policy_id) AS policy_id
       FROM service_problems sp
       JOIN computers c ON c.id = sp.computer_id
