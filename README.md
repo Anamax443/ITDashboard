@@ -7,6 +7,8 @@ Internal IT operations dashboard for the **AXINETWORK** domain. Eventlog analyti
 - **Eventlog visibility** — pulls Warning/Error/Critical events from every monitored PC into a central DB. Filter, search, sort, drill down.
 - **AD-synced inventory** — keeps a current list of domain computers (OS, last logon, OU path) with operator-controlled per-PC monitor toggle.
 - **Disk space monitoring** — periodic DCOM scan; configurable thresholds (% / GB); colored progress bars; drill-down filter.
+- **Services collector + policy** — detects Auto + non-Running services across the fleet, classifies legitimate cases (Trigger / Delayed / per-user), flags real drift against a policy table, GPO PS script export.
+- **Performance events** — pulls slow boot / shutdown / standby / resume records from the `Microsoft-Windows-Diagnostics-Performance/Operational` channel with named culprits and timings (observer of Windows' own diagnostics, no continuous polling).
 - **Reachability classification** — every collector run categorises each PC as `online` / `offline` / `rpc_unavailable` / `access_denied`. Dashboard surfaces breakdown.
 - **Activity log** — terminal-style live view of every collector / sync / disk-scan action with filter, pause, copy-to-clipboard.
 - **Settings page** — periodic check frequency, days/time window, enabled checks + disk thresholds, applied live without service restart.
@@ -44,7 +46,7 @@ ITDashboard/
   apps/
     desktop/                       # Electron + React UI (Dashboard, Events, Computers, Activity, Settings)
     server/                        # Fastify API + collectors + AD sync
-      migrations/                  # MSSQL migrations 001–009
+      migrations/                  # MSSQL migrations 001–016
   packages/
     ad-bridge/                     # AD wrapper (Get-ADComputer)
     eventlog-collector/            # standalone wrapper (currently inlined in server)

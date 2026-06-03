@@ -87,6 +87,7 @@ a.external { color: var(--accent); }
     <li><a href="#collector">Eventlog collector</a></li>
     <li><a href="#disk">Disk space collector</a></li>
     <li><a href="#services">Services collector + policy</a></li>
+    <li><a href="#perf">Perf events (Diagnostics-Performance)</a></li>
     <li><a href="#ad-sync">AD sync</a></li>
     <li><a href="#scripts">Script runner</a></li>
     <li><a href="#settings">Settings</a></li>
@@ -174,7 +175,7 @@ service restarts on new dist/, in-memory state cleared</div>
 <ul>
   <li>Fastify + TypeScript HTTP API on port <code>4000</code></li>
   <li>MSSQL via <strong><code>msnodesqlv8</code></strong> driver (Windows-native, SSPI Integrated Auth; the pure-JS <code>tedious</code> driver fails with "untrusted domain" in domain environments)</li>
-  <li>Background tasks: unified periodic checks scheduler (eventlog / disk / services), retention purge</li>
+  <li>Background tasks: unified periodic checks scheduler (eventlog / disk / services / perf), retention purge</li>
   <li>PowerShell child processes for AD queries (<code>Get-ADComputer</code>), eventlog reads (<code>Get-WinEvent -ComputerName</code>), disk reads (<code>Get-CimInstance</code> via DCOM session)</li>
   <li>Node-side TCP probe to port 135 before each PS spawn — fail-fast for offline targets, clean classification</li>
   <li>In-memory ring buffer (500 entries) for activity log, polled by dashboard</li>
@@ -184,7 +185,7 @@ service restarts on new dist/, in-memory state cleared</div>
   <li>Electron + React + Vite + TypeScript</li>
   <li>Pure consumer of the API — no business logic, no direct AD/DB access</li>
   <li>Auto-refresh dashboard every 30s; collector status polled every 2s during in-flight runs; activity log polled every 2s</li>
-  <li>5 navigation tabs: Dashboard, Events, Computers, Activity, Settings (+ external Docs link)</li>
+  <li>7 navigation tabs: Dashboard, Events, Computers, Services, Perf, Activity, Settings (+ external Docs link)</li>
 </ul>
 
 <h2 id="ui-tour">UI tour</h2>
@@ -201,6 +202,8 @@ service restarts on new dist/, in-memory state cleared</div>
       <li>Unreachable PCs — subtitle breaks down <code>X offline · Y RPC · Z auth</code> → Computers tab with failing filter</li>
       <li>Disk critical (N PCs / M drives) → Computers tab with disk-critical filter</li>
       <li>Disk warning → Computers tab with disk-warning filter</li>
+      <li>Stopped services (PCs affected) → Services tab</li>
+      <li>Slow boot/shutdown (7d, PCs affected) → Perf tab</li>
       <li>Computers (active/total) → Computers tab unfiltered</li>
     </ul>
   </li>
@@ -236,6 +239,17 @@ service restarts on new dist/, in-memory state cleared</div>
   <li>Last collected / Last error columns</li>
 </ul>
 
+<h3>Perf tab</h3>
+<p>Surfaces slow boot / shutdown / standby / resume records pulled from the <code>Microsoft-Windows-Diagnostics-Performance/Operational</code> channel. This is <em>not</em> a continuous CPU graph — only the outliers Windows itself flagged as degraded, with the named culprit (process / service / driver / device) and how long it took.</p>
+<ul>
+  <li>5 summary cards: affected PCs, boot events, shutdown events, standby events, resume events (selectable time range: 24h / 7d / 30d / 90d)</li>
+  <li><strong>Top culprits</strong> — aggregated by culprit name across the fleet, with event count, distinct PC count, average and max time</li>
+  <li><strong>Most affected PCs</strong> — by total event count, with boot/shutdown breakdown, average boot time, last event timestamp; clicking a row filters the events table to that PC</li>
+  <li><strong>Recent events</strong> — full table sorted newest first: When, Computer, Category, Event ID, Total time, Degradation, Culprit (friendly name preferred, raw name in tooltip)</li>
+  <li><strong>▶ Run perf scan</strong> button — same one-shot sweep the scheduler runs</li>
+</ul>
+<p>Event ID ranges: 100–199 boot · 200–299 shutdown · 300–399 standby · 400–499 resume. Default channel retention on each PC is a small ring buffer (~1 MB), so we sweep into SQL to preserve history. Cold-start sweep pulls last 7 days; incremental sweeps pull only what's new since the last collection per PC.</p>
+
 <h3>Activity tab</h3>
 <p>Terminal-style live log, polled every 2s:</p>
 <ul>
@@ -249,7 +263,7 @@ service restarts on new dist/, in-memory state cleared</div>
 
 <h3>Settings tab</h3>
 <ul>
-  <li><strong>Periodic checks</strong> — one frequency, editable days/time window (default Po–Pá 06:00–18:00), plus checkboxes for Eventlog collector, Disk scan, and Services scan; changes apply live (no service restart needed)</li>
+  <li><strong>Periodic checks</strong> — one frequency, editable days/time window (default Po–Pá 06:00–18:00), plus checkboxes for Eventlog collector, Disk scan, Services scan, and Perf events; changes apply live (no service restart needed)</li>
   <li><strong>Disk space thresholds</strong> — Mode (Percent free / GB free / Either most-strict), Critical & Warning values for both % and GB</li>
   <li>Save button only enabled when there are unsaved changes</li>
 </ul>
@@ -353,6 +367,44 @@ service restarts on new dist/, in-memory state cleared</div>
   <li><strong>Ad-hoc run</strong> — PsExec / RDP to a single PC as admin, run the script</li>
 </ul>
 <p>Script iterates each policy pattern and calls <code>Set-Service -StartupType</code> for every matching local service. Idempotent and safe to re-run.</p>
+
+<h2 id="perf">Perf events (Diagnostics-Performance)</h2>
+<p>Sweeps the <code>Microsoft-Windows-Diagnostics-Performance/Operational</code> channel on every monitored PC and persists the slow-event records Windows itself diagnosed: boot, shutdown, standby, resume. Provides per-incident attribution (named culprit process / service / driver / device) with total time and degradation time.</p>
+<table>
+  <tr><th>Setting</th><th>Default</th></tr>
+  <tr><td>Schedule</td><td>Selected in Settings → Periodic checks (default included)</td></tr>
+  <tr><td>Transport</td><td>Get-WinEvent -ComputerName (same RPC/MS-EVEN6 path as eventlog collector)</td></tr>
+  <tr><td>Channel</td><td><code>Microsoft-Windows-Diagnostics-Performance/Operational</code> — enabled by default on Win10/11/Server</td></tr>
+  <tr><td>Cold-start lookback</td><td>7 days</td></tr>
+  <tr><td>Incremental lookback</td><td>since <code>MAX(time_created)</code> per PC</td></tr>
+  <tr><td>Max events per sweep per PC</td><td>200</td></tr>
+  <tr><td>Concurrency</td><td>5 PCs in parallel</td></tr>
+  <tr><td>Dedupe</td><td>UNIQUE <code>(computer_id, time_created, event_id)</code> in <code>perf_events</code></td></tr>
+</table>
+
+<h3>Event ID ranges</h3>
+<ul>
+  <li><strong>100&ndash;199 boot</strong> &mdash; 100 overall boot, 101 app-caused delay, 102 driver delay, 103 service delay, 108/109 slow boot caused by service/device, 110 slow logon caused by user profile, 150 degradation detected</li>
+  <li><strong>200&ndash;299 shutdown</strong> &mdash; 200 overall, 201/202/203 app/driver/service delay</li>
+  <li><strong>300&ndash;399 standby</strong></li>
+  <li><strong>400&ndash;499 resume</strong></li>
+</ul>
+
+<h3>EventData parsing</h3>
+<p>The PowerShell collector calls <code>$e.ToXml()</code> on every event and parses the <code>EventData/Data</code> elements by <code>Name</code> attribute, extracting:</p>
+<ul>
+  <li><code>TotalTime</code> &mdash; total operation time in ms (stored as <code>total_time_ms</code>)</li>
+  <li><code>DegradationTime</code> &mdash; extra time vs baseline in ms (<code>degradation_ms</code>)</li>
+  <li><code>Name</code> &mdash; raw culprit identifier (<code>culprit_name</code>: process exe, service name, driver name)</li>
+  <li><code>FriendlyName</code> &mdash; display name when present (<code>culprit_friendly</code>)</li>
+</ul>
+
+<h3>Why not continuous CPU history?</h3>
+<p>Windows does not natively retain a continuous CPU usage curve. Performance Monitor Data Collector Sets are off by default; SRUM stores per-process daily aggregates but isn't WMI-accessible. The Diagnostics-Performance channel was chosen because it is on by default, gives named-culprit attribution per incident, and reuses the existing RPC path with zero agent install. The tradeoff: you see Windows' opinion of which events were "slow" &mdash; the threshold is not configurable &mdash; and you don't see sustained workday usage, only diagnosed degradations.</p>
+
+<div class="callout callout-info">
+This is the <strong>observer-not-executor</strong> pattern applied to telemetry: ITDashboard never installs an agent, never enables polling on the target, and never holds the target's truth &mdash; it only reads what Windows itself decided to record, on its own schedule.
+</div>
 
 <h2 id="ad-sync">AD sync</h2>
 <p>Calls <code>Get-ADComputer -Filter * -Properties OperatingSystem, LastLogonDate, DistinguishedName</code> against the domain controller, MERGE-upserts into <code>computers</code> table.</p>

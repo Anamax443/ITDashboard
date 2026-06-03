@@ -9,10 +9,12 @@
 - `contextIsolation: true`, `nodeIntegration: false` — renderer has no direct Node.js access.
 - Scripts don't execute locally — client calls `POST /scripts/:slug/run` and API spawns them on the server.
 
-5 navigation tabs:
-- **Dashboard** — collector status, 7 summary cards (clickable drill-down), timeline chart, top noisy PCs chart, top event IDs, computers summary
+6 navigation tabs:
+- **Dashboard** — collector status, summary cards (clickable drill-down), timeline chart, top noisy PCs chart, top event IDs, computers summary
 - **Events** — full-width events table with search + filters (Computer, Source, Level, Time range)
 - **Computers** — inventory with status chips, monitor checkboxes, bulk all/none, AD sync, disk scan, sync history
+- **Services** — Auto + non-Running detection with policy/drift, by-PC + by-service views, GPO PS script export
+- **Perf** — Diagnostics-Performance channel: summary cards, top culprits, most-affected PCs, recent slow boot/shutdown/standby/resume events
 - **Activity** — terminal-style live log (filter, pause, copy)
 - **Settings** — periodic check frequency + enabled checks + disk thresholds (applied live, no restart)
 
@@ -29,10 +31,11 @@
   - `settings` — get all, put bulk
   - `scripts` — list (run endpoint pending)
 - Background tasks:
-  - **Periodic checks scheduler** — every `checks.interval_sec` (default 900) within `checks.days` + `checks.window_start/end` runs selected checks from Settings: eventlog, disk, services
+  - **Periodic checks scheduler** — every `checks.interval_sec` (default 900) within `checks.days` + `checks.window_start/end` runs selected checks from Settings: eventlog, disk, services, perf
   - **Eventlog collector** — pulls Warning/Error/Critical events
   - **Disk collector** — pulls Win32_LogicalDisk via DCOM
   - **Services collector** — checks Auto + non-running Windows services and drift policy
+  - **Perf-events collector** — pulls slow boot/shutdown/standby/resume records from the `Microsoft-Windows-Diagnostics-Performance/Operational` channel; parses EventData XML for TotalTime / DegradationTime / culprit
   - **Retention purge** — `sp_purge_old_events @retention_days = 90` daily
 
 ### Database (`MSSQL 10.8.2.225`, DB `ITDashboard`)
@@ -41,6 +44,8 @@ Tables:
 - `events` — raw events with unique idx `(computer_id, event_id, log_name, time_created)` for idempotency
 - `event_daily_agg` — daily aggregates per (computer, log_name, event_id, level), kept forever
 - `disks` — per-drive snapshot (replaces row on each scan)
+- `perf_events` — slow boot/shutdown/standby/resume records with parsed culprit + total/degradation timings; dedupe on `(computer_id, time_created, event_id)`
+- `service_problems`, `service_policy` — services collector state + drift rules
 - `settings` — key-value, edited via Settings tab
 - `collector_runs` — eventlog collector run audit
 - `ad_sync_runs` — AD sync audit
@@ -78,7 +83,13 @@ Persisted in `computers.last_status`. UI shows breakdown in Dashboard Unreachabl
 `computers.monitor_enabled` is the operator's intent. AD sync explicitly does **not** touch this column — it only updates `fqdn`, `os_version`, `last_seen`, `enabled` (AD presence). When a PC is removed from AD it gets soft-disabled (`enabled = 0`) but its events stay. If it reappears, `enabled = 1` again and the original `monitor_enabled` state persists.
 
 ### Settings live-reschedule
-`checks.interval_sec` causes immediate scheduler reschedule on save — no service restart. The day/time window and check enable flags (`checks.run_eventlog`, `checks.run_disk`, `checks.run_services`) are read on every scheduled run, so toggles apply to the next cycle.
+`checks.interval_sec` causes immediate scheduler reschedule on save — no service restart. The day/time window and check enable flags (`checks.run_eventlog`, `checks.run_disk`, `checks.run_services`, `checks.run_perf`) are read on every scheduled run, so toggles apply to the next cycle.
+
+### Observer, not executor
+The whole tool follows the loop `observe → compare with threshold → show to operator`, never `observe → act → re-observe`. Remediation is delegated to the human at the screen. The Services tab "GPO script export" stays on the right side of this line (we export a script, we don't execute it). Future backlog items like "Direct fix button per service-PC" would cross it, and should be evaluated against this principle before being implemented. Two reasons: (1) absence of signal is ambiguous — an OFFLINE PC could be down, the network could be down, or the monitor itself could be blind, so acting on incomplete state is dangerous; (2) the monitor doesn't own truth, the machines do — every shown value is a 30-second-to-15-minute-stale derivative, and acting on stale state is how races and storms start.
+
+### Perf-events: discrete slow records, not continuous CPU history
+The perf-events collector subscribes to the `Microsoft-Windows-Diagnostics-Performance/Operational` channel, which contains only the events Windows itself diagnosed as "slow" (boot/shutdown/standby/resume timing degradations) — not a continuous CPU curve. Windows does not natively retain CPU usage history without an opt-in Data Collector Set; SRUM has rough per-process daily data but isn't WMI-accessible. The diagnostics channel was chosen because it is enabled by default on Win10/11/Server, gives per-incident attribution (named culprit process / service / driver), and reuses the existing RPC collection path with no agent install. Default channel retention is small (~1 MB ring buffer) so we sweep into SQL to preserve history; cold-start pulls 7 days, then incremental.
 
 ### Activity log is in-memory only
 Ring buffer of 500 entries, polled by dashboard every 2s. Lost on service restart. For permanent audit, the relevant info is also written to DB tables (`collector_runs`, `ad_sync_runs`, `script_runs`). This avoids DB writes for every log line (~thousands per collector run).
@@ -148,3 +159,4 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 013_excluded_flag | computers.excluded (operator-controlled hard exclude) |
 | 014_service_policy | service_policy table with seeded defaults + service_problems drift columns |
 | 015_periodic_checks | unified periodic check scheduler settings |
+| 016_perf_events | perf_events table (Diagnostics-Performance channel) + checks.run_perf setting |
