@@ -5,8 +5,9 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "dev": "node scripts/build-info.mjs && tsx watch src/index.ts",
+    "build": "node scripts/build-info.mjs && tsc -p tsconfig.json",
+    "prebuild-info": "node scripts/build-info.mjs",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate": "tsx src/db/migrate.ts"

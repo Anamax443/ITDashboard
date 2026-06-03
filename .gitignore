@@ -13,6 +13,9 @@ Thumbs.db
 coverage/
 *.tsbuildinfo
 
+# Generated at build time — captures git SHA of the actually-built binary
+apps/server/src/build-info.ts
+
 # Electron
 apps/desktop/release/
 apps/desktop/out/
