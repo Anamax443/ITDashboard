@@ -61,7 +61,8 @@ export function PerfPage() {
       if ('skipped' in r) {
         setScanMessage('Already running');
       } else {
-        setScanMessage(`Scanned ${r.pcs} PCs · ${r.ok} OK · ${r.fail} fail · +${r.events} events (${(r.durationMs/1000).toFixed(1)}s)`);
+        const channelNote = r.channelDisabled > 0 ? ` · ${r.channelDisabled} channel-disabled (Server SKU)` : '';
+        setScanMessage(`Scanned ${r.pcs} PCs · ${r.ok} OK · ${r.fail} fail${channelNote} · +${r.events} events (${(r.durationMs/1000).toFixed(1)}s)`);
         await refresh();
       }
     } catch (e) {
@@ -118,6 +119,13 @@ export function PerfPage() {
             Event ID ranges: 100–199 boot · 200–299 shutdown · 300–399 standby ·
             400–499 resume. Cold-start sweep pulls last 7 days; incremental
             sweeps pull only what's new since last collection.
+          </p>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11 }}>
+            <strong>Server SKU note:</strong> the channel is on by default on
+            Windows 10/11 client, but off by default on Windows Server. Servers
+            are reported as "channel-disabled" and skipped silently — to enable
+            on the fleet, push a GPO startup script that runs
+            <code> wevtutil sl Microsoft-Windows-Diagnostics-Performance/Operational /e:true</code>.
           </p>
         </HelpBox>
 

@@ -399,6 +399,12 @@ service restarts on new dist/, in-memory state cleared</div>
   <li><code>FriendlyName</code> &mdash; display name when present (<code>culprit_friendly</code>)</li>
 </ul>
 
+<h3>Server SKU gotcha</h3>
+<p>The Diagnostics-Performance channel is on by default on Windows 10/11 client, but <strong>off by default on Windows Server</strong>. <code>Get-WinEvent</code> on a disabled channel returns <code>"There is not an event log on the X computer that matches"</code>. The collector matches this error pattern, classifies it as <code>channel-disabled</code> (separate counter, not a failure), and skips silently — no per-PC noise in the activity log, one aggregate line at end of run (e.g. <code>"Perf scan done: 142 OK / 3 fail / 24 channel-disabled / +18 events"</code>).</p>
+<p>To enable across the server fleet, push a GPO computer-startup script that runs:</p>
+<pre><code>wevtutil sl Microsoft-Windows-Diagnostics-Performance/Operational /e:true</code></pre>
+<p>Same pattern as the Services GPO script export. The channel starts recording on the next boot/shutdown/standby/resume cycle.</p>
+
 <h3>Why not continuous CPU history?</h3>
 <p>Windows does not natively retain a continuous CPU usage curve. Performance Monitor Data Collector Sets are off by default; SRUM stores per-process daily aggregates but isn't WMI-accessible. The Diagnostics-Performance channel was chosen because it is on by default, gives named-culprit attribution per incident, and reuses the existing RPC path with zero agent install. The tradeoff: you see Windows' opinion of which events were "slow" &mdash; the threshold is not configurable &mdash; and you don't see sustained workday usage, only diagnosed degradations.</p>
 

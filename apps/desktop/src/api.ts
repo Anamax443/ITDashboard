@@ -418,6 +418,7 @@ export interface PerfScanResult {
   pcs: number;
   ok: number;
   fail: number;
+  channelDisabled: number;
   events: number;
   durationMs: number;
 }

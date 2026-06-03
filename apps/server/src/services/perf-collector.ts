@@ -155,9 +155,12 @@ export interface PerfCollectResult {
   pcs: number;
   ok: number;
   fail: number;
+  channelDisabled: number;
   events: number;
   durationMs: number;
 }
+
+const CHANNEL_NOT_AVAILABLE_RE = /There is not an event log on/i;
 
 export async function runPerfCollectorOnce(): Promise<PerfCollectResult | null> {
   if (runInFlight) return null;
@@ -174,7 +177,7 @@ export async function runPerfCollectorOnce(): Promise<PerfCollectResult | null> 
     const targets = r.recordset;
     logActivity('info', 'perf', `Starting perf scan — ${targets.length} PCs`);
 
-    let ok = 0, fail = 0, totalEvents = 0;
+    let ok = 0, fail = 0, channelDisabled = 0, totalEvents = 0;
     for (let i = 0; i < targets.length; i += CONCURRENCY) {
       const batch = targets.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(batch.map(async (c) => {
@@ -191,16 +194,24 @@ export async function runPerfCollectorOnce(): Promise<PerfCollectResult | null> 
           totalEvents += r2.value;
           if (r2.value > 0) logActivity('info', 'perf', `${c.name} → +${r2.value} perf events`);
         } else {
-          fail++;
           const errMsg = String(r2.reason).split('\n')[0]?.slice(0, 200) ?? 'unknown';
-          logActivity('warn', 'perf', `${c.name} → ${errMsg}`);
+          // The Diagnostics-Performance channel is disabled by default on Windows Server SKU.
+          // Treat that as a known no-op (not a failure) and don't spam the activity log per-PC —
+          // a single aggregate line at the end of the run is enough.
+          if (CHANNEL_NOT_AVAILABLE_RE.test(errMsg)) {
+            channelDisabled++;
+          } else {
+            fail++;
+            logActivity('warn', 'perf', `${c.name} → ${errMsg}`);
+          }
         }
       }
     }
 
     const durationMs = Date.now() - t0;
-    logActivity('success', 'perf', `Perf scan done: ${ok} OK / ${fail} fail / +${totalEvents} events (${(durationMs/1000).toFixed(1)}s)`);
-    return { pcs: targets.length, ok, fail, events: totalEvents, durationMs };
+    const channelNote = channelDisabled > 0 ? ` / ${channelDisabled} channel-disabled` : '';
+    logActivity('success', 'perf', `Perf scan done: ${ok} OK / ${fail} fail${channelNote} / +${totalEvents} events (${(durationMs/1000).toFixed(1)}s)`);
+    return { pcs: targets.length, ok, fail, channelDisabled, events: totalEvents, durationMs };
   } finally {
     runInFlight = false;
   }
