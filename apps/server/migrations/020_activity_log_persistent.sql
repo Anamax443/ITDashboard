@@ -25,14 +25,14 @@ USING (VALUES ('activity.retention_days', '30')) AS s([key], [value])
 ON t.[key] = s.[key]
 WHEN NOT MATCHED THEN INSERT ([key], [value]) VALUES (s.[key], s.[value]);
 
-IF OBJECT_ID('sp_purge_old_activity', 'P') IS NOT NULL DROP PROCEDURE sp_purge_old_activity;
-GO
-CREATE PROCEDURE sp_purge_old_activity
-  @retention_days INT = 30
-AS
+-- EXEC('CREATE PROCEDURE …') sidesteps the requirement that CREATE PROCEDURE
+-- be the first statement in a batch (msnodesqlv8 .batch() doesn't split on GO).
+IF NOT EXISTS (SELECT 1 FROM sys.procedures WHERE name = 'sp_purge_old_activity')
+EXEC('
+CREATE PROCEDURE sp_purge_old_activity @retention_days INT = 30 AS
 BEGIN
   SET NOCOUNT ON;
   DELETE FROM activity_log
   WHERE ts < DATEADD(DAY, -@retention_days, SYSUTCDATETIME());
 END
-GO
+');
