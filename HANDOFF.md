@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (frontend dist path fix)
+Last updated: 2026-06-03 (installer console reflection hardening)
 
 ## Current Live State
 
@@ -74,6 +74,49 @@ Docs/UI sync for this fix completed:
   Troubleshooting entry for "CMD window flashes and closes".
 - `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show the reinstall guidance in
   the Actions modal warning block.
+
+## Installer console reflection hardening (NEW since 2026-06-03, oponentura 4)
+
+Fourth review of `apps/server/scripts/install-itd-handlers.cmd` archived:
+`docs/oponentury/2026-06-03-oponentura-4-installer-v2-review.md`
+plus response
+`docs/oponentury/2026-06-03-reakce-4-installer-v2-review.md`.
+Verdict: production enterprise-ready; one minor note accepted and fixed in
+the same commit (not shipped as-is).
+
+Issue: generated launcher `:fail` block printed `echo URL: "!url!"` to the
+console. The raw URL is attacker-controllable via the protocol handler
+invocation, so a crafted URL containing ANSI escape sequences could
+manipulate the operator's terminal display (console reflected injection).
+Risk in practice is small (internal domain tool, threat model = incidental
+discovery, not adversarial), but the fix is trivial and the
+`feedback_go_to_market_standard` rule says ship as if for paying customers.
+
+Fix in same commit:
+- `apps/server/scripts/install-itd-handlers.cmd` `:append_common_footer` no
+  longer emits `echo URL: "!url!"` for the generated launchers. Console echo
+  on validation failure prints only `!reason!`, `!host!`, `!letter!` — all
+  pre-validated against `[a-zA-Z0-9._-]` (or a single letter for the drive),
+  so they cannot contain control bytes.
+- Raw `!url!` is still written to `%LOCALAPPDATA%\ITDashboard\launchers\last-itd-*.log`
+  — file writes are not subject to terminal escape interpretation, and the
+  helpdesk needs the original input for diagnosis.
+- The console message after the log path was updated from `Wrote log:` to
+  `Full URL recorded in:` so operators know where to look.
+- Inline comment in the installer documents the intent so future maintainers
+  do not "fix" the missing URL line back into existence.
+
+After deploy: existing operator workstations still need to re-download and
+re-run `/actions/install-handlers.cmd` (same HKCU-launcher non-self-updating
+behaviour as the previous fix).
+
+Docs/UI sync for this fix completed:
+- `README.md` mentions oponentura 4 + console reflection hardening line.
+- `docs/ARCHITECTURE.md` notes raw URL is intentionally not echoed to console.
+- `docs/dashboard.html` has CS/EN Per-PC Actions callout for the change and
+  a CS/EN troubleshooting entry "URL line missing from fail screen".
+- `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show a one-line note in the
+  Actions modal warning block.
 
 ## Frontend build not found after green deploy (NEW since 2026-06-03)
 

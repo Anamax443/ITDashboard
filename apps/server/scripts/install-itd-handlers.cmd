@@ -167,11 +167,18 @@ call :append_common_footer "%BASE%\itd-psexec.cmd"
 goto :eof
 
 :append_common_footer
+:: Console echoes intentionally print only validated/derived fields (!reason!,
+:: !host!, !letter!) — all regex-allowlisted to [a-zA-Z0-9._-] or a single
+:: letter. The raw !url! is NEVER echoed to the console because an attacker-
+:: controlled URL could contain ANSI escape sequences or other control chars
+:: that manipulate the operator's terminal (console reflected injection).
+:: The raw !url! is still recorded in the log file (file write is not subject
+:: to terminal escape interpretation, and ops needs the original input for
+:: helpdesk diagnosis).
 >>"%~1" echo goto :eof
 >>"%~1" echo :fail
 >>"%~1" echo echo.
 >>"%~1" echo echo ITDashboard launcher failed: !reason!
->>"%~1" echo echo URL: "!url!"
 >>"%~1" echo if defined host echo Host: "!host!"
 >>"%~1" echo if defined letter echo Drive letter: "!letter!"
 >>"%~1" echo echo.
@@ -179,7 +186,7 @@ goto :eof
 >>"%~1" echo echo Explorer handler accepts only drive letters, e.g. itd-explorer://PC/C
 >>"%~1" echo echo.
 >>"%~1" echo ^>^>"%%log%%" echo [%%date%% %%time%%] failed %%~nx0 reason=!reason! url="!url!" host="!host!" letter="!letter!"
->>"%~1" echo echo Wrote log: %%log%%
+>>"%~1" echo echo Full URL recorded in: %%log%%
 >>"%~1" echo pause
 >>"%~1" echo exit /b 1
 goto :eof

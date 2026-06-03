@@ -361,6 +361,9 @@ service restarts on new dist/, in-memory state cleared</div>
   <div class="callout callout-info">
     <strong>If a CMD window only flashes and closes:</strong> download and run <code>/actions/install-handlers.cmd</code> again on the workstation. Older generated HKCU launchers do not self-update. The fixed installer pins <code>.cmd/.bat</code> files to CRLF and generated launchers now keep the window open on failure with diagnostics in <code>%LOCALAPPDATA%\ITDashboard\launchers\last-itd-*.log</code>.
   </div>
+  <div class="callout callout-info">
+    <strong>Oponentura 4 verdict (2026-06-03):</strong> production enterprise-ready. One hardening accepted — generated launcher fail screens no longer echo the raw URL to the console (the URL is attacker-controllable and could embed ANSI escape sequences for terminal manipulation). Fail screen now shows only validated fields (<code>reason</code>, <code>host</code>, <code>letter</code>). The raw URL is still recorded in <code>last-itd-*.log</code> for helpdesk diagnosis. Reinstall via <code>/actions/install-handlers.cmd</code> on each operator workstation to pick up the change.
+  </div>
 </div>
 <div data-lang="cs">
   <p>V tabu Počítače je u každého řádku tlačítko <strong>Akce</strong> pro běžné remote-admin workflow. Dashboard zůstává observer: akce otevírají nástroje pro operátora, ale samy neopravují ani nemění cílové PC.</p>
@@ -382,6 +385,9 @@ service restarts on new dist/, in-memory state cleared</div>
   </div>
   <div class="callout callout-info">
     <strong>Když CMD okno jen blikne a zavře se:</strong> stáhnout a znovu spustit <code>/actions/install-handlers.cmd</code> na dané stanici. Staré vygenerované HKCU launchery se samy neaktualizují. Opravený installer pinuje <code>.cmd/.bat</code> soubory na CRLF a nové launchery při chybě nechají okno otevřené s diagnostikou v <code>%LOCALAPPDATA%\ITDashboard\launchers\last-itd-*.log</code>.
+  </div>
+  <div class="callout callout-info">
+    <strong>Verdikt oponentury 4 (2026-06-03):</strong> production enterprise-ready. Přijatý jeden hardening — vygenerované launchery už nevypisují raw URL na konzoli (URL je attacker-controllable přes protocol handler invocation a může obsahovat ANSI escape sekvence pro manipulaci s operátorovým terminálem). Chybový výstup teď ukazuje jen validované pole (<code>reason</code>, <code>host</code>, <code>letter</code>). Raw URL je dál zapisováno do <code>last-itd-*.log</code> pro helpdesk diagnostiku. Reinstall přes <code>/actions/install-handlers.cmd</code> na každé operátorské stanici pro vyzvednutí změny.
   </div>
 </div>
 
@@ -866,6 +872,16 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
 <div data-lang="cs">
   <p><strong>Příčina:</strong> staré vygenerované HKCU launchery nebo starší LF-only installer. Windows <code>cmd.exe</code> umí LF-only <code>.cmd</code> soubor špatně parsovat, takže okno jen blikne a skončí bez užitečné zprávy.</p>
   <p><strong>Fix:</strong> stáhnout a znovu spustit <code>/actions/install-handlers.cmd</code> na dané stanici. Nový installer přepíše launchery v <code>%LOCALAPPDATA%\ITDashboard\launchers</code>, drží batch soubory v CRLF a při validation/setup chybě zapisuje <code>last-itd-*.log</code>.</p>
+</div>
+
+<h3><span data-lang="cs">Chybový výstup launcheru už nezobrazuje řádek URL</span><span data-lang="en">Launcher fail screen no longer shows the URL line</span></h3>
+<div data-lang="en">
+  <p><strong>Cause:</strong> intentional change in the post-oponentura-4 installer revision (2026-06-03). The raw URL from the protocol handler invocation is attacker-controllable and could embed ANSI escape sequences that manipulate the operator's terminal (console reflected injection). The fail screen now shows only validated/derived fields: <code>reason</code>, <code>host</code>, <code>letter</code>.</p>
+  <p><strong>Where the URL went:</strong> still recorded with full fidelity in <code>%LOCALAPPDATA%\ITDashboard\launchers\last-itd-*.log</code>. File writes do not interpret terminal escapes, so helpdesk diagnosis is unaffected. The fail message says <em>"Full URL recorded in: ..."</em> pointing at the log path.</p>
+</div>
+<div data-lang="cs">
+  <p><strong>Příčina:</strong> záměrná změna v installeru po oponentuře 4 (2026-06-03). Raw URL z protocol handler invocation je attacker-controllable a mohlo by obsahovat ANSI escape sekvence, které manipulují s operátorovým terminálem (console reflected injection). Chybový výstup teď ukazuje jen validovaná pole: <code>reason</code>, <code>host</code>, <code>letter</code>.</p>
+  <p><strong>Kam zmizelo URL:</strong> dál se zapisuje s plnou věrností do <code>%LOCALAPPDATA%\ITDashboard\launchers\last-itd-*.log</code>. File write neinterpretuje terminal escape sekvence, takže helpdesk diagnostika není dotčená. Chybová zpráva říká <em>"Full URL recorded in: ..."</em> s cestou k logu.</p>
 </div>
 
 <h2 id="security"><span data-lang="cs">Bezpečnostní model</span><span data-lang="en">Security model</span></h2>
