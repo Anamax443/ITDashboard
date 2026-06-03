@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, DomainProfileStatus } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary } from './api.js';
 import { parseDiskThresholds, summarizeDisks } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { EventsTable } from './components/EventsTable.js';
@@ -43,8 +43,6 @@ export function App() {
   const [disks, setDisks] = useState<DiskItem[]>([]);
   const [serviceProblems, setServiceProblems] = useState<ServiceProblem[]>([]);
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
-  const [domainProfile, setDomainProfile] = useState<DomainProfileStatus | null>(null);
-  const [bannerDismissed, setBannerDismissed] = useState(() => sessionStorage.getItem('itd-banner-firewall') === 'dismissed');
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
   const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'failing' | null>(null);
 
@@ -59,7 +57,6 @@ export function App() {
     api.disks().then((r) => setDisks(r.items)).catch(() => {});
     api.serviceProblems().then((r) => setServiceProblems(r.items)).catch(() => {});
     api.perfSummary(7).then(setPerfSummary).catch(() => {});
-    api.firewallDomainProfile().then(setDomainProfile).catch(() => {});
     api.settings().then(setSettingsMap).catch(() => {});
   }, []);
 
@@ -151,38 +148,6 @@ export function App() {
           API: {API_BASE}
         </div>
       </div>
-
-      {domainProfile && domainProfile.enabled === false && !bannerDismissed && (
-        <div style={{
-          background: 'rgba(244, 135, 113, 0.12)',
-          border: '1px solid var(--warning, #f48771)',
-          color: 'var(--text)',
-          padding: '8px 16px',
-          margin: '8px 16px 0 16px',
-          borderRadius: 6,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          fontSize: 13,
-        }}>
-          <span style={{ fontSize: 16 }}>⚠</span>
-          <div style={{ flex: 1 }}>
-            <strong>Windows Firewall Domain profile is disabled on the server.</strong>{' '}
-            The OS-level rule "ITDashboard API (4000)" is inert. UI access is gated by the
-            frontend whitelist only (see Settings → Dashboard UI access). To restore
-            defense-in-depth: <code>Set-NetFirewallProfile -Profile Domain -Enabled True</code>
-            on 10.8.2.213 (check GPO first).
-          </div>
-          <button
-            onClick={() => { sessionStorage.setItem('itd-banner-firewall', 'dismissed'); setBannerDismissed(true); }}
-            style={{
-              background: 'transparent', color: 'var(--text-dim)', border: 'none',
-              cursor: 'pointer', fontSize: 16, padding: '4px 8px',
-            }}
-            title="Dismiss until next session"
-          >×</button>
-        </div>
-      )}
 
       {view === 'dashboard' && (
         <>

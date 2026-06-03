@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import type { DomainProfileStatus } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 
 const PERIODIC_CHECKS = [
@@ -27,12 +28,14 @@ function NetworkAccessSection() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [domainProfile, setDomainProfile] = useState<DomainProfileStatus | null>(null);
 
   useEffect(() => {
     api.firewallWhitelist()
       .then((r) => { setIps(r.ips); setDraft(r.ips.join('\n')); })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
+    api.firewallDomainProfile().then(setDomainProfile).catch(() => {});
   }, []);
 
   const save = async () => {
@@ -65,6 +68,44 @@ function NetworkAccessSection() {
         mirrors into the Windows Firewall rule "ITDashboard API (4000)" but that rule may
         be inert if the Domain firewall profile is off.
       </p>
+      {domainProfile && (
+        <div style={{
+          background: domainProfile.enabled === false ? 'rgba(244, 135, 113, 0.12)' : 'rgba(70, 200, 130, 0.10)',
+          border: `1px solid ${domainProfile.enabled === false ? 'var(--warning, #f48771)' : 'var(--ok, #46c882)'}`,
+          color: 'var(--text)',
+          padding: '8px 12px',
+          marginBottom: 16,
+          borderRadius: 6,
+          fontSize: 12,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 10,
+        }}>
+          <span style={{ fontSize: 14 }}>{domainProfile.enabled === false ? '⚠' : '✓'}</span>
+          <div style={{ flex: 1 }}>
+            <strong>Windows Firewall — Domain profile: {domainProfile.enabled === false ? 'DISABLED' : domainProfile.enabled === true ? 'enabled' : 'unknown'}</strong>
+            {domainProfile.enabled === false && (
+              <>
+                <div style={{ marginTop: 4 }}>
+                  The OS-level rule "ITDashboard API (4000)" is inert. UI access is gated by the frontend
+                  whitelist only. To restore defense-in-depth on <code>10.8.2.213</code>:
+                </div>
+                <code style={{ display: 'block', marginTop: 4, padding: '4px 6px', background: 'var(--bg)', borderRadius: 3 }}>
+                  Set-NetFirewallProfile -Profile Domain -Enabled True
+                </code>
+                <div style={{ marginTop: 4, color: 'var(--text-dim)' }}>
+                  Check GPO first — may be enforced disabled by domain policy. Default inbound: {domainProfile.defaultInboundAction ?? '—'}.
+                </div>
+              </>
+            )}
+            {domainProfile.enabled === null && (
+              <div style={{ marginTop: 4, color: 'var(--text-dim)' }}>
+                Could not read Domain profile state: {domainProfile.error ?? 'unknown'}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {loading ? (
         <div style={{ color: 'var(--text-dim)' }}>Loading current whitelist…</div>
       ) : (
