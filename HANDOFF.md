@@ -55,6 +55,25 @@ The frontend gate does not depend on the OS firewall being active — it just re
 rule contents as the whitelist source — so the UI is still gated correctly even with
 the OS firewall disabled.
 
+## Inactive PCs feature (NEW since 2026-06-03)
+
+Dashboard gets an **Inactive PCs (Nd+)** summary card mirroring the
+operator's `AD-Get-InactiveADComputers04.ps1` report. A PC counts as
+inactive when `computers.last_seen` is older than
+`inactive.threshold_days` setting (default 90) OR is NULL. Excluded
+PCs are skipped. The card shows total count with subtitle `N enabled ·
+M disabled`; clicking drills to Computers tab with the `inactive`
+status chip pre-applied.
+
+- API: `GET /computers/inactive-stats` returns
+  `{ thresholdDays, enabledInactive, disabledInactive, totalEnabled,
+    totalDisabled }` in one query
+- Computers tab: new `inactive Nd+` status chip + dropdown option;
+  threshold read from inactiveStats prop so the chip label reflects
+  the live setting value
+- Settings: new "Inactive PC threshold" section
+- Migration 022 + CS/EN i18n keys
+
 ## /docs translation status (2026-06-03)
 
 `docs/dashboard.html` now has CS/EN parallel content across all major
