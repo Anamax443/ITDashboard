@@ -50,10 +50,6 @@ export function ActivityLog({ height = 400, autoScroll = true }: { height?: numb
   const seqRef = useRef<number>(0);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  if (mode === 'history') {
-    return <ActivityHistory height={height} onSwitchToLive={() => setMode('live')} />;
-  }
-
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
@@ -91,6 +87,12 @@ export function ActivityLog({ height = 400, autoScroll = true }: { height?: numb
     }
     return true;
   });
+
+  // Conditional return MUST come after all hooks so render order stays stable —
+  // otherwise React throws "Rendered fewer hooks than expected".
+  if (mode === 'history') {
+    return <ActivityHistory height={height} onSwitchToLive={() => setMode('live')} />;
+  }
 
   return (
     <div className="panel" style={{ minHeight: 0 }}>
