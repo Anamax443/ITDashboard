@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (P0 oponentura batch)
+Last updated: 2026-06-03 (protocol handler follow-up oponentura)
 
 ## Current Live State
 
@@ -14,6 +14,21 @@ Last updated: 2026-06-03 (P0 oponentura batch)
 - Live commit: `0925d4d`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
+
+## Protocol handler follow-up oponentura (NEW since 2026-06-03)
+
+Third review of `apps/server/scripts/install-itd-handlers.cmd` archived:
+`docs/oponentury/2026-06-03-oponentura-3-protocol-handlers-followup.md`
+plus response
+`docs/oponentury/2026-06-03-reakce-3-protocol-handlers-followup.md`.
+Verdict: current hardened installer is OK to deploy; no new blocker.
+Review confirms strict hostname allowlist, HKCU install, PsExec opt-in,
+and browser prompt guidance. Three non-blocking notes were recorded:
+`runas /netonly` password prompt is accepted UX friction, `itd-explorer`
+intentionally supports only admin shares (`C$`, `D$`), and inner quoting
+inside the `runas` command string is left unchanged because host/snap-in
+inputs are already constrained and changing `runas` quoting risks a
+runtime regression without security gain.
 
 ## Deployment Model
 
