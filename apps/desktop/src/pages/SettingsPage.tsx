@@ -270,6 +270,19 @@ export function SettingsPage() {
         </Section>
 
         <Section
+          title={t('settings.section.inactive')}
+          description={t('settings.section.inactiveDesc')}
+        >
+          <Field label={t('settings.field.inactiveDays')}>
+            <NumberInput
+              v={value('inactive.threshold_days', '90')}
+              onChange={(v) => set('inactive.threshold_days', v)}
+              suffix={t('settings.unit.days')}
+            />
+          </Field>
+        </Section>
+
+        <Section
           title={t('settings.section.adsync')}
           description={t('settings.section.adsyncDesc')}
         >

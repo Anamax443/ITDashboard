@@ -175,3 +175,4 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 019_pc_info | computers.current_user, current_user_seen_at, ip_address, pc_info_collected_at — telemetry collected alongside disk scan |
 | 020_activity_log_persistent | activity_log table + 3 indexes + activity.retention_days setting + sp_purge_old_activity procedure |
 | 021_retention_settings | events.retention_days (90) + retention.run_at_hour (2) settings consumed by retention-runner |
+| 022_inactive_threshold | inactive.threshold_days (90) — drives Dashboard "Inactive PCs" card and Computers tab filter chip |

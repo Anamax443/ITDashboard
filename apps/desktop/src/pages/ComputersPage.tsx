@@ -6,7 +6,7 @@ import { DisksCell } from '../components/DiskBar.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
-export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | 'failing' | null; onFilterConsumed?: () => void }) {
+export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed, inactiveThresholdDays }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | 'failing' | 'inactive' | null; onFilterConsumed?: () => void; inactiveThresholdDays?: number }) {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
   const [lastSyncRun, setLastSyncRun] = useState<AdSyncRun | null>(null);
@@ -57,7 +57,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     }
   };
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'disabled' | 'monitored' | 'unmonitored' | 'failing' | 'disk-critical' | 'disk-warning' | 'excluded'>('');
+  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'disabled' | 'monitored' | 'unmonitored' | 'failing' | 'disk-critical' | 'disk-warning' | 'excluded' | 'inactive'>('');
   const { sort, toggle } = useSort<ComputerItem>({ col: 'name', dir: 'asc' });
 
   const runSync = async () => {
@@ -110,6 +110,13 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     if (statusFilter === 'failing' && (!c.enabled || (c.consecutive_failures ?? 0) === 0)) return false;
     if (statusFilter === 'disk-critical' && worstDiskByComputer.get(c.id) !== 'critical') return false;
     if (statusFilter === 'disk-warning' && worstDiskByComputer.get(c.id) !== 'warning') return false;
+    if (statusFilter === 'inactive') {
+      if (c.excluded) return false;
+      const t = inactiveThresholdDays ?? 90;
+      const cutoff = Date.now() - t * 86400000;
+      const seenMs = c.last_seen ? new Date(c.last_seen).getTime() : null;
+      if (seenMs !== null && seenMs >= cutoff) return false;
+    }
     if (search) {
       const q = search.toLowerCase();
       if (
@@ -131,6 +138,13 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
   const unmonitored = items.filter((c) => c.enabled && !c.excluded && !c.monitor_enabled).length;
   const failing = items.filter((c) => c.enabled && !c.excluded && (c.consecutive_failures ?? 0) > 0).length;
   const excludedCount = items.filter((c) => c.excluded).length;
+  const inactiveThreshold = inactiveThresholdDays ?? 90;
+  const inactiveCutoff = Date.now() - inactiveThreshold * 86400000;
+  const inactiveCount = items.filter((c) => {
+    if (c.excluded) return false;
+    const seenMs = c.last_seen ? new Date(c.last_seen).getTime() : null;
+    return seenMs === null || seenMs < inactiveCutoff;
+  }).length;
 
   const toggleMonitor = async (c: ComputerItem) => {
     try {
@@ -191,6 +205,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
           <StatusChip label="failing" count={failing} active={statusFilter === 'failing'} color="var(--critical)" onClick={() => setStatusFilter(statusFilter === 'failing' ? '' : 'failing')} />
           <StatusChip label="disk critical" count={Array.from(worstDiskByComputer.values()).filter((s) => s === 'critical').length} active={statusFilter === 'disk-critical'} color="var(--critical)" onClick={() => setStatusFilter(statusFilter === 'disk-critical' ? '' : 'disk-critical')} />
           <StatusChip label="disk warning" count={Array.from(worstDiskByComputer.values()).filter((s) => s === 'warning').length} active={statusFilter === 'disk-warning'} color="var(--warning)" onClick={() => setStatusFilter(statusFilter === 'disk-warning' ? '' : 'disk-warning')} />
+          <StatusChip label={`inactive ${inactiveThreshold}d+`} count={inactiveCount} active={statusFilter === 'inactive'} color="var(--warning)" onClick={() => setStatusFilter(statusFilter === 'inactive' ? '' : 'inactive')} />
           <StatusChip label="disabled" count={disabled.length} active={statusFilter === 'disabled'} color="var(--text-dim)" onClick={() => setStatusFilter(statusFilter === 'disabled' ? '' : 'disabled')} />
           <StatusChip label="excluded" count={excludedCount} active={statusFilter === 'excluded'} color="var(--text-dim)" onClick={() => setStatusFilter(statusFilter === 'excluded' ? '' : 'excluded')} />
         </h2>
@@ -211,6 +226,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
             <option value="failing">Failing collector</option>
             <option value="disk-critical">Disk critical</option>
             <option value="disk-warning">Disk warning</option>
+            <option value="inactive">Inactive ({inactiveThreshold}d+)</option>
           </select>
           {(lastSync || lastSyncRun) && (
             <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>

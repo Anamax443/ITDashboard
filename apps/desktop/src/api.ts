@@ -196,6 +196,14 @@ export interface DomainProfileStatus {
   error?: string;
 }
 
+export interface InactiveStats {
+  thresholdDays: number;
+  enabledInactive: number;
+  disabledInactive: number;
+  totalEnabled: number;
+  totalDisabled: number;
+}
+
 export interface ActivityHistoryItem {
   id: number;
   ts: string;
@@ -230,6 +238,7 @@ export const api = {
   timeline: (hours = 24) => jget<{ items: TimelineBucket[] }>(`/events/timeline?hours=${hours}`),
   topComputers: (hours = 24, limit = 10) => jget<{ items: TopComputer[] }>(`/events/top-computers?hours=${hours}&limit=${limit}`),
   computers: () => jget<{ items: ComputerItem[] }>('/computers'),
+  inactiveStats: () => jget<InactiveStats>('/computers/inactive-stats'),
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),

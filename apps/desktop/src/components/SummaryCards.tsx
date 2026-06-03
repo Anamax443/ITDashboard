@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Summary, ComputerItem, DiskSummary, ServiceProblem, PerfSummary } from '../api.js';
+import type { Summary, ComputerItem, DiskSummary, ServiceProblem, PerfSummary, InactiveStats } from '../api.js';
 import { useI18n } from '../i18n.js';
 
 interface Props {
@@ -8,6 +8,7 @@ interface Props {
   diskSummary: DiskSummary | null;
   serviceProblems: ServiceProblem[];
   perfSummary: PerfSummary | null;
+  inactiveStats: InactiveStats | null;
   onClickCritical?: () => void;
   onClickError?: () => void;
   onClickWarning?: () => void;
@@ -17,12 +18,13 @@ interface Props {
   onClickUnreachable?: () => void;
   onClickServices?: () => void;
   onClickPerf?: () => void;
+  onClickInactive?: () => void;
 }
 
 export function SummaryCards({
-  summary, computers, diskSummary, serviceProblems, perfSummary,
+  summary, computers, diskSummary, serviceProblems, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
-  onClickDiskCritical, onClickDiskWarning, onClickUnreachable, onClickServices, onClickPerf,
+  onClickDiskCritical, onClickDiskWarning, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
 }: Props) {
   const { t } = useI18n();
   // Service problems: count real (not trigger/delayed/per-user)
@@ -44,7 +46,7 @@ export function SummaryCards({
       unknownCount > 0 ? `${unknownCount} other` : null,
     ].filter(Boolean).join(' · ') || 'RPC fail / offline';
   return (
-    <div className="cards" style={{ gridTemplateColumns: 'repeat(9, 1fr)' }}>
+    <div className="cards" style={{ gridTemplateColumns: 'repeat(10, 1fr)' }}>
       <Card label={t('cards.critical')} value={summary?.critical_24h ?? '—'} kind="critical"
         onClick={summary && summary.critical_24h > 0 ? onClickCritical : undefined} />
       <Card label={t('cards.errors')} value={summary?.error_24h ?? '—'} kind="error"
@@ -85,6 +87,17 @@ export function SummaryCards({
         sub={perfSummary ? `${perfSummary.total_events} event${perfSummary.total_events === 1 ? '' : 's'}` : undefined}
         kind="warning"
         onClick={perfSummary && perfSummary.affected_pcs > 0 ? onClickPerf : undefined}
+      />
+      <Card
+        label={inactiveStats ? `${t('cards.inactive')} (${inactiveStats.thresholdDays}d+)` : t('cards.inactive')}
+        value={inactiveStats ? inactiveStats.enabledInactive + inactiveStats.disabledInactive : '—'}
+        sub={inactiveStats
+          ? t('cards.inactiveSub')
+              .replace('{enabled}', String(inactiveStats.enabledInactive))
+              .replace('{disabled}', String(inactiveStats.disabledInactive))
+          : undefined}
+        kind="warning"
+        onClick={inactiveStats && (inactiveStats.enabledInactive + inactiveStats.disabledInactive) > 0 ? onClickInactive : undefined}
       />
       <Card label={t('cards.computers')} value={`${enabledCount}/${total}`} kind="info"
         onClick={onClickComputers} />

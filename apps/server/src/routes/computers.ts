@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../db/pool.js';
 import { syncComputersFromAD, getSyncHistory, getLastSync } from '../services/ad-sync.js';
+import { getSetting } from '../services/settings.js';
 
 export async function registerComputersRoutes(app: FastifyInstance) {
   app.get('/computers', async () => {
@@ -25,6 +26,28 @@ export async function registerComputersRoutes(app: FastifyInstance) {
       reply.code(500);
       return { error: String(err) };
     }
+  });
+
+  app.get('/computers/inactive-stats', async () => {
+    const pool = await getPool();
+    const raw = await getSetting('inactive.threshold_days').catch(() => undefined);
+    const n = Number(raw);
+    const thresholdDays = Number.isFinite(n) && n > 0 ? Math.min(n, 3650) : 90;
+    const r = await pool.request()
+      .input('days', thresholdDays)
+      .query<{
+        enabledInactive: number; disabledInactive: number;
+        totalEnabled: number; totalDisabled: number;
+      }>(`
+        SELECT
+          SUM(CASE WHEN enabled = 1 AND excluded = 0 AND (last_seen IS NULL OR last_seen < DATEADD(DAY, -@days, SYSUTCDATETIME())) THEN 1 ELSE 0 END) AS enabledInactive,
+          SUM(CASE WHEN enabled = 0 AND excluded = 0 AND (last_seen IS NULL OR last_seen < DATEADD(DAY, -@days, SYSUTCDATETIME())) THEN 1 ELSE 0 END) AS disabledInactive,
+          SUM(CASE WHEN enabled = 1 AND excluded = 0 THEN 1 ELSE 0 END) AS totalEnabled,
+          SUM(CASE WHEN enabled = 0 AND excluded = 0 THEN 1 ELSE 0 END) AS totalDisabled
+        FROM computers;
+      `);
+    const row = r.recordset[0] ?? { enabledInactive: 0, disabledInactive: 0, totalEnabled: 0, totalDisabled: 0 };
+    return { thresholdDays, ...row };
   });
 
   app.get('/computers/sync/history', async () => {

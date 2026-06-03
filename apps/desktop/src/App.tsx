@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats } from './api.js';
 import { parseDiskThresholds, summarizeDisks } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { EventsTable } from './components/EventsTable.js';
@@ -46,8 +46,9 @@ export function App() {
   const [disks, setDisks] = useState<DiskItem[]>([]);
   const [serviceProblems, setServiceProblems] = useState<ServiceProblem[]>([]);
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
+  const [inactiveStats, setInactiveStats] = useState<InactiveStats | null>(null);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
-  const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'failing' | null>(null);
+  const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'failing' | 'inactive' | null>(null);
 
   useEffect(() => {
     api.accessCheck()
@@ -60,6 +61,7 @@ export function App() {
     api.disks().then((r) => setDisks(r.items)).catch(() => {});
     api.serviceProblems().then((r) => setServiceProblems(r.items)).catch(() => {});
     api.perfSummary(7).then(setPerfSummary).catch(() => {});
+    api.inactiveStats().then(setInactiveStats).catch(() => {});
     api.settings().then(setSettingsMap).catch(() => {});
   }, []);
 
@@ -199,6 +201,7 @@ export function App() {
             diskSummary={diskSummary}
             serviceProblems={serviceProblems}
             perfSummary={perfSummary}
+            inactiveStats={inactiveStats}
             onClickServices={() => setView('services')}
             onClickPerf={() => setView('perf')}
             onClickCritical={() => { setFilterLevel('critical'); setFilterHours(24); setView('events'); }}
@@ -208,6 +211,7 @@ export function App() {
             onClickDiskCritical={() => { setComputersPreFilter('disk-critical'); setView('computers'); }}
             onClickDiskWarning={() => { setComputersPreFilter('disk-warning'); setView('computers'); }}
             onClickUnreachable={() => { setComputersPreFilter('failing'); setView('computers'); }}
+            onClickInactive={() => { setComputersPreFilter('inactive'); setView('computers'); }}
           />
           <div className="charts-row" style={{ gridTemplateColumns: '1fr' }}>
             <TimelineChart buckets={timeline} hours={filterHours} />
@@ -233,7 +237,7 @@ export function App() {
 
       {view === 'computers' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <ComputersPage items={computers} onRefreshLocal={refreshComputers} initialFilter={computersPreFilter} onFilterConsumed={() => setComputersPreFilter(null)} />
+          <ComputersPage items={computers} onRefreshLocal={refreshComputers} initialFilter={computersPreFilter} onFilterConsumed={() => setComputersPreFilter(null)} inactiveThresholdDays={inactiveStats?.thresholdDays} />
         </div>
       )}
 
