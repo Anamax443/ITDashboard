@@ -97,9 +97,10 @@ exit /b 0
 >>"%BASE%\%1.cmd" echo if not "!host:~63,1!"=="" ^(set "reason=host_too_long" ^& goto :fail^)
 >>"%BASE%\%1.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
 >>"%BASE%\%1.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching %1 url="!url!" host="!host!"
+>>"%BASE%\%1.cmd" echo if not defined ITD_ADMIN_USER set "ITD_ADMIN_USER=ask"
 >>"%BASE%\%1.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
->>"%BASE%\%1.cmd" echo if defined ITD_ADMIN_USER goto :preset_mode
->>"%BASE%\%1.cmd" echo goto :no_admin_mode
+>>"%BASE%\%1.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="current" goto :no_admin_mode
+>>"%BASE%\%1.cmd" echo goto :preset_mode
 >>"%BASE%\%1.cmd" echo :ask_mode
 >>"%BASE%\%1.cmd" echo set "lastuserfile=%%LOCALAPPDATA%%\ITDashboard\launchers\last-admin-user.txt"
 >>"%BASE%\%1.cmd" echo set "lastuser="
@@ -135,9 +136,10 @@ goto :eof
 >>"%BASE%\itd-rdp.cmd" echo if not "!host:~63,1!"=="" ^(set "reason=host_too_long" ^& goto :fail^)
 >>"%BASE%\itd-rdp.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
 >>"%BASE%\itd-rdp.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-rdp url="!url!" host="!host!"
+>>"%BASE%\itd-rdp.cmd" echo if not defined ITD_ADMIN_USER set "ITD_ADMIN_USER=ask"
 >>"%BASE%\itd-rdp.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
->>"%BASE%\itd-rdp.cmd" echo if defined ITD_ADMIN_USER goto :preset_mode
->>"%BASE%\itd-rdp.cmd" echo goto :no_admin_mode
+>>"%BASE%\itd-rdp.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="current" goto :no_admin_mode
+>>"%BASE%\itd-rdp.cmd" echo goto :preset_mode
 >>"%BASE%\itd-rdp.cmd" echo :ask_mode
 >>"%BASE%\itd-rdp.cmd" echo set "lastuserfile=%%LOCALAPPDATA%%\ITDashboard\launchers\last-admin-user.txt"
 >>"%BASE%\itd-rdp.cmd" echo set "lastuser="
@@ -177,9 +179,10 @@ goto :eof
 >>"%BASE%\itd-explorer.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
 >>"%BASE%\itd-explorer.cmd" echo echo !letter!^| findstr /R /X "[a-zA-Z]" ^>nul ^|^| ^(set "reason=invalid_drive_letter" ^& goto :fail^)
 >>"%BASE%\itd-explorer.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-explorer url="!url!" host="!host!" letter="!letter!"
+>>"%BASE%\itd-explorer.cmd" echo if not defined ITD_ADMIN_USER set "ITD_ADMIN_USER=ask"
 >>"%BASE%\itd-explorer.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
->>"%BASE%\itd-explorer.cmd" echo if defined ITD_ADMIN_USER goto :preset_mode
->>"%BASE%\itd-explorer.cmd" echo goto :no_admin_mode
+>>"%BASE%\itd-explorer.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="current" goto :no_admin_mode
+>>"%BASE%\itd-explorer.cmd" echo goto :preset_mode
 >>"%BASE%\itd-explorer.cmd" echo :ask_mode
 >>"%BASE%\itd-explorer.cmd" echo set "lastuserfile=%%LOCALAPPDATA%%\ITDashboard\launchers\last-admin-user.txt"
 >>"%BASE%\itd-explorer.cmd" echo set "lastuser="
@@ -217,9 +220,10 @@ goto :eof
 >>"%BASE%\itd-psexec.cmd" echo if not "!host:~63,1!"=="" ^(set "reason=host_too_long" ^& goto :fail^)
 >>"%BASE%\itd-psexec.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
 >>"%BASE%\itd-psexec.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-psexec url="!url!" host="!host!"
+>>"%BASE%\itd-psexec.cmd" echo if not defined ITD_ADMIN_USER set "ITD_ADMIN_USER=ask"
 >>"%BASE%\itd-psexec.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
->>"%BASE%\itd-psexec.cmd" echo if defined ITD_ADMIN_USER goto :preset_mode
->>"%BASE%\itd-psexec.cmd" echo goto :no_admin_mode
+>>"%BASE%\itd-psexec.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="current" goto :no_admin_mode
+>>"%BASE%\itd-psexec.cmd" echo goto :preset_mode
 >>"%BASE%\itd-psexec.cmd" echo :ask_mode
 >>"%BASE%\itd-psexec.cmd" echo set "lastuserfile=%%LOCALAPPDATA%%\ITDashboard\launchers\last-admin-user.txt"
 >>"%BASE%\itd-psexec.cmd" echo set "lastuser="
@@ -261,9 +265,10 @@ goto :eof
 >>"%BASE%\itd-ps.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
 >>"%BASE%\itd-ps.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-ps url="!url!" host="!host!"
 >>"%BASE%\itd-ps.cmd" echo set "lastuserfile=%%LOCALAPPDATA%%\ITDashboard\launchers\last-admin-user.txt"
+>>"%BASE%\itd-ps.cmd" echo if not defined ITD_ADMIN_USER set "ITD_ADMIN_USER=ask"
 >>"%BASE%\itd-ps.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
->>"%BASE%\itd-ps.cmd" echo if defined ITD_ADMIN_USER goto :preset_mode
->>"%BASE%\itd-ps.cmd" echo goto :no_admin_mode
+>>"%BASE%\itd-ps.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="current" goto :no_admin_mode
+>>"%BASE%\itd-ps.cmd" echo goto :preset_mode
 >>"%BASE%\itd-ps.cmd" echo :ask_mode
 >>"%BASE%\itd-ps.cmd" echo start "" powershell -NoExit -Command "$f='!lastuserfile!'; $u=if(Test-Path $f){(Get-Content $f -TotalCount 1).Trim()}else{''}; $c=Get-Credential -UserName $u -Message 'Admin credentials for !host!'; if($c -and $c.UserName -match '^[A-Za-z0-9._@\\-]+$'){$c.UserName | Out-File -Encoding ASCII -NoNewline $f}; if($c){Enter-PSSession -ComputerName '!host!' -Credential $c}"
 >>"%BASE%\itd-ps.cmd" echo goto :eof

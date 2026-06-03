@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (3-mode ITD_ADMIN_USER dispatch + itd-ps PowerShell Remote launcher)
+Last updated: 2026-06-03 (default-to-ask + itd-ps PowerShell Remote launcher)
 
 ## Current Live State
 
@@ -117,6 +117,51 @@ Docs/UI sync for this fix completed:
   a CS/EN troubleshooting entry "URL line missing from fail screen".
 - `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show a one-line note in the
   Actions modal warning block.
+
+## Default-to-ask: ITD_ADMIN_USER unset behaves as ask (NEW since 2026-06-03)
+
+Followup to the 3-mode dispatch landing earlier the same day. Operator
+feedback: requiring every IT specialist to manually `setx ITD_ADMIN_USER ask`
+on their Windows account is friction for a tool meant for shared use. Fix:
+change the launcher default — when ITD_ADMIN_USER is unset, the launcher
+behaves as if it were `ask`. No per-user setup needed; just reinstall the
+handlers and Launch works correctly out of the box.
+
+New dispatch order in generated launchers:
+```
+if not defined ITD_ADMIN_USER set "ITD_ADMIN_USER=ask"
+if /i "%ITD_ADMIN_USER%"=="ask" goto :ask_mode
+if /i "%ITD_ADMIN_USER%"=="current" goto :no_admin_mode
+goto :preset_mode
+```
+
+The `set` is inside `setlocal` so it does not leak to the user's actual
+environment — only the launcher process sees `ask` as the default.
+
+Behavior matrix:
+- **unset** → ask (was: current Windows user / no admin wrap)
+- **`ask`** explicit → ask (same as default)
+- **`current`** explicit → no admin wrap (new opt-in for the old default)
+- **any other value** (e.g. `AXINETWORK\trnka_admin`) → preset, runas /netonly
+  with that pre-filled user
+
+Old behavior preserved as `ITD_ADMIN_USER=current` for the rare case someone
+wants to run launchers as their normal Windows account.
+
+Files touched: `apps/server/scripts/install-itd-handlers.cmd` — one-line
+addition + reordered goto chain in all 5 launcher writers (mmc, rdp,
+explorer, psexec, ps). `apps/desktop/src/i18n.tsx` —
+`actions.adminUserHint` CS+EN rewritten to lead with default behavior and
+present the other modes as overrides. Plus README + ARCHITECTURE +
+dashboard.html docs sync.
+
+After deploy: operator workstation reinstalls handlers
+(`/actions/install-handlers.cmd`). No `setx` needed. Launch immediately
+prompts for admin credentials.
+
+Local sandbox-tested: installer re-ran clean against temp LOCALAPPDATA,
+generated itd-mmc.cmd and itd-ps.cmd inspected — dispatch lines correctly
+ordered, default-to-ask line present.
 
 ## 3-mode ITD_ADMIN_USER dispatch + itd-ps PowerShell Remote (NEW since 2026-06-03)
 
