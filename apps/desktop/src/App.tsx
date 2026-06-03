@@ -194,17 +194,18 @@ export function App() {
 
       {view === 'dashboard' && (
         <>
-          <HelpBox title="What this dashboard shows">
-            <p><strong>Summary overview</strong> of fleet health. Each card is clickable and drills down to the relevant tab with the appropriate filter pre-applied.</p>
+          <HelpBox title={t('dashboard.help.title')}>
+            <p>{t('dashboard.help.intro')}</p>
             <ul style={{ marginLeft: 16 }}>
-              <li><strong>Critical / Errors / Warnings (24h)</strong> — click → Events tab pre-filtered by level</li>
-              <li><strong>Unreachable</strong> — PCs where collectors fail; subtitle breaks down offline / RPC fail / auth → Computers tab</li>
-              <li><strong>Disk critical / warning</strong> — PCs with drives below thresholds → Computers tab</li>
-              <li><strong>Stopped services</strong> — PCs with non-noise stopped auto-services → Services tab</li>
-              <li><strong>Computers</strong> — active / total inventory → Computers tab</li>
+              <li>{t('dashboard.help.bullet.events')}</li>
+              <li>{t('dashboard.help.bullet.unreachable')}</li>
+              <li>{t('dashboard.help.bullet.disk')}</li>
+              <li>{t('dashboard.help.bullet.services')}</li>
+              <li>{t('dashboard.help.bullet.inactive')}</li>
+              <li>{t('dashboard.help.bullet.computers')}</li>
             </ul>
-            <p><strong>Collector bar</strong> shows live progress of the eventlog scan (▶ Run now / ⏹ Stop) and can run all checks sequentially (eventlog → disk → services).</p>
-            <p>The detailed lists (Events, Computers, Services, Activity, Settings) have their own tabs.</p>
+            <p>{t('dashboard.help.collector')}</p>
+            <p>{t('dashboard.help.footer')}</p>
           </HelpBox>
           <CollectorStatus />
           <SummaryCards
