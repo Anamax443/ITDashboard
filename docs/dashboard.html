@@ -1,8 +1,23 @@
 <!doctype html>
-<html lang="cs">
+<html lang="cs" data-lang="cs">
 <head>
 <meta charset="UTF-8">
 <title>ITDashboard — Documentation</title>
+<script>
+  // Pre-paint lang so the opposite-language siblings never flash visible.
+  (function() {
+    var url = new URL(window.location.href);
+    var q = url.searchParams.get('lang');
+    var stored = localStorage.getItem('itd-docs-lang');
+    var nav = (navigator.language || '').toLowerCase();
+    var pick = (q === 'cs' || q === 'en') ? q
+             : (stored === 'cs' || stored === 'en') ? stored
+             : (nav.indexOf('cs') === 0 || nav.indexOf('sk') === 0) ? 'cs'
+             : 'en';
+    document.documentElement.setAttribute('data-lang', pick);
+    document.documentElement.setAttribute('lang', pick);
+  })();
+</script>
 <style>
 :root {
   --bg: #0f172a; --surface: #1e293b; --surface-2: #334155; --text: #e2e8f0;
@@ -39,6 +54,11 @@ th { background: var(--surface); color: var(--text-dim); font-size: 12px; text-t
 .callout-info { background: rgba(59, 130, 246, 0.1); border-color: var(--accent); }
 .callout-warn { background: rgba(234, 179, 8, 0.1); border-color: var(--warning); }
 .callout-err { background: rgba(239, 68, 68, 0.1); border-color: var(--critical); }
+html[data-lang="en"] [data-lang="cs"] { display: none; }
+html[data-lang="cs"] [data-lang="en"] { display: none; }
+.lang-switcher { display: inline-flex; gap: 0; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.lang-switcher button { background: transparent; color: var(--text-dim); border: none; padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 12px; text-transform: uppercase; font-weight: 600; }
+.lang-switcher button.active { background: var(--surface-2); color: var(--text); }
 .ascii { background: var(--surface); padding: 12px; border-radius: 6px; font-family: Consolas, monospace; font-size: 11px; white-space: pre; overflow-x: auto; }
 a.external { color: var(--accent); }
 
@@ -107,20 +127,41 @@ a.external { color: var(--accent); }
 </nav>
 <main>
 
-<h1>ITDashboard — Documentation</h1>
-<div style="display: flex; gap: 12px; margin-bottom: 16px;">
-  <button onclick="window.print()" style="background: var(--surface-2); color: var(--text); border: 1px solid var(--border); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 13px;">🖨 Print / Save as PDF</button>
+<h1><span data-lang="cs">ITDashboard — Dokumentace</span><span data-lang="en">ITDashboard — Documentation</span></h1>
+<div style="display: flex; gap: 12px; margin-bottom: 16px; align-items: center;">
+  <button onclick="window.print()" style="background: var(--surface-2); color: var(--text); border: 1px solid var(--border); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 13px;">
+    <span data-lang="cs">🖨 Tisk / Uložit jako PDF</span>
+    <span data-lang="en">🖨 Print / Save as PDF</span>
+  </button>
+  <div class="lang-switcher">
+    <button id="lang-cs" onclick="setLang('cs')">CS</button>
+    <button id="lang-en" onclick="setLang('en')">EN</button>
+  </div>
 </div>
-<p>Internal IT operations dashboard for the AXINETWORK domain. Provides cross-fleet eventlog visibility, AD-synced computer inventory, disk space monitoring, and per-PC reachability classification for ~225 domain machines.</p>
+<p>
+  <span data-lang="cs">Interní IT provozní dashboard pro doménu AXINETWORK. Poskytuje napříč flotilou viditelnost eventlogu, AD-synchronizovaný inventář počítačů, monitorování diskového prostoru a per-PC klasifikaci dostupnosti pro ~225 doménových strojů.</span>
+  <span data-lang="en">Internal IT operations dashboard for the AXINETWORK domain. Provides cross-fleet eventlog visibility, AD-synced computer inventory, disk space monitoring, and per-PC reachability classification for ~225 domain machines.</span>
+</p>
 
-<h2 id="overview">Overview</h2>
-<p>ITDashboard centralises four IT-operator workflows in one dark-themed dashboard:</p>
-<ul>
-  <li><strong>Cross-fleet eventlog visibility</strong> — pulls Warning/Error/Critical events from every monitored PC into a central DB; dashboard provides filtering, search, sorting, time-bucket charts, and noisy-PC ranking.</li>
-  <li><strong>AD-synced inventory</strong> — keeps an up-to-date list of domain computers with OS, last logon, OU path, and operator-controlled monitor toggle (persists across syncs).</li>
-  <li><strong>Disk space monitoring</strong> — periodic DCOM-based scan of all monitored PCs; configurable thresholds (% free or GB free or either); colored progress bars per drive.</li>
-  <li><strong>Per-PC reachability classification</strong> — every collector run categorises each PC as online / offline / RPC fail / access denied, surfaced as clickable dashboard cards that drill down into filtered lists.</li>
-</ul>
+<h2 id="overview"><span data-lang="cs">Přehled</span><span data-lang="en">Overview</span></h2>
+<div data-lang="cs">
+  <p>ITDashboard centralizuje čtyři pracovní postupy IT operátora v jednom dashboardu (tmavý/světlý motiv):</p>
+  <ul>
+    <li><strong>Eventlog napříč flotilou</strong> — stahuje události úrovně Warning/Error/Critical z každého monitorovaného PC do centrální DB; dashboard nabízí filtrování, vyhledávání, řazení, časové grafy a žebříček "noisy" PC.</li>
+    <li><strong>AD-synchronizovaný inventář</strong> — drží aktuální seznam doménových počítačů s OS, posledním přihlášením, OU cestou a operátorem řízeným monitor toggle (perzistuje napříč syncs).</li>
+    <li><strong>Monitorování disků</strong> — periodický DCOM skenování všech monitorovaných PC; konfigurovatelné thresholdy (% volného nebo GB volného nebo obojí); barevné progress bary per disk.</li>
+    <li><strong>Klasifikace dostupnosti per PC</strong> — každý běh collectoru kategorizuje každý PC jako online / offline / RPC fail / access denied, prezentováno jako klikatelné dashboard karty pro drill-down.</li>
+  </ul>
+</div>
+<div data-lang="en">
+  <p>ITDashboard centralises four IT-operator workflows in one dark-themed dashboard:</p>
+  <ul>
+    <li><strong>Cross-fleet eventlog visibility</strong> — pulls Warning/Error/Critical events from every monitored PC into a central DB; dashboard provides filtering, search, sorting, time-bucket charts, and noisy-PC ranking.</li>
+    <li><strong>AD-synced inventory</strong> — keeps an up-to-date list of domain computers with OS, last logon, OU path, and operator-controlled monitor toggle (persists across syncs).</li>
+    <li><strong>Disk space monitoring</strong> — periodic DCOM-based scan of all monitored PCs; configurable thresholds (% free or GB free or either); colored progress bars per drive.</li>
+    <li><strong>Per-PC reachability classification</strong> — every collector run categorises each PC as online / offline / RPC fail / access denied, surfaced as clickable dashboard cards that drill down into filtered lists.</li>
+  </ul>
+</div>
 <p>Single Node.js API service on the internal admin server + per-PC Electron client (or browser via Vite dev) for IT specialists.</p>
 
 <h2 id="architecture">Architecture</h2>
@@ -592,5 +633,31 @@ This is the <strong>observer-not-executor</strong> pattern applied to telemetry:
 
 </main>
 </div>
+<script>
+(function() {
+  var STORAGE_KEY = 'itd-docs-lang';
+  function detectInitialLang() {
+    var url = new URL(window.location.href);
+    var fromQuery = url.searchParams.get('lang');
+    if (fromQuery === 'cs' || fromQuery === 'en') return fromQuery;
+    var stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'cs' || stored === 'en') return stored;
+    var nav = (navigator.language || '').toLowerCase();
+    if (nav.indexOf('cs') === 0 || nav.indexOf('sk') === 0) return 'cs';
+    return 'en';
+  }
+  window.setLang = function(lang) {
+    if (lang !== 'cs' && lang !== 'en') return;
+    document.documentElement.setAttribute('data-lang', lang);
+    document.documentElement.setAttribute('lang', lang);
+    localStorage.setItem(STORAGE_KEY, lang);
+    var csBtn = document.getElementById('lang-cs');
+    var enBtn = document.getElementById('lang-en');
+    if (csBtn) csBtn.classList.toggle('active', lang === 'cs');
+    if (enBtn) enBtn.classList.toggle('active', lang === 'en');
+  };
+  window.setLang(detectInitialLang());
+})();
+</script>
 </body>
 </html>

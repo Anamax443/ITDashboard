@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Summary, ComputerItem, DiskSummary, ServiceProblem, PerfSummary } from '../api.js';
+import { useI18n } from '../i18n.js';
 
 interface Props {
   summary: Summary | null;
@@ -23,6 +24,7 @@ export function SummaryCards({
   onClickCritical, onClickError, onClickWarning, onClickComputers,
   onClickDiskCritical, onClickDiskWarning, onClickUnreachable, onClickServices, onClickPerf,
 }: Props) {
+  const { t } = useI18n();
   // Service problems: count real (not trigger/delayed/per-user)
   const realServiceProblems = serviceProblems.filter((s) => !s.trigger_start && !s.delayed_start && !s.per_user_start);
   const servicesPcsAffected = new Set(realServiceProblems.map((s) => s.computer_id)).size;
@@ -43,48 +45,48 @@ export function SummaryCards({
     ].filter(Boolean).join(' · ') || 'RPC fail / offline';
   return (
     <div className="cards" style={{ gridTemplateColumns: 'repeat(9, 1fr)' }}>
-      <Card label="Critical events (24h)" value={summary?.critical_24h ?? '—'} kind="critical"
+      <Card label={t('cards.critical')} value={summary?.critical_24h ?? '—'} kind="critical"
         onClick={summary && summary.critical_24h > 0 ? onClickCritical : undefined} />
-      <Card label="Errors (24h)" value={summary?.error_24h ?? '—'} kind="error"
+      <Card label={t('cards.errors')} value={summary?.error_24h ?? '—'} kind="error"
         onClick={summary && summary.error_24h > 0 ? onClickError : undefined} />
-      <Card label="Warnings (24h)" value={summary?.warning_24h ?? '—'} kind="warning"
+      <Card label={t('cards.warnings')} value={summary?.warning_24h ?? '—'} kind="warning"
         onClick={summary && summary.warning_24h > 0 ? onClickWarning : undefined} />
       <Card
-        label="Unreachable"
+        label={t('cards.unreachable')}
         value={unreachableCount}
         sub={unreachableSub}
         kind="critical"
         onClick={unreachableCount > 0 ? onClickUnreachable : undefined}
       />
       <Card
-        label="Disk critical"
+        label={t('cards.diskCritical')}
         value={diskSummary ? `${diskSummary.criticalPcs} PC` : '—'}
         sub={diskSummary ? `${diskSummary.criticalDrives} drives` : undefined}
         kind="critical"
         onClick={diskSummary && diskSummary.criticalPcs > 0 ? onClickDiskCritical : undefined}
       />
       <Card
-        label="Disk warning"
+        label={t('cards.diskWarning')}
         value={diskSummary ? `${diskSummary.warningPcs} PC` : '—'}
         sub={diskSummary ? `${diskSummary.warningDrives} drives` : undefined}
         kind="warning"
         onClick={diskSummary && diskSummary.warningPcs > 0 ? onClickDiskWarning : undefined}
       />
       <Card
-        label="Stopped services"
+        label={t('cards.stoppedServices')}
         value={servicesPcsAffected}
         sub={realServiceProblems.length > 0 ? `${realServiceProblems.length} service${realServiceProblems.length === 1 ? '' : 's'}` : 'all healthy'}
         kind="error"
         onClick={servicesPcsAffected > 0 ? onClickServices : undefined}
       />
       <Card
-        label="Slow boot/shutdown (7d)"
+        label={t('cards.slowBootShutdown')}
         value={perfSummary ? perfSummary.affected_pcs : '—'}
         sub={perfSummary ? `${perfSummary.total_events} event${perfSummary.total_events === 1 ? '' : 's'}` : undefined}
         kind="warning"
         onClick={perfSummary && perfSummary.affected_pcs > 0 ? onClickPerf : undefined}
       />
-      <Card label="Computers" value={`${enabledCount}/${total}`} kind="info"
+      <Card label={t('cards.computers')} value={`${enabledCount}/${total}`} kind="info"
         onClick={onClickComputers} />
     </div>
   );

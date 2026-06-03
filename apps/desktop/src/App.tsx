@@ -16,6 +16,7 @@ import { ServicesPage } from './pages/ServicesPage.js';
 import { PerfPage } from './pages/PerfPage.js';
 import { HelpBox } from './components/HelpBox.js';
 import { AccessDenied } from './components/AccessDenied.js';
+import { useI18n, useTheme } from './i18n.js';
 import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
@@ -23,6 +24,8 @@ const REFRESH_MS = 30_000;
 type View = 'dashboard' | 'events' | 'computers' | 'services' | 'perf' | 'activity' | 'settings';
 
 export function App() {
+  const { t, lang, setLang } = useI18n();
+  const { theme, setTheme } = useTheme();
   const [access, setAccess] = useState<AccessCheck | null>(null);
   const [accessChecked, setAccessChecked] = useState(false);
   const [view, setView] = useState<View>('dashboard');
@@ -111,17 +114,21 @@ export function App() {
     <div className="app">
       <div className="topbar">
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <h1>ITDashboard</h1>
+          <h1
+            onClick={() => setView('dashboard')}
+            style={{ cursor: 'pointer', userSelect: 'none' }}
+            title={t('nav.dashboard')}
+          >ITDashboard</h1>
           <div className="nav">
-            <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>Dashboard</button>
-            <button className={view === 'events' ? 'active' : ''} onClick={() => setView('events')}>Events</button>
-            <button className={view === 'computers' ? 'active' : ''} onClick={() => setView('computers')}>Computers</button>
-            <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>Services</button>
-            <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>Perf</button>
-            <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>Activity</button>
-            <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Settings</button>
+            <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>{t('nav.dashboard')}</button>
+            <button className={view === 'events' ? 'active' : ''} onClick={() => setView('events')}>{t('nav.events')}</button>
+            <button className={view === 'computers' ? 'active' : ''} onClick={() => setView('computers')}>{t('nav.computers')}</button>
+            <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>{t('nav.services')}</button>
+            <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>{t('nav.perf')}</button>
+            <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>{t('nav.activity')}</button>
+            <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>{t('nav.settings')}</button>
             <a
-              href={`${API_BASE}/docs`}
+              href={`${API_BASE}/docs?lang=${lang}`}
               target="_blank"
               rel="noreferrer"
               className=""
@@ -131,21 +138,43 @@ export function App() {
                 cursor: 'pointer'
               }}
             >
-              📖 Docs
+              📖 {t('nav.docs')}
             </a>
           </div>
         </div>
-        <div className="meta">
+        <div className="meta" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 2, border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden' }}>
+            {(['cs', 'en'] as const).map((l) => (
+              <button
+                key={l}
+                onClick={() => setLang(l)}
+                title={t('topbar.lang')}
+                style={{
+                  background: lang === l ? 'var(--surface-hover)' : 'transparent',
+                  color: lang === l ? 'var(--text)' : 'var(--text-dim)',
+                  border: 'none', padding: '2px 8px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+                  textTransform: 'uppercase', fontWeight: lang === l ? 700 : 400,
+                }}
+              >{l}</button>
+            ))}
+          </div>
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            title={`${t('topbar.theme')}: ${theme === 'dark' ? t('topbar.theme.dark') : t('topbar.theme.light')}`}
+            style={{
+              background: 'transparent', color: 'var(--text-dim)', border: '1px solid var(--border)',
+              borderRadius: 4, padding: '2px 8px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >{theme === 'dark' ? '☀' : '☾'}</button>
           {version && (
             <span title={`${version.shaFull}\nbranch: ${version.branch ?? '?'}`}>
               <a href={`https://github.com/Anamax443/ITDashboard/commit/${version.shaFull}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
                 {version.sha}
               </a>
               {version.branch && <span style={{ color: 'var(--text-dim)' }}> · {version.branch}</span>}
-              <span style={{ margin: '0 8px' }}>·</span>
             </span>
           )}
-          API: {API_BASE}
+          <span>{t('topbar.api')}: {API_BASE}</span>
         </div>
       </div>
 
@@ -234,10 +263,10 @@ export function App() {
 
       <div className="statusbar">
         <span>
-          {error ? <span className="err">⚠ {error}</span> : <span className="ok">● Connected</span>}
+          {error ? <span className="err">⚠ {error}</span> : <span className="ok">● {t('status.connected')}</span>}
         </span>
         <span>
-          Last refresh: {lastFetch ? lastFetch.toLocaleTimeString('cs-CZ') : '—'} · auto every {REFRESH_MS / 1000}s
+          {t('status.lastRefresh')}: {lastFetch ? lastFetch.toLocaleTimeString(lang === 'cs' ? 'cs-CZ' : 'en-US') : '—'} · {t('status.autoEvery')} {REFRESH_MS / 1000}s
         </span>
       </div>
     </div>

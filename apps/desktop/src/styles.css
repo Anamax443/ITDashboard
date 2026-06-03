@@ -13,6 +13,20 @@
   --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 
+body.theme-light {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-hover: #e2e8f0;
+  --border: #cbd5e1;
+  --text: #0f172a;
+  --text-dim: #475569;
+  --accent: #2563eb;
+  --critical: #dc2626;
+  --error: #ea580c;
+  --warning: #ca8a04;
+  --ok: #16a34a;
+}
+
 * { box-sizing: border-box; }
 
 html, body, #root {

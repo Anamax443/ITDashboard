@@ -116,7 +116,9 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
         !c.name.toLowerCase().includes(q) &&
         !(c.fqdn ?? '').toLowerCase().includes(q) &&
         !(c.os_version ?? '').toLowerCase().includes(q) &&
-        !(c.ou_path ?? '').toLowerCase().includes(q)
+        !(c.ou_path ?? '').toLowerCase().includes(q) &&
+        !(c.ip_address ?? '').toLowerCase().includes(q) &&
+        !(c.current_user ?? '').toLowerCase().includes(q)
       ) return false;
     }
     return true;
