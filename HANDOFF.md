@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (perf-events)
+Last updated: 2026-06-03 (P0 oponentura batch)
 
 ## Current Live State
 
@@ -54,6 +54,55 @@ profile is `Enabled=False` (often set by GPO). Check with:
 The frontend gate does not depend on the OS firewall being active — it just reads the
 rule contents as the whitelist source — so the UI is still gated correctly even with
 the OS firewall disabled.
+
+## Deploy diagnostic — topbar SHA is now load-bearing
+
+Since commit `ae399cb`, `/version` returns the SHA captured at npm-build
+time (`scripts/build-info.mjs` emits `src/build-info.ts`, gitignored).
+Previously `/version` read `.git/refs/heads/main` at request time, so
+the topbar could update on every `git pull` step in the deploy even if
+later steps (migrate, service restart) failed. That history is why we
+had 3 invisible half-deploys in a row on 2026-06-03 (current_user
+reserved word, GO separator, regex escape) — topbar said the new SHA,
+Node ran old code.
+
+Deploy.yml now ends with a `Smoke test` step that curls
+`/version/sha` up to 15 times (~30s) and fails the job if the running
+SHA doesn't match `%GITHUB_SHA:~0,7%`. If that step fails, the deploy
+run is RED — no more silent half-failures.
+
+## Retention scheduler (NEW since 2026-06-03)
+
+`services/retention-runner.ts` schedules a daily purge at
+`retention.run_at_hour` (default 02:00 local server time) that calls:
+- `sp_purge_old_events @retention_days = events.retention_days` (default 90)
+- `sp_purge_old_activity @retention_days = activity.retention_days` (default 30)
+
+Both stored procedures existed since migration 002 / 020 but nothing
+was calling them — `events` and `activity_log` were growing forever.
+Now purges run at 02:00 every day. Result logged via `logActivity` so
+it appears in both live ring and `/activity/history`.
+
+Manual trigger: `POST /activity/retention/run` (fire-and-forget).
+Next scheduled run: `GET /activity/retention/status` returns `{ nextRunAt }`.
+
+## `/health` (UPDATED since 2026-06-03)
+
+Returns `{ status, ts, buildSha, builtAt, db: { ok, latencyMs, error? } }`.
+HTTP 503 when DB is unreachable so Centreon (or any HTTP probe) can alert
+specifically on `db_down`. The legacy `/health/db` endpoint is preserved
+for existing callers.
+
+## Windows Firewall Domain warning (NEW since 2026-06-03)
+
+When the server's Windows Firewall Domain profile is disabled
+(`Get-NetFirewallProfile -Profile Domain` → `Enabled=False`), the
+dashboard shows a warning banner under the topbar with the fix command.
+Dismissable per browser session (sessionStorage). The 'ITDashboard
+API (4000)' allow rule is inert in that state and the frontend gate
+is the only thing in front of the dashboard — which is the deliberate
+operator-chosen model (no API auth, whoever connects is admin), but
+operator should know the OS-level layer is off.
 
 ## Runtime Services
 

@@ -174,3 +174,4 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 018_perf_cold_start_days | perf.cold_start_days (default 30) — configurable first-sweep lookback for perf-events collector |
 | 019_pc_info | computers.current_user, current_user_seen_at, ip_address, pc_info_collected_at — telemetry collected alongside disk scan |
 | 020_activity_log_persistent | activity_log table + 3 indexes + activity.retention_days setting + sp_purge_old_activity procedure |
+| 021_retention_settings | events.retention_days (90) + retention.run_at_hour (2) settings consumed by retention-runner |
