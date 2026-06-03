@@ -9,7 +9,7 @@
 --                       roaming notebooks reflect their current network.
 --   pc_info_collected_at = timestamp of the most recent successful PC-info scan.
 IF COL_LENGTH('computers', 'current_user') IS NULL
-  ALTER TABLE computers ADD current_user NVARCHAR(255) NULL;
+  ALTER TABLE computers ADD [current_user] NVARCHAR(255) NULL;
 
 IF COL_LENGTH('computers', 'current_user_seen_at') IS NULL
   ALTER TABLE computers ADD current_user_seen_at DATETIME2 NULL;

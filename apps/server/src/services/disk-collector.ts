@@ -139,7 +139,7 @@ async function upsertPcInfo(computerId: number, info: PcInfo): Promise<void> {
     .query(`
       UPDATE computers SET
         ip_address = @ip,
-        current_user = CASE WHEN @user IS NOT NULL THEN @user ELSE current_user END,
+        [current_user] = CASE WHEN @user IS NOT NULL THEN @user ELSE [current_user] END,
         current_user_seen_at = CASE WHEN @user IS NOT NULL THEN SYSUTCDATETIME() ELSE current_user_seen_at END,
         pc_info_collected_at = SYSUTCDATETIME()
       WHERE id = @cid;
