@@ -11,15 +11,23 @@ import { dirname } from 'node:path';
 const target = new URL('../src/build-info.ts', import.meta.url);
 const targetPath = decodeURIComponent(target.pathname).replace(/^\//, '');
 
-let sha = 'unknown';
-let branch = null;
-try {
-  sha = execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-} catch { /* not a git checkout */ }
-try {
-  branch = execSync('git rev-parse --abbrev-ref HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-  if (branch === 'HEAD') branch = null;
-} catch { /* detached or no git */ }
+// Prefer CI-provided env vars (GitHub Actions sets GITHUB_SHA / GITHUB_REF_NAME)
+// because the runtime location on the production server is a robocopy'd source
+// tree without a .git directory — `git rev-parse` would yield 'unknown' and
+// the deploy smoke test would fail on SHA mismatch.
+let sha = process.env.GITHUB_SHA || process.env.GIT_SHA || 'unknown';
+let branch = process.env.GITHUB_REF_NAME || process.env.GIT_BRANCH || null;
+if (sha === 'unknown') {
+  try {
+    sha = execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch { /* not a git checkout */ }
+}
+if (!branch) {
+  try {
+    branch = execSync('git rev-parse --abbrev-ref HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    if (branch === 'HEAD') branch = null;
+  } catch { /* detached or no git */ }
+}
 
 const builtAt = new Date().toISOString();
 
