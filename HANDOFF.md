@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (protocol handler docs sync)
+Last updated: 2026-06-03 (protocol handler installer fix)
 
 ## Current Live State
 
@@ -38,6 +38,33 @@ Follow-up docs sync completed after the review:
   model rows for custom URL handlers.
 - `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show the same CS/EN follow-up
   note in the Actions modal warning block.
+
+## Protocol handler installer window-closes fix (NEW since 2026-06-03)
+
+Operator reported: running/launching handler opens a CMD window and it
+immediately closes. Root cause found in `apps/server/scripts/install-itd-handlers.cmd`:
+the installer was LF-only and `cmd.exe` on Windows parsed it incorrectly
+(commands appeared as `etlocal`, `cho`, `all`, etc.). There was also an
+unsafe `::` comment containing cmd metacharacters from the security prose.
+
+Fix prepared locally:
+- New `.gitattributes` pins `*.cmd` and `*.bat` to CRLF.
+- Installer comments are ASCII/cmd-safe.
+- Generated launchers now keep the console open only on validation/setup
+  failure, print the reason, and write `last-itd-*.log` under
+  `%LOCALAPPDATA%\ITDashboard\launchers`.
+- Validation uses delayed expansion and `goto :fail`, so malformed URLs do
+  not break the batch parser before the allowlist check.
+
+Verified locally with `cmd /c "apps\server\scripts\install-itd-handlers.cmd < nul"`
+and generated invalid URL tests:
+- `itd-rdp://bad host` -> visible `invalid_host_chars`
+- `itd-explorer://PC/ShareName` -> visible `invalid_drive_letter`
+
+Important after deploy: existing operator workstations do not update their
+HKCU protocol handlers automatically. Download and run
+`/actions/install-handlers.cmd` again on the workstation to overwrite the
+old generated launchers.
 
 ## Deployment Model
 
