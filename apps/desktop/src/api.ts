@@ -190,8 +190,27 @@ export interface AccessCheck {
   allowed: boolean;
 }
 
+export interface ActivityHistoryItem {
+  id: number;
+  ts: string;
+  level: 'info' | 'warn' | 'error' | 'success';
+  source: string;
+  message: string;
+}
+
 export const api = {
   accessCheck: () => jget<AccessCheck>('/access-check'),
+  activityHistory: (q: { level?: 'info' | 'warn' | 'error' | 'success'; source?: string; hours?: number; search?: string; limit?: number; offset?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (q.level) params.set('level', q.level);
+    if (q.source) params.set('source', q.source);
+    if (q.hours) params.set('hours', String(q.hours));
+    if (q.search) params.set('search', q.search);
+    if (q.limit) params.set('limit', String(q.limit));
+    if (q.offset) params.set('offset', String(q.offset));
+    return jget<{ items: ActivityHistoryItem[]; total: number; limit: number; offset: number }>(`/activity/history?${params}`);
+  },
+  activitySources: () => jget<{ items: { source: string; cnt: number }[] }>('/activity/sources'),
   summary: () => jget<Summary>('/events/summary'),
   events: (q: { computer?: string; level?: 'critical' | 'error' | 'warning'; hours?: number; limit?: number } = {}) => {
     const params = new URLSearchParams();

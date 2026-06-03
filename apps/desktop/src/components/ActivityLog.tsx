@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import type { ActivityLogEntry } from '../api.js';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { ActivityLogEntry, ActivityHistoryItem } from '../api.js';
 import { api } from '../api.js';
 import { HelpBox } from './HelpBox.js';
 
@@ -41,6 +41,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 export function ActivityLog({ height = 400, autoScroll = true }: { height?: number; autoScroll?: boolean }) {
+  const [mode, setMode] = useState<'live' | 'history'>('live');
   const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
   const [filter, setFilter] = useState('');
   const [filterLevel, setFilterLevel] = useState<'' | ActivityLogEntry['level']>('');
@@ -48,6 +49,10 @@ export function ActivityLog({ height = 400, autoScroll = true }: { height?: numb
   const [copied, setCopied] = useState(false);
   const seqRef = useRef<number>(0);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  if (mode === 'history') {
+    return <ActivityHistory height={height} onSwitchToLive={() => setMode('live')} />;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -99,8 +104,9 @@ export function ActivityLog({ height = 400, autoScroll = true }: { height?: numb
         </HelpBox>
       </div>
       <div className="panel-header">
-        <h2>Activity log ({filtered.length})</h2>
+        <h2>Activity log ({filtered.length}) <span style={{ color: 'var(--text-dim)', fontSize: 11, fontWeight: 'normal' }}>· live</span></h2>
         <div className="panel-actions filters">
+          <button className="refresh-btn" onClick={() => setMode('history')} title="Switch to persistent history (DB-backed)">📚 History</button>
           <input
             type="text"
             placeholder="Filter…"
@@ -153,6 +159,131 @@ export function ActivityLog({ height = 400, autoScroll = true }: { height?: numb
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+const HOURS_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: 'Last hour' },
+  { value: 24, label: 'Last 24h' },
+  { value: 24 * 7, label: 'Last 7 days' },
+  { value: 24 * 30, label: 'Last 30 days' },
+  { value: 24 * 90, label: 'Last 90 days' },
+];
+
+function ActivityHistory({ height, onSwitchToLive }: { height: number; onSwitchToLive: () => void }) {
+  const [items, setItems] = useState<ActivityHistoryItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [hours, setHours] = useState(24);
+  const [level, setLevel] = useState<'' | ActivityHistoryItem['level']>('');
+  const [source, setSource] = useState('');
+  const [search, setSearch] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sources, setSources] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
+  const limit = 500;
+
+  useEffect(() => {
+    api.activitySources().then((r) => setSources(r.items.map((s) => s.source))).catch(() => {});
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await api.activityHistory({
+        hours,
+        level: level || undefined,
+        source: source || undefined,
+        search: search || undefined,
+        limit,
+        offset,
+      });
+      setItems(r.items);
+      setTotal(r.total);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [hours, level, source, search, offset]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Reset paging when filters change
+  useEffect(() => { setOffset(0); }, [hours, level, source, search]);
+
+  const copy = async () => {
+    const text = items.map((e) =>
+      `${new Date(e.ts).toLocaleString('cs-CZ')}\t[${e.source}]\t${e.level.toUpperCase()}\t${e.message}`
+    ).join('\n');
+    const ok = await copyToClipboard(text);
+    setCopied(ok);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="panel" style={{ minHeight: 0 }}>
+      <div style={{ padding: 12 }}>
+        <HelpBox title="What this tab shows">
+          <p><strong>Persistent activity history</strong> — every log line written by collectors, schedulers, and route handlers is also stored in the <code>activity_log</code> table. Survives service restarts. Retention defaults to 30 days (Settings → activity.retention_days).</p>
+          <p>Filters: time range, level, source (dropdown populated from last 30 days of actual sources), free-text search across messages. Returns up to {limit} matching rows per page; use pager for more.</p>
+          <p>Switch back to <strong>Live</strong> for the in-memory ring buffer (last 500 entries, polled every 2s).</p>
+        </HelpBox>
+      </div>
+      <div className="panel-header">
+        <h2>Activity history ({total.toLocaleString('cs-CZ')} {total === 1 ? 'match' : 'matches'}) <span style={{ color: 'var(--text-dim)', fontSize: 11, fontWeight: 'normal' }}>· DB</span></h2>
+        <div className="panel-actions filters">
+          <button className="refresh-btn" onClick={onSwitchToLive} title="Switch back to live in-memory log">▶ Live</button>
+          <select value={hours} onChange={(e) => setHours(Number(e.target.value))}>
+            {HOURS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <select value={level} onChange={(e) => setLevel(e.target.value as ActivityHistoryItem['level'] | '')}>
+            <option value="">All levels</option>
+            <option value="success">Success</option>
+            <option value="info">Info</option>
+            <option value="warn">Warning</option>
+            <option value="error">Error</option>
+          </select>
+          <select value={source} onChange={(e) => setSource(e.target.value)}>
+            <option value="">All sources</option>
+            {sources.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <input
+            type="text"
+            placeholder="Search message…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ width: 200 }}
+          />
+          <button className="refresh-btn" onClick={load} disabled={loading}>{loading ? '…' : '↻ Refresh'}</button>
+          <button className="refresh-btn" onClick={copy} disabled={items.length === 0}>{copied ? '✓ Copied' : '📋 Copy'}</button>
+        </div>
+      </div>
+      <div className="panel-body activity-log" style={{ height, fontFamily: 'Consolas, "Courier New", monospace', fontSize: 11, lineHeight: '16px' }}>
+        {error && <div style={{ color: 'var(--critical)', padding: 8 }}>⚠ {error}</div>}
+        {!error && items.length === 0 && !loading && <div className="empty">No matches</div>}
+        {items.map((e) => (
+          <div key={e.id} style={{ display: 'flex', gap: 8, padding: '1px 0' }}>
+            <span style={{ color: 'var(--text-dim)', width: 130, flexShrink: 0 }}>
+              {new Date(e.ts).toLocaleString('cs-CZ')}
+            </span>
+            <span style={{ color: 'var(--accent)', width: 90, flexShrink: 0 }}>[{e.source}]</span>
+            <span style={{ color: LEVEL_COLORS[e.level], flex: 1 }}>{e.message}</span>
+          </div>
+        ))}
+      </div>
+      {total > limit && (
+        <div style={{ padding: 8, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', borderTop: '1px solid var(--border)' }}>
+          <button className="refresh-btn" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>← Prev</button>
+          <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>
+            {offset + 1}–{Math.min(offset + items.length, total)} of {total.toLocaleString('cs-CZ')}
+          </span>
+          <button className="refresh-btn" disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)}>Next →</button>
+        </div>
+      )}
     </div>
   );
 }

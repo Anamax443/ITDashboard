@@ -101,8 +101,8 @@ The perf-events collector subscribes to the `Microsoft-Windows-Diagnostics-Perfo
 
 **Server SKU gotcha:** the channel is **disabled by default on Windows Server**. Get-WinEvent on a disabled channel returns `"There is not an event log on the X computer that matches"`. The collector detects this pattern, classifies it as `channel-disabled` (separate from `fail`), and skips silently — no per-PC noise in the activity log, one aggregate count at end of run. To enable across the server fleet, push a GPO computer-startup script that runs `wevtutil sl Microsoft-Windows-Diagnostics-Performance/Operational /e:true` (same pattern as the Services GPO script export).
 
-### Activity log is in-memory only
-Ring buffer of 500 entries, polled by dashboard every 2s. Lost on service restart. For permanent audit, the relevant info is also written to DB tables (`collector_runs`, `ad_sync_runs`, `script_runs`). This avoids DB writes for every log line (~thousands per collector run).
+### Activity log is two-tier
+Live view: ring buffer of 500 entries, polled by dashboard every 2s. Lost on service restart. Persistent history: every `logActivity()` call is also fire-and-forget INSERT into `activity_log` table (`apps/server/src/services/activity-log.ts`). DB writes are intentionally not awaited so collector cadence isn't tied to DB latency; if persistence fails the live view is unaffected. The Activity tab has a Live/History mode toggle — History queries `activity_log` with filters (time range, level, source, message search) and supports pagination. Retention via `activity.retention_days` setting (default 30) and `sp_purge_old_activity` stored procedure.
 
 ### Deploy.yml restart with sc + STOPPED polling
 `net stop` returns when service is `STOP_PENDING`, NOT yet `STOPPED`. If `net start` runs immediately, it can race and end up running on the old PID/binary. Workflow uses `sc stop` + cmd loop polling for `STOPPED` state via `sc query | findstr STOPPED`, then `sc start`. Verified by checking topbar SHA after every push.
@@ -173,3 +173,4 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 017_adsync_in_runall | checks.run_adsync (default false) + adsync.default_monitor_enabled (default true) |
 | 018_perf_cold_start_days | perf.cold_start_days (default 30) — configurable first-sweep lookback for perf-events collector |
 | 019_pc_info | computers.current_user, current_user_seen_at, ip_address, pc_info_collected_at — telemetry collected alongside disk scan |
+| 020_activity_log_persistent | activity_log table + 3 indexes + activity.retention_days setting + sp_purge_old_activity procedure |

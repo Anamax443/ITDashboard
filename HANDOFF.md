@@ -80,7 +80,7 @@ the OS firewall disabled.
 - Computers tab with AD sync, monitor toggle, exclude toggle, disk status, reachability status, current IP + logged-in user (collected piggyback on disk scan via the same DCOM session).
 - Services tab with stopped auto-service detection, policy/drift classification, by-PC and by-service views, GPO script export.
 - Perf tab with Diagnostics-Performance event data (slow boot/shutdown/standby/resume) — summary cards, top culprits, most affected PCs, recent events table.
-- Activity tab with live in-memory log, pause, filter, copy.
+- Activity tab with two modes: **Live** (in-memory ring buffer 500 entries, 2s poll) and **History** (DB-backed, filters: time range / level / source / text search, paginated). Every `logActivity` call is fire-and-forget persisted to `activity_log` table (retention `activity.retention_days`, default 30).
 - Settings tab with:
   - Periodic checks frequency
   - Periodic checks day selection: Po, Ut, St, Ct, Pa, So, Ne
