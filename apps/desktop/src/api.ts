@@ -156,6 +156,10 @@ export interface ComputerItem {
   ou_path?: string | null;
   distinguished_name?: string | null;
   last_status?: 'online' | 'offline' | 'rpc_unavailable' | 'access_denied' | 'unknown' | null;
+  current_user?: string | null;
+  current_user_seen_at?: string | null;
+  ip_address?: string | null;
+  pc_info_collected_at?: string | null;
 }
 
 async function jget<T>(path: string): Promise<T> {

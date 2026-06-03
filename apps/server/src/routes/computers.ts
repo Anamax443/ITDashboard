@@ -9,7 +9,7 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     const r = await pool.request().query(`
       SELECT id, name, fqdn, os_version, last_seen, enabled, monitor_enabled, excluded,
              last_collected_at, last_error, consecutive_failures, ou_path, distinguished_name,
-             last_status
+             last_status, current_user, current_user_seen_at, ip_address, pc_info_collected_at
       FROM computers
       ORDER BY enabled DESC, excluded, name
     `);

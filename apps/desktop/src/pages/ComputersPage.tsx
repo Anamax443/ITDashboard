@@ -287,6 +287,8 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                 <SortHeader<ComputerItem> col="ou_path" label="OU path" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="fqdn" label="FQDN" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="os_version" label="OS" sort={sort} toggle={toggle} />
+                <SortHeader<ComputerItem> col="ip_address" label="IP" sort={sort} toggle={toggle} />
+                <SortHeader<ComputerItem> col="current_user" label="User" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="last_seen" label="Last seen" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="enabled" label="Status" sort={sort} toggle={toggle} />
                 <th style={{ width: 160 }}>Disks</th>
@@ -322,6 +324,8 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }} title={c.distinguished_name ?? ''}>{c.ou_path ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{c.fqdn ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{c.os_version ?? '—'}</td>
+                  <td style={{ color: 'var(--text-dim)', fontSize: 11, fontFamily: 'Consolas, monospace' }}>{c.ip_address ?? '—'}</td>
+                  <td style={{ color: 'var(--text-dim)', fontSize: 11 }} title={c.current_user_seen_at ? `Last seen logged in: ${timeAgo(c.current_user_seen_at)}` : ''}>{c.current_user ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{timeAgo(c.last_seen)}</td>
                   <td style={{ fontSize: 11 }}>
                     {!c.enabled

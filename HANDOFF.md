@@ -77,7 +77,7 @@ the OS firewall disabled.
 
 - Dashboard tab with summary cards and drill-downs.
 - Events tab for Warning/Error/Critical eventlog data.
-- Computers tab with AD sync, monitor toggle, exclude toggle, disk status, reachability status.
+- Computers tab with AD sync, monitor toggle, exclude toggle, disk status, reachability status, current IP + logged-in user (collected piggyback on disk scan via the same DCOM session).
 - Services tab with stopped auto-service detection, policy/drift classification, by-PC and by-service views, GPO script export.
 - Perf tab with Diagnostics-Performance event data (slow boot/shutdown/standby/resume) — summary cards, top culprits, most affected PCs, recent events table.
 - Activity tab with live in-memory log, pause, filter, copy.

@@ -34,7 +34,7 @@
   - **Periodic checks scheduler** — every `checks.interval_sec` (default 900) within `checks.days` + `checks.window_start/end` runs selected checks from Settings: eventlog, disk, services, perf, adsync (adsync default OFF in periodic)
   - **AD sync** — registered as the first check; `Get-ADComputer -Filter *` + MERGE. Default off in periodic, forced on by "Run all". New PCs default to `monitor_enabled = adsync.default_monitor_enabled` (default `true`)
   - **Eventlog collector** — pulls Warning/Error/Critical events
-  - **Disk collector** — pulls Win32_LogicalDisk via DCOM
+  - **Disk + PC-info collector** — pulls Win32_LogicalDisk, Win32_ComputerSystem (current logged-in user), Win32_NetworkAdapterConfiguration (primary IPv4) via a single DCOM session. PC info populates `computers.current_user`, `current_user_seen_at`, `ip_address`, `pc_info_collected_at`. User is only overwritten when non-null (last-seen persists); IP is always overwritten.
   - **Services collector** — checks Auto + non-running Windows services and drift policy
   - **Perf-events collector** — pulls slow boot/shutdown/standby/resume records from the `Microsoft-Windows-Diagnostics-Performance/Operational` channel; parses EventData XML for TotalTime / DegradationTime / culprit
   - **Retention purge** — `sp_purge_old_events @retention_days = 90` daily
@@ -172,3 +172,4 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 016_perf_events | perf_events table (Diagnostics-Performance channel) + checks.run_perf setting |
 | 017_adsync_in_runall | checks.run_adsync (default false) + adsync.default_monitor_enabled (default true) |
 | 018_perf_cold_start_days | perf.cold_start_days (default 30) — configurable first-sweep lookback for perf-events collector |
+| 019_pc_info | computers.current_user, current_user_seen_at, ip_address, pc_info_collected_at — telemetry collected alongside disk scan |

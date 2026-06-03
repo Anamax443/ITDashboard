@@ -28,16 +28,27 @@ interface RawDisk {
   FreeSpace: number;
 }
 
+interface PcInfo {
+  UserName: string | null;
+  IPAddress: string | null;
+}
+
+interface PcScanResult {
+  disks: RawDisk[];
+  info: PcInfo;
+}
+
 const CONCURRENCY = 5;
 let runInFlight = false;
 
-async function fetchDisks(name: string): Promise<RawDisk[]> {
+async function fetchPcScan(name: string): Promise<PcScanResult> {
   // Pre-flight TCP probe — same as eventlog collector, fail-fast for offline PCs
   const tcpOk = await tcpProbe(name, 135, 2000);
   if (!tcpOk) throw new Error('OFFLINE: TCP/135 unreachable');
 
-  // Use DCOM session option (default Get-CimInstance uses WinRM which isn't
-  // configured on most domain PCs). DCOM is the same transport as Get-WinEvent.
+  // Single DCOM session, three cheap CIM queries: disks + current interactive
+  // user + primary IPv4. Default Get-CimInstance uses WinRM which isn't
+  // configured on most domain PCs — DCOM is the same transport as Get-WinEvent.
   const ps = `
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -45,11 +56,37 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $opt = New-CimSessionOption -Protocol Dcom
 $session = New-CimSession -ComputerName '${name}' -SessionOption $opt -ErrorAction Stop
 try {
-  Get-CimInstance -CimSession $session -ClassName Win32_LogicalDisk -Filter "DriveType=3" |
+  $disks = Get-CimInstance -CimSession $session -ClassName Win32_LogicalDisk -Filter "DriveType=3" |
     Select-Object DeviceID, VolumeName, FileSystem,
       @{n='Size';e={[int64]$_.Size}},
-      @{n='FreeSpace';e={[int64]$_.FreeSpace}} |
-    ConvertTo-Json -Compress -Depth 3
+      @{n='FreeSpace';e={[int64]$_.FreeSpace}}
+
+  $cs = Get-CimInstance -CimSession $session -ClassName Win32_ComputerSystem -ErrorAction SilentlyContinue
+  $userName = if ($cs -and $cs.UserName) { $cs.UserName } else { $null }
+
+  $ip = $null
+  try {
+    $adapters = Get-CimInstance -CimSession $session -ClassName Win32_NetworkAdapterConfiguration -Filter "IPEnabled=true" -ErrorAction SilentlyContinue
+    foreach ($a in $adapters) {
+      if ($a.IPAddress) {
+        foreach ($candidate in $a.IPAddress) {
+          if ($candidate -match '^\d+\.\d+\.\d+\.\d+$' -and $candidate -notmatch '^(0\.|127\.|169\.254\.)') {
+            $ip = $candidate
+            break
+          }
+        }
+      }
+      if ($ip) { break }
+    }
+  } catch { }
+
+  [pscustomobject]@{
+    disks = @($disks)
+    info = [pscustomobject]@{
+      UserName = $userName
+      IPAddress = $ip
+    }
+  } | ConvertTo-Json -Compress -Depth 4
 } finally {
   Remove-CimSession $session
 }
@@ -64,9 +101,10 @@ try {
       if (code !== 0) return reject(new Error(stderr.trim() || `exit ${code}`));
       try {
         const t = stdout.trim();
-        if (!t) return resolve([]);
-        const parsed = JSON.parse(t) as RawDisk | RawDisk[];
-        resolve(Array.isArray(parsed) ? parsed : [parsed]);
+        if (!t) return resolve({ disks: [], info: { UserName: null, IPAddress: null } });
+        const parsed = JSON.parse(t) as { disks: RawDisk | RawDisk[] | null; info: PcInfo };
+        const disksArr = parsed.disks == null ? [] : Array.isArray(parsed.disks) ? parsed.disks : [parsed.disks];
+        resolve({ disks: disksArr, info: parsed.info ?? { UserName: null, IPAddress: null } });
       } catch (e) { reject(e); }
     });
   });
@@ -89,6 +127,25 @@ async function upsertDisk(computerId: number, d: RawDisk): Promise<void> {
     `);
 }
 
+async function upsertPcInfo(computerId: number, info: PcInfo): Promise<void> {
+  const pool = await getPool();
+  // IP is always overwritten (current state); current_user is only overwritten
+  // when scan returns non-null so the last-seen user persists across "no one
+  // logged in" gaps. current_user_seen_at tracks when that observation was.
+  await pool.request()
+    .input('cid', computerId)
+    .input('user', info.UserName)
+    .input('ip', info.IPAddress)
+    .query(`
+      UPDATE computers SET
+        ip_address = @ip,
+        current_user = CASE WHEN @user IS NOT NULL THEN @user ELSE current_user END,
+        current_user_seen_at = CASE WHEN @user IS NOT NULL THEN SYSUTCDATETIME() ELSE current_user_seen_at END,
+        pc_info_collected_at = SYSUTCDATETIME()
+      WHERE id = @cid;
+    `);
+}
+
 interface Target { id: number; name: string; }
 
 export async function runDiskCollectorOnce(): Promise<{ pcs: number; ok: number; fail: number; drives: number; durationMs: number } | null> {
@@ -108,9 +165,10 @@ export async function runDiskCollectorOnce(): Promise<{ pcs: number; ok: number;
     for (let i = 0; i < targets.length; i += CONCURRENCY) {
       const batch = targets.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(batch.map(async (c) => {
-        const disks = await fetchDisks(c.name);
-        for (const d of disks) await upsertDisk(c.id, d);
-        return disks.length;
+        const scan = await fetchPcScan(c.name);
+        for (const d of scan.disks) await upsertDisk(c.id, d);
+        await upsertPcInfo(c.id, scan.info);
+        return scan.disks.length;
       }));
       for (let j = 0; j < results.length; j++) {
         const r2 = results[j]!;
