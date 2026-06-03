@@ -177,3 +177,4 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 021_retention_settings | events.retention_days (90) + retention.run_at_hour (2) settings consumed by retention-runner |
 | 022_inactive_threshold | inactive.threshold_days (90) — drives Dashboard "Inactive PCs" card and Computers tab filter chip |
 | 023_pc_user_history | pc_user_history table + pcUserHistory.retention_days (90) + sp_purge_pc_user_history — per-PC interactive login history |
+| 024_pc_user_history_ip | pc_user_history.ip_address — IP the PC had at the moment of each login session |

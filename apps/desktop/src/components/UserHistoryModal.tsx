@@ -68,6 +68,7 @@ export function UserHistoryModal({ computerId, computerName, onClose }: Props) {
                   <th>{t('userHistory.user')}</th>
                   <th>{t('userHistory.firstSeen')}</th>
                   <th>{t('userHistory.lastSeen')}</th>
+                  <th>{t('userHistory.ip')}</th>
                   <th style={{ textAlign: 'right' }}>{t('userHistory.duration')}</th>
                 </tr>
               </thead>
@@ -80,6 +81,9 @@ export function UserHistoryModal({ computerId, computerName, onClose }: Props) {
                     </td>
                     <td title={`${new Date(it.last_seen).toISOString()} · ${timeAgo(it.last_seen)}`}>
                       {new Date(it.last_seen).toLocaleString(locale)}
+                    </td>
+                    <td style={{ fontFamily: 'Consolas, monospace', color: 'var(--text-dim)' }}>
+                      {it.ip_address ?? '—'}
                     </td>
                     <td style={{ textAlign: 'right', color: 'var(--text-dim)' }}>
                       {durationHuman(it.first_seen, it.last_seen)}

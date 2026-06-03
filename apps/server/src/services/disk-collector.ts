@@ -153,6 +153,7 @@ async function upsertPcInfo(computerId: number, info: PcInfo): Promise<void> {
     await pool.request()
       .input('cid', computerId)
       .input('user', info.UserName)
+      .input('ip', info.IPAddress)
       .query(`
         DECLARE @last_id BIGINT, @last_user NVARCHAR(255);
         SELECT TOP 1 @last_id = id, @last_user = user_name
@@ -161,10 +162,13 @@ async function upsertPcInfo(computerId: number, info: PcInfo): Promise<void> {
         ORDER BY last_seen DESC;
 
         IF @last_id IS NOT NULL AND @last_user = @user
-          UPDATE pc_user_history SET last_seen = SYSUTCDATETIME() WHERE id = @last_id;
+          UPDATE pc_user_history
+          SET last_seen = SYSUTCDATETIME(),
+              ip_address = COALESCE(@ip, ip_address)
+          WHERE id = @last_id;
         ELSE
-          INSERT INTO pc_user_history (computer_id, user_name, first_seen, last_seen)
-          VALUES (@cid, @user, SYSUTCDATETIME(), SYSUTCDATETIME());
+          INSERT INTO pc_user_history (computer_id, user_name, first_seen, last_seen, ip_address)
+          VALUES (@cid, @user, SYSUTCDATETIME(), SYSUTCDATETIME(), @ip);
       `);
   }
 }

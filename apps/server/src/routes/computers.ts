@@ -57,8 +57,8 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     const r = await pool.request()
       .input('cid', params.id)
       .input('days', q.days)
-      .query<{ id: number; user_name: string; first_seen: string; last_seen: string }>(`
-        SELECT id, user_name, first_seen, last_seen
+      .query<{ id: number; user_name: string; first_seen: string; last_seen: string; ip_address: string | null }>(`
+        SELECT id, user_name, first_seen, last_seen, ip_address
         FROM pc_user_history
         WHERE computer_id = @cid
           AND last_seen >= DATEADD(DAY, -@days, SYSUTCDATETIME())

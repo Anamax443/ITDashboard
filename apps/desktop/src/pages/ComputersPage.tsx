@@ -5,6 +5,7 @@ import { api, timeAgo, parseDiskThresholds } from '../api.js';
 import { DisksCell } from '../components/DiskBar.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { UserHistoryModal } from '../components/UserHistoryModal.js';
+import { PcActionsButton } from '../components/PcActions.js';
 import { useI18n } from '../i18n.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
@@ -310,6 +311,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                 <th style={{ width: 160 }}>Disks</th>
                 <th style={{ width: 120 }}>Last collected</th>
                 <th>Last error</th>
+                <th style={{ width: 90 }}>{t('actions.title')}</th>
               </tr>
             </thead>
             <tbody>
@@ -336,7 +338,13 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                       style={{ cursor: 'pointer' }}
                     />
                   </td>
-                  <td style={{ fontWeight: 600 }}>{c.name}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    <span
+                      onClick={() => setUserHistoryFor({ id: c.id, name: c.name })}
+                      style={{ cursor: 'pointer', borderBottom: '1px dotted var(--accent)' }}
+                      title="Click for login history"
+                    >{c.name}</span>
+                  </td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }} title={c.distinguished_name ?? ''}>{c.ou_path ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{c.fqdn ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{c.os_version ?? '—'}</td>
@@ -345,9 +353,8 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                     title={c.pc_info_collected_at ? `Collected ${timeAgo(c.pc_info_collected_at)}` : ''}
                   >{c.ip_address ?? '—'}</td>
                   <td
-                    style={{ color: 'var(--text-dim)', fontSize: 11, cursor: c.current_user ? 'pointer' : 'default', textDecoration: c.current_user ? 'underline dotted' : 'none' }}
-                    title={c.current_user_seen_at ? `Last seen logged in: ${timeAgo(c.current_user_seen_at)} · click for history` : 'No login captured yet'}
-                    onClick={c.current_user ? () => setUserHistoryFor({ id: c.id, name: c.name }) : undefined}
+                    style={{ color: 'var(--text-dim)', fontSize: 11 }}
+                    title={c.current_user_seen_at ? `Last seen logged in: ${timeAgo(c.current_user_seen_at)}` : ''}
                   >{c.current_user ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{timeAgo(c.last_seen)}</td>
                   <td style={{ fontSize: 11 }}>
@@ -364,6 +371,9 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{timeAgo(c.last_collected_at ?? null)}</td>
                   <td style={{ color: c.last_error ? 'var(--critical)' : 'var(--text-dim)', fontSize: 11, maxWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.last_error ?? ''}>
                     {c.last_error ?? '—'}
+                  </td>
+                  <td>
+                    <PcActionsButton name={c.name} fqdn={c.fqdn} ipAddress={c.ip_address} disks={disks.filter((d) => d.computer_id === c.id)} />
                   </td>
                 </tr>
               ))}

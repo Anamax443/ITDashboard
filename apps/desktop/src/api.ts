@@ -209,6 +209,7 @@ export interface PcUserHistoryItem {
   user_name: string;
   first_seen: string;
   last_seen: string;
+  ip_address: string | null;
 }
 
 export interface ActivityHistoryItem {

@@ -55,6 +55,36 @@ The frontend gate does not depend on the OS firewall being active — it just re
 rule contents as the whitelist source — so the UI is still gated correctly even with
 the OS firewall disabled.
 
+## Per-PC actions menu (NEW since 2026-06-03)
+
+Computers tab gains a per-row "⚡ Actions" button that opens a modal
+exposing common remote-admin operations. Since the browser cannot
+launch native commands directly, every action is one of:
+- **Copy-to-clipboard** — operator pastes into Win+R / cmd
+- **File download** — operator double-clicks the downloaded .rdp / .bat
+  in Downloads to launch
+
+Sections in the menu:
+1. **Remote MMC management** — copy commands for `compmgmt.msc`,
+   `services.msc`, `eventvwr.msc`, `taskschd.msc` with `/computer=NAME`
+2. **Remote access** — `.rdp` file download (mstsc auto-launches);
+   `.bat` with `psexec \\NAME cmd.exe`
+3. **Admin shares** — enumerated from the `disks` table for that PC.
+   For each known drive (C, D, ...), a `.bat` download that runs
+   `start explorer.exe \\NAME\<letter>$` plus a "Copy UNC" button
+4. **Copy** — hostname / FQDN / current IP
+
+Future enhancement: custom `itd-launch://` URL protocol handler
+installed via small `.reg` file would give true one-click experience.
+
+## PC user history click moved to NAME (UPDATED 2026-06-03)
+
+The User cell tooltip stayed but the click handler is on the **Name**
+cell now (dotted-underline accent color). The history modal also gained
+an "IP at that time" column populated from `pc_user_history.ip_address`
+(migration 024) — the IP the PC had when the session was first observed.
+Helps trace roaming notebooks.
+
 ## PC user history (NEW since 2026-06-03)
 
 For shared workstations (`ZAST*` etc.) where multiple operators rotate
