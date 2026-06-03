@@ -96,6 +96,18 @@ AD sync is registered as the first check in the registry. Order matters: if a pe
 ### Observer, not executor
 The whole tool follows the loop `observe → compare with threshold → show to operator`, never `observe → act → re-observe`. Remediation is delegated to the human at the screen. The Services tab "GPO script export" stays on the right side of this line (we export a script, we don't execute it). Future backlog items like "Direct fix button per service-PC" would cross it, and should be evaluated against this principle before being implemented. Two reasons: (1) absence of signal is ambiguous — an OFFLINE PC could be down, the network could be down, or the monitor itself could be blind, so acting on incomplete state is dangerous; (2) the monitor doesn't own truth, the machines do — every shown value is a 30-second-to-15-minute-stale derivative, and acting on stale state is how races and storms start.
 
+### Per-PC Actions and URL protocol handlers
+Computers tab Actions are operator launch shortcuts, not automated remediation. Every row offers copy/download fallbacks. Optional one-click launch is implemented by a per-workstation installer (`apps/server/scripts/install-itd-handlers.cmd`) that registers custom `itd-*` URL protocols under HKCU only.
+
+Security posture:
+- Generated launchers accept only non-empty hostnames matching `[a-zA-Z0-9._-]+` with a 63-character cap. Spaces, quotes, shell metacharacters, redirection and path traversal do not pass validation.
+- Browser prompt guidance is explicit: do not tick "Always allow"; per-click confirmation is a second layer against unrelated websites probing registered protocols.
+- PsExec is not installed by default because it opens `cmd.exe` on the remote PC; opt-in requires `/with-psexec`.
+- `itd-explorer://HOST/LETTER` intentionally supports only administrative drive shares (`C$`, `D$`). It is not a generic UNC share launcher.
+- `ITD_ADMIN_USER` is optional. When set, launchers wrap commands in `runas /user:%ITD_ADMIN_USER% /netonly`, so the expected password prompt is accepted UX friction instead of storing credentials locally.
+
+This design was reviewed twice on 2026-06-03: first as an RCE fix review, then as a follow-up confirming the hardened installer is OK to deploy. The follow-up response is archived in `docs/oponentury/2026-06-03-reakce-3-protocol-handlers-followup.md`.
+
 ### Perf-events: discrete slow records, not continuous CPU history
 The perf-events collector subscribes to the `Microsoft-Windows-Diagnostics-Performance/Operational` channel, which contains only the events Windows itself diagnosed as "slow" (boot/shutdown/standby/resume timing degradations) — not a continuous CPU curve. Windows does not natively retain CPU usage history without an opt-in Data Collector Set; SRUM has rough per-process daily data but isn't WMI-accessible. The diagnostics channel was chosen because it is enabled by default on Win10/11 client, gives per-incident attribution (named culprit process / service / driver), and reuses the existing RPC collection path with no agent install. Default channel retention is small (~1 MB ring buffer) so we sweep into SQL to preserve history; cold-start pulls 7 days, then incremental.
 

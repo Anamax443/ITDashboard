@@ -107,6 +107,7 @@ a.external { color: var(--accent); }
     <li><a href="#deployment"><span data-lang="cs">Deployment workflow</span><span data-lang="en">Deployment workflow</span></a></li>
     <li><a href="#components"><span data-lang="cs">Komponenty</span><span data-lang="en">Components</span></a></li>
     <li><a href="#ui-tour"><span data-lang="cs">UI prohlídka</span><span data-lang="en">UI tour</span></a></li>
+    <li><a href="#pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></a></li>
     <li><a href="#collector">Eventlog collector</a></li>
     <li><a href="#disk"><span data-lang="cs">Disk collector</span><span data-lang="en">Disk space collector</span></a></li>
     <li><a href="#services">Services collector + policy</a></li>
@@ -336,6 +337,46 @@ service restarts on new dist/, in-memory state cleared</div>
     <li>Status sloupec — Online / Offline / RPC fail / Access denied / Disabled</li>
     <li>Sloupce Last collected / Last error</li>
   </ul>
+</div>
+
+<h2 id="pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></h2>
+<div data-lang="en">
+  <p>The Computers tab has a per-row <strong>Actions</strong> button for common remote-admin launch workflows. The dashboard remains an observer: these actions open admin tools for the operator; they do not automatically remediate or mutate the target PC.</p>
+  <table>
+    <tr><th>Action</th><th>One-click protocol</th><th>Fallback</th></tr>
+    <tr><td>Computer Management</td><td><code>itd-mmc://NAME</code></td><td>Copy <code>mmc.exe compmgmt.msc /computer=NAME</code></td></tr>
+    <tr><td>Services</td><td><code>itd-services://NAME</code></td><td>Copy <code>mmc.exe services.msc /computer=NAME</code></td></tr>
+    <tr><td>Event Viewer</td><td><code>itd-eventvwr://NAME</code></td><td>Copy <code>mmc.exe eventvwr.msc /computer=NAME</code></td></tr>
+    <tr><td>Task Scheduler</td><td><code>itd-taskschd://NAME</code></td><td>Copy <code>mmc.exe taskschd.msc /computer=NAME</code></td></tr>
+    <tr><td>RDP</td><td><code>itd-rdp://NAME</code></td><td>Download <code>.rdp</code> file</td></tr>
+    <tr><td>PsExec cmd</td><td><code>itd-psexec://NAME</code> only after opt-in install</td><td>Download <code>.bat</code></td></tr>
+    <tr><td>Admin drive share</td><td><code>itd-explorer://NAME/LETTER</code></td><td>Copy UNC / download <code>.bat</code></td></tr>
+  </table>
+  <div class="callout callout-warn">
+    <strong>Protocol handler safety:</strong> run the installer once per operator workstation from <code>/actions/install-handlers.cmd</code>. It registers under HKCU only, validates hostnames with a strict allowlist (<code>[a-zA-Z0-9._-]+</code>, max 63 chars), and rejects spaces, quotes, shell metacharacters and paths. When the browser asks whether to open these links, do <strong>not</strong> tick "Always allow"; keep the per-click prompt.
+  </div>
+  <div class="callout callout-info">
+    <strong>Follow-up review verdict (2026-06-03):</strong> the hardened handler is OK to deploy. Explorer launch intentionally supports only administrative drive shares such as <code>C$</code> / <code>D$</code>, not arbitrary UNC share names. PsExec is not installed by default and requires <code>/with-psexec</code>. If <code>ITD_ADMIN_USER</code> is set, launchers use <code>runas /netonly</code>; the password prompt is expected and avoids storing credentials in the local launcher.
+  </div>
+</div>
+<div data-lang="cs">
+  <p>V tabu Počítače je u každého řádku tlačítko <strong>Akce</strong> pro běžné remote-admin workflow. Dashboard zůstává observer: akce otevírají nástroje pro operátora, ale samy neopravují ani nemění cílové PC.</p>
+  <table>
+    <tr><th>Akce</th><th>One-click protocol</th><th>Fallback</th></tr>
+    <tr><td>Správa počítače</td><td><code>itd-mmc://NAME</code></td><td>Kopírovat <code>mmc.exe compmgmt.msc /computer=NAME</code></td></tr>
+    <tr><td>Služby</td><td><code>itd-services://NAME</code></td><td>Kopírovat <code>mmc.exe services.msc /computer=NAME</code></td></tr>
+    <tr><td>Prohlížeč událostí</td><td><code>itd-eventvwr://NAME</code></td><td>Kopírovat <code>mmc.exe eventvwr.msc /computer=NAME</code></td></tr>
+    <tr><td>Plánovač úloh</td><td><code>itd-taskschd://NAME</code></td><td>Kopírovat <code>mmc.exe taskschd.msc /computer=NAME</code></td></tr>
+    <tr><td>RDP</td><td><code>itd-rdp://NAME</code></td><td>Stáhnout <code>.rdp</code> soubor</td></tr>
+    <tr><td>PsExec cmd</td><td><code>itd-psexec://NAME</code> jen po opt-in installu</td><td>Stáhnout <code>.bat</code></td></tr>
+    <tr><td>Admin drive share</td><td><code>itd-explorer://NAME/LETTER</code></td><td>Kopírovat UNC / stáhnout <code>.bat</code></td></tr>
+  </table>
+  <div class="callout callout-warn">
+    <strong>Bezpečnost protocol handlerů:</strong> installer z <code>/actions/install-handlers.cmd</code> se spouští jednou per operator workstation. Registruje handlery jen pod HKCU, validuje hostname přes strict allowlist (<code>[a-zA-Z0-9._-]+</code>, max 63 znaků) a odmítá mezery, uvozovky, shell metaznaky i cesty. Když se browser ptá na otevření odkazu, nezaškrtávat <strong>"Vždy povolit"</strong>; ponechat per-click prompt.
+  </div>
+  <div class="callout callout-info">
+    <strong>Verdikt follow-up review (2026-06-03):</strong> hardened handler je OK k nasazení. Explorer launch záměrně podporuje jen administrativní drive shares typu <code>C$</code> / <code>D$</code>, ne libovolné UNC share názvy. PsExec se neinstaluje defaultně a vyžaduje <code>/with-psexec</code>. Pokud je nastavené <code>ITD_ADMIN_USER</code>, launchery používají <code>runas /netonly</code>; prompt na heslo je očekávaný a brání ukládání credentials v lokálním launcheru.
+  </div>
 </div>
 
 <h3><span data-lang="cs">Záložka Výkon</span><span data-lang="en">Perf tab</span></h3>
@@ -814,6 +855,7 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td>DB credentials in config</td><td>None — Integrated Auth (SSPI) under service account</td></tr>
   <tr><td>Stored credentials for remote operations</td><td>DPAPI CurrentUser scope; rotating service account invalidates secrets</td></tr>
   <tr><td>Script execution authorisation</td><td>Audit log in <code>script_runs</code>; destructive scripts require UI confirmation flag (planned)</td></tr>
+  <tr><td>Custom URL protocol handlers</td><td>Optional HKCU install only; strict hostname allowlist; PsExec opt-in; admin-share-only Explorer; browser "Always allow" discouraged; <code>ITD_ADMIN_USER</code> uses <code>runas /netonly</code> prompt instead of stored credentials</td></tr>
   <tr><td>API network exposure</td><td>Frontend gate via IP whitelist (UX boundary); OS firewall rule mirrors same whitelist (defense-in-depth)</td></tr>
   <tr><td>Service account scope</td><td>Domain user (not Domain Admin); only Event Log Readers + Performance Monitor Users + DB <code>db_owner</code> + Service Stop/Start on ITDashboardAPI</td></tr>
   <tr><td>GitHub runner auth</td><td>Outbound HTTPS only; no inbound holes. Runner polls GitHub from inside the network.</td></tr>
@@ -825,6 +867,7 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td>DB credentials v configu</td><td>Žádné — Integrated Auth (SSPI) pod service account</td></tr>
   <tr><td>Uložené credentials pro remote operace</td><td>DPAPI CurrentUser scope; rotace service account invaliduje secrets</td></tr>
   <tr><td>Autorizace spouštění skriptů</td><td>Audit log v <code>script_runs</code>; destruktivní skripty vyžadují UI confirmation flag (plánováno)</td></tr>
+  <tr><td>Custom URL protocol handlers</td><td>Volitelný HKCU install; strict hostname allowlist; PsExec opt-in; Explorer jen pro admin shares; browser "Vždy povolit" se nedoporučuje; <code>ITD_ADMIN_USER</code> používá <code>runas /netonly</code> prompt místo uložených credentials</td></tr>
   <tr><td>Network exposure API</td><td>Frontend gate přes IP whitelist (UX hranice); OS firewall rule zrcadlí stejný whitelist (defense-in-depth)</td></tr>
   <tr><td>Scope service account</td><td>Doménový user (ne Domain Admin); jen Event Log Readers + Performance Monitor Users + DB <code>db_owner</code> + Service Stop/Start na ITDashboardAPI</td></tr>
   <tr><td>GitHub runner auth</td><td>Pouze outbound HTTPS; žádné inbound díry. Runner pollí GitHub zevnitř sítě.</td></tr>

@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (protocol handler follow-up oponentura)
+Last updated: 2026-06-03 (protocol handler docs sync)
 
 ## Current Live State
 
@@ -29,6 +29,15 @@ intentionally supports only admin shares (`C$`, `D$`), and inner quoting
 inside the `runas` command string is left unchanged because host/snap-in
 inputs are already constrained and changing `runas` quoting risks a
 runtime regression without security gain.
+
+Follow-up docs sync completed after the review:
+- `README.md` now mentions Per-PC Actions and links both follow-up review docs.
+- `docs/ARCHITECTURE.md` has a "Per-PC Actions and URL protocol handlers"
+  security/design section.
+- `docs/dashboard.html` has a CS/EN `Per-PC Actions` chapter plus Security
+  model rows for custom URL handlers.
+- `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show the same CS/EN follow-up
+  note in the Actions modal warning block.
 
 ## Deployment Model
 

@@ -12,6 +12,7 @@ Internal IT operations dashboard for the **AXINETWORK** domain. Eventlog analyti
 - **Reachability classification** — every collector run categorises each PC as `online` / `offline` / `rpc_unavailable` / `access_denied`. Dashboard surfaces breakdown.
 - **Activity log** — terminal-style live view of every collector / sync / disk-scan action with filter, pause, copy-to-clipboard.
 - **Settings page** — periodic check frequency, days/time window, enabled checks + disk thresholds, applied live without service restart.
+- **Per-PC Actions** — one-row remote-admin shortcuts (MMC, services, event viewer, task scheduler, RDP, admin shares) with copy/download fallbacks and optional hardened `itd-*` URL protocol handlers.
 
 ## Live topology
 
@@ -80,6 +81,8 @@ The browser UI talks to API at `http://10.8.2.213:4000` (CORS open). Your dev PC
 ## Status
 
 **LIVE since 2026-06-01.** Auto-deploy pipeline green. 211 monitored PCs covered by eventlog + disk collectors. See [docs/dashboard.html](docs/dashboard.html) for full feature reference.
+
+Protocol handler security follow-up from 2026-06-03 is archived in [docs/oponentury/2026-06-03-oponentura-3-protocol-handlers-followup.md](docs/oponentury/2026-06-03-oponentura-3-protocol-handlers-followup.md) with response in [docs/oponentury/2026-06-03-reakce-3-protocol-handlers-followup.md](docs/oponentury/2026-06-03-reakce-3-protocol-handlers-followup.md). Verdict: hardened handlers are OK to deploy; Explorer intentionally supports only admin shares (`C$`, `D$`), PsExec remains opt-in, and `ITD_ADMIN_USER` uses expected `runas /netonly` password prompts.
 
 ## Setup
 
