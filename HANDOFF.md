@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (default-to-ask + itd-ps PowerShell Remote launcher; installer header + welcome message synced)
+Last updated: 2026-06-03 (machine-wide install via /machine flag — zero per-user setup for multi-IT-specialist workstations)
 
 ## Current Live State
 
@@ -117,6 +117,65 @@ Docs/UI sync for this fix completed:
   a CS/EN troubleshooting entry "URL line missing from fail screen".
 - `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show a one-line note in the
   Actions modal warning block.
+
+## Machine-wide install via /machine flag (NEW since 2026-06-03)
+
+Followup to the default-to-ask change. Operator pointed out the real
+friction in a multi-IT-specialist workstation: HKCU registrations and
+LOCALAPPDATA launcher files are **per-Windows-user**. Each IT specialist
+logging into the same operator workstation as a different Windows account
+(operator's regular login + a domain admin account + helpdesk account…)
+would each have to run the installer once for their own user. That is
+exactly the "ostatní uživatelé to nemusí dělat" friction the operator
+wanted to eliminate.
+
+Fix: new `/machine` install flag. When invoked from elevated cmd / PS, the
+installer writes launcher files to `C:\ProgramData\ITDashboard\launchers`
+and registers the protocol handlers under `HKLM\Software\Classes\itd-*`.
+Effect: every Windows account that logs into the workstation immediately
+has working `itd-*` handlers — no per-user installer run needed.
+
+Usage:
+```
+# One-time, elevated PowerShell / cmd on each operator workstation:
+Invoke-WebRequest http://10.8.2.213:4000/actions/install-handlers.cmd -OutFile $env:TEMP\install-handlers.cmd
+Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine" -Verb RunAs
+```
+
+HKCU shadowing caveat: if any Windows user on the workstation previously
+ran the per-user installer, their HKCU registration shadows the HKLM one
+(HKCU takes precedence in HKEY_CLASSES_ROOT merge). That user's browser
+will keep launching the OLD per-user launcher. Two ways to resolve:
+- That user runs the new installer per-user (default mode, no flags) so
+  HKCU gets refreshed with the new logic. OR
+- That user runs `install-handlers.cmd /uninstall-hkcu` (no admin needed)
+  which removes their HKCU itd-* registrations and the per-user launcher
+  dir under LOCALAPPDATA. HKLM machine handlers then take over.
+
+The `/uninstall-hkcu` flag is the recommended cleanup for the operator's
+own existing per-user pollution after switching to `/machine` mode.
+
+Launcher mkdir fix: generated launchers now `mkdir
+%LOCALAPPDATA%\ITDashboard\launchers >nul 2>&1` at startup. Critical for
+the machine-wide case: a user logging in for the first time after the
+admin's /machine install has no per-user launcher dir, so the launcher
+would fail to write log/last-admin-user.txt if mkdir wasn't there. The
+mkdir is no-op when the dir already exists (per-user install case).
+
+Files touched: `apps/server/scripts/install-itd-handlers.cmd` — flag
+parser at top, MACHINE_INSTALL/UNINSTALL_HKCU/REGHIVE/BASE branching,
+:register subroutine uses %REGHIVE%, welcome message reflects scope,
+generated launcher mkdir line. Plus HANDOFF + README + ARCHITECTURE +
+dashboard.html (CS+EN) + i18n docs sync.
+
+After deploy: operator runs `/machine` once elevated. All Windows accounts
+on that workstation immediately get the handlers with default-to-ask
+behavior. Existing per-user pollution cleaned via `/uninstall-hkcu`.
+
+Local sandbox-tested: per-user mode unchanged (PER-USER scope label,
+mkdir line present in generated launcher). /machine mode logic
+symmetric — not run against real HKLM to avoid polluting maintainer's
+own workstation.
 
 ## Default-to-ask: ITD_ADMIN_USER unset behaves as ask (NEW since 2026-06-03)
 

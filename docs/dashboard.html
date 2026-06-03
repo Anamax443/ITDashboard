@@ -371,6 +371,11 @@ service restarts on new dist/, in-memory state cleared</div>
   <div class="callout callout-info">
     <strong>New <code>itd-ps://</code> launcher:</strong> opens a PowerShell console with <code>Enter-PSSession -ComputerName HOST</code>. In ask/preset mode, credentials are collected via <code>Get-Credential</code> — a native single-dialog Windows credential UI showing both user and password fields. The PowerShell <code>-Command</code> inline form bypasses the <code>.ps1</code> ExecutionPolicy / AllSigned GPO requirement, so this works on workstations without signed-script provisions.
   </div>
+  <div class="callout callout-info">
+    <strong>Machine-wide install for multi-user workstations:</strong> when several Windows accounts share one operator workstation (operator regular login + domain admin + helpdesk…), run the installer once with <code>/machine</code> from elevated cmd / PS. That writes launchers to <code>C:\ProgramData\ITDashboard\launchers</code> and registers handlers under <code>HKLM\Software\Classes\itd-*</code> — every Windows account on the workstation immediately has working handlers, no per-user installer run needed. Per-user mode (default, no flag) stays unchanged for single-user workstations. If switching from per-user to machine-wide, each affected user runs <code>install-handlers.cmd /uninstall-hkcu</code> once (no admin) to clear their HKCU shadow of the HKLM registration.
+    <pre><code>Invoke-WebRequest http://10.8.2.213:4000/actions/install-handlers.cmd -OutFile $env:TEMP\install-handlers.cmd
+Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine" -Verb RunAs</code></pre>
+  </div>
 </div>
 <div data-lang="cs">
   <p>V tabu Počítače je u každého řádku tlačítko <strong>Akce</strong> pro běžné remote-admin workflow. Dashboard zůstává observer: akce otevírají nástroje pro operátora, ale samy neopravují ani nemění cílové PC.</p>
@@ -402,6 +407,11 @@ service restarts on new dist/, in-memory state cleared</div>
   </div>
   <div class="callout callout-info">
     <strong>Nový <code>itd-ps://</code> launcher:</strong> otevře PowerShell konzoli s <code>Enter-PSSession -ComputerName HOST</code>. V módu ask/preset se credentials sbírají přes <code>Get-Credential</code> — native single-dialog Windows credential UI ukazující obě pole (user i heslo). PowerShell <code>-Command</code> inline forma obchází <code>.ps1</code> ExecutionPolicy / AllSigned GPO požadavek, takže funguje na stanicích bez signed-script provisions.
+  </div>
+  <div class="callout callout-info">
+    <strong>Machine-wide install pro multi-user workstation:</strong> když více Windows účtů sdílí jednu operátorskou stanici (operátor regular login + domain admin + helpdesk…), spusť installer jednou s <code>/machine</code> z elevated cmd / PS. To zapíše launchery do <code>C:\ProgramData\ITDashboard\launchers</code> a zaregistruje handlery v <code>HKLM\Software\Classes\itd-*</code> — každý Windows účet na stanici má okamžitě funkční handlery, žádný per-user installer run není potřeba. Per-user mód (default, žádný flag) zůstává nezměněný pro single-user workstation. Při přechodu z per-user na machine-wide každý dotčený uživatel spustí <code>install-handlers.cmd /uninstall-hkcu</code> jednou (bez admin) aby vyčistil svůj HKCU shadow nad HKLM registrací.
+    <pre><code>Invoke-WebRequest http://10.8.2.213:4000/actions/install-handlers.cmd -OutFile $env:TEMP\install-handlers.cmd
+Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine" -Verb RunAs</code></pre>
   </div>
 </div>
 

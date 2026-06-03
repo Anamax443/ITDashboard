@@ -35,11 +35,57 @@
 
 setlocal EnableExtensions
 set WITH_PSEXEC=0
-if /i "%~1"=="/with-psexec" set WITH_PSEXEC=1
+set MACHINE_INSTALL=0
+set UNINSTALL_HKCU=0
+for %%a in (%*) do (
+  if /i "%%a"=="/with-psexec"    set WITH_PSEXEC=1
+  if /i "%%a"=="/machine"        set MACHINE_INSTALL=1
+  if /i "%%a"=="/uninstall-hkcu" set UNINSTALL_HKCU=1
+)
 
-set BASE=%LOCALAPPDATA%\ITDashboard\launchers
+if "%UNINSTALL_HKCU%"=="1" (
+  echo.
+  echo Removing per-user HKCU itd-* registrations + LOCALAPPDATA launcher dir
+  echo for current Windows user %USERNAME%...
+  for %%s in (mmc services eventvwr taskschd rdp explorer ps psexec) do (
+    reg delete "HKCU\Software\Classes\itd-%%s" /f >nul 2>&1
+  )
+  if exist "%LOCALAPPDATA%\ITDashboard\launchers" rmdir /s /q "%LOCALAPPDATA%\ITDashboard\launchers"
+  echo Done.
+  echo.
+  echo If a machine-wide install is present in HKLM + ProgramData, your
+  echo itd-* protocol clicks will now use those handlers ^(HKCU no longer
+  echo shadows HKLM for this Windows user^).
+  echo.
+  pause
+  exit /b 0
+)
+
+if "%MACHINE_INSTALL%"=="1" (
+  net session >nul 2>&1
+  if errorlevel 1 (
+    echo.
+    echo ERROR: /machine install requires admin elevation.
+    echo Run this script from an elevated cmd / PowerShell.
+    echo.
+    echo From elevated PowerShell:
+    echo   ^& "%~f0" /machine
+    echo.
+    pause
+    exit /b 2
+  )
+  set "BASE=%ProgramData%\ITDashboard\launchers"
+  set "REGHIVE=HKLM"
+  set "SCOPE_LABEL=MACHINE-WIDE (HKLM + ProgramData)"
+) else (
+  set "BASE=%LOCALAPPDATA%\ITDashboard\launchers"
+  set "REGHIVE=HKCU"
+  set "SCOPE_LABEL=PER-USER (HKCU + LOCALAPPDATA)"
+)
+
 if not exist "%BASE%" mkdir "%BASE%"
 
+echo Install scope: %SCOPE_LABEL%
 echo Writing launcher scripts to "%BASE%" ...
 
 call :write_mmc_launcher itd-mmc      compmgmt.msc
@@ -51,7 +97,7 @@ call :write_explorer_launcher
 call :write_ps_launcher
 if "%WITH_PSEXEC%"=="1" call :write_psexec_launcher
 
-echo Registering protocol handlers under HKCU ...
+echo Registering protocol handlers under %REGHIVE% ...
 
 call :register mmc       "ITDashboard MMC (Computer Management)"
 call :register services  "ITDashboard MMC (services.msc)"
@@ -93,8 +139,21 @@ if "%WITH_PSEXEC%"=="1" (
   echo  PsExec handler NOT installed. Re-run with /with-psexec to add.
 )
 echo.
+echo  Scope: %SCOPE_LABEL%
+if "%MACHINE_INSTALL%"=="1" (
+  echo  Installed for ALL Windows users on this workstation.
+  echo  HKCU registrations from prior per-user installs ^(if any^)
+  echo  will SHADOW this machine-wide install for those users.
+  echo  Affected users should run: install-itd-handlers.cmd /uninstall-hkcu
+) else (
+  echo  Installed for current Windows user only ^(%USERNAME%^).
+  echo  Other Windows users on this workstation need to run this script
+  echo  themselves, or an admin can run it once with /machine flag for
+  echo  workstation-wide install.
+)
+echo.
 echo  To remove: delete  %BASE%
-echo             delete  HKCU\Software\Classes\itd-*  in regedit
+echo             delete  %REGHIVE%\Software\Classes\itd-*  in regedit
 echo ============================================================
 echo.
 pause
@@ -113,6 +172,7 @@ exit /b 0
 :: %1 = scheme suffix (e.g. itd-mmc),  %2 = .msc snap-in name
 > "%BASE%\%1.cmd" echo @echo off
 >>"%BASE%\%1.cmd" echo setlocal EnableExtensions EnableDelayedExpansion
+>>"%BASE%\%1.cmd" echo if not exist "%%LOCALAPPDATA%%\ITDashboard\launchers" mkdir "%%LOCALAPPDATA%%\ITDashboard\launchers" ^>nul 2^>^&1
 >>"%BASE%\%1.cmd" echo set "log=%%LOCALAPPDATA%%\ITDashboard\launchers\last-%%~n0.log"
 >>"%BASE%\%1.cmd" echo set "url=%%~1"
 >>"%BASE%\%1.cmd" echo set "host=%%url:%1://=%%"
@@ -152,6 +212,7 @@ goto :eof
 :write_rdp_launcher
 > "%BASE%\itd-rdp.cmd" echo @echo off
 >>"%BASE%\itd-rdp.cmd" echo setlocal EnableExtensions EnableDelayedExpansion
+>>"%BASE%\itd-rdp.cmd" echo if not exist "%%LOCALAPPDATA%%\ITDashboard\launchers" mkdir "%%LOCALAPPDATA%%\ITDashboard\launchers" ^>nul 2^>^&1
 >>"%BASE%\itd-rdp.cmd" echo set "log=%%LOCALAPPDATA%%\ITDashboard\launchers\last-%%~n0.log"
 >>"%BASE%\itd-rdp.cmd" echo set "url=%%~1"
 >>"%BASE%\itd-rdp.cmd" echo set "host=%%url:itd-rdp://=%%"
@@ -192,6 +253,7 @@ goto :eof
 :: URL: itd-explorer://HOSTNAME/LETTER  (e.g. itd-explorer://ZAST5W11/C)
 > "%BASE%\itd-explorer.cmd" echo @echo off
 >>"%BASE%\itd-explorer.cmd" echo setlocal EnableExtensions EnableDelayedExpansion
+>>"%BASE%\itd-explorer.cmd" echo if not exist "%%LOCALAPPDATA%%\ITDashboard\launchers" mkdir "%%LOCALAPPDATA%%\ITDashboard\launchers" ^>nul 2^>^&1
 >>"%BASE%\itd-explorer.cmd" echo set "log=%%LOCALAPPDATA%%\ITDashboard\launchers\last-%%~n0.log"
 >>"%BASE%\itd-explorer.cmd" echo set "url=%%~1"
 >>"%BASE%\itd-explorer.cmd" echo set "rest=%%url:itd-explorer://=%%"
@@ -236,6 +298,7 @@ goto :eof
 :: hostname validation this is more dangerous than the read-ish snap-ins.
 > "%BASE%\itd-psexec.cmd" echo @echo off
 >>"%BASE%\itd-psexec.cmd" echo setlocal EnableExtensions EnableDelayedExpansion
+>>"%BASE%\itd-psexec.cmd" echo if not exist "%%LOCALAPPDATA%%\ITDashboard\launchers" mkdir "%%LOCALAPPDATA%%\ITDashboard\launchers" ^>nul 2^>^&1
 >>"%BASE%\itd-psexec.cmd" echo set "log=%%LOCALAPPDATA%%\ITDashboard\launchers\last-%%~n0.log"
 >>"%BASE%\itd-psexec.cmd" echo set "url=%%~1"
 >>"%BASE%\itd-psexec.cmd" echo set "host=%%url:itd-psexec://=%%"
@@ -280,6 +343,7 @@ goto :eof
 :: cmd ask-mode dispatch above). Password is never persisted.
 > "%BASE%\itd-ps.cmd" echo @echo off
 >>"%BASE%\itd-ps.cmd" echo setlocal EnableExtensions EnableDelayedExpansion
+>>"%BASE%\itd-ps.cmd" echo if not exist "%%LOCALAPPDATA%%\ITDashboard\launchers" mkdir "%%LOCALAPPDATA%%\ITDashboard\launchers" ^>nul 2^>^&1
 >>"%BASE%\itd-ps.cmd" echo set "log=%%LOCALAPPDATA%%\ITDashboard\launchers\last-%%~n0.log"
 >>"%BASE%\itd-ps.cmd" echo set "url=%%~1"
 >>"%BASE%\itd-ps.cmd" echo set "host=%%url:itd-ps://=%%"
@@ -332,9 +396,10 @@ goto :eof
 
 :register
 :: %1 = scheme suffix (e.g. mmc), %2 = description
-reg add "HKCU\Software\Classes\itd-%1" /ve /d "URL:%~2" /f >nul
-reg add "HKCU\Software\Classes\itd-%1" /v "URL Protocol" /d "" /f >nul
-reg add "HKCU\Software\Classes\itd-%1\shell" /ve /d "" /f >nul
-reg add "HKCU\Software\Classes\itd-%1\shell\open" /ve /d "" /f >nul
-reg add "HKCU\Software\Classes\itd-%1\shell\open\command" /ve /d "\"%BASE%\itd-%1.cmd\" \"%%1\"" /f >nul
+:: Hive is selected by %REGHIVE% (HKLM for /machine, HKCU otherwise).
+reg add "%REGHIVE%\Software\Classes\itd-%1" /ve /d "URL:%~2" /f >nul
+reg add "%REGHIVE%\Software\Classes\itd-%1" /v "URL Protocol" /d "" /f >nul
+reg add "%REGHIVE%\Software\Classes\itd-%1\shell" /ve /d "" /f >nul
+reg add "%REGHIVE%\Software\Classes\itd-%1\shell\open" /ve /d "" /f >nul
+reg add "%REGHIVE%\Software\Classes\itd-%1\shell\open\command" /ve /d "\"%BASE%\itd-%1.cmd\" \"%%1\"" /f >nul
 goto :eof
