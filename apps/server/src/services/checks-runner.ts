@@ -1,10 +1,11 @@
 import { runCollectorOnce, type CollectorRunResult } from './eventlog-collector.js';
 import { runDiskCollectorOnce } from './disk-collector.js';
 import { runServicesScanOnce } from './services-collector.js';
+import { runPerfCollectorOnce, type PerfCollectResult } from './perf-collector.js';
 import { logActivity } from './activity-log.js';
 import { getAllSettings } from './settings.js';
 
-type CheckName = 'eventlog' | 'disk' | 'services';
+type CheckName = 'eventlog' | 'disk' | 'services' | 'perf';
 type CheckSelection = Record<CheckName, boolean>;
 
 interface CheckWindow {
@@ -33,6 +34,7 @@ export interface RunChecksResult {
   eventlog: CollectorRunResult | null;
   disk: DiskCollectResult | null;
   services: ServicesScanResult | null;
+  perf: PerfCollectResult | null;
   durationMs: number;
   selected: CheckSelection;
 }
@@ -45,7 +47,7 @@ const CHECKS: Array<{
   label: string;
   settingKey: string;
   defaultEnabled: boolean;
-  run: (triggerSource: 'manual' | 'scheduled') => Promise<CollectorRunResult | DiskCollectResult | ServicesScanResult | null>;
+  run: (triggerSource: 'manual' | 'scheduled') => Promise<CollectorRunResult | DiskCollectResult | ServicesScanResult | PerfCollectResult | null>;
 }> = [
   {
     name: 'eventlog',
@@ -67,6 +69,13 @@ const CHECKS: Array<{
     settingKey: 'checks.run_services',
     defaultEnabled: true,
     run: () => runServicesScanOnce(),
+  },
+  {
+    name: 'perf',
+    label: 'perf',
+    settingKey: 'checks.run_perf',
+    defaultEnabled: true,
+    run: () => runPerfCollectorOnce(),
   },
 ];
 
@@ -143,6 +152,7 @@ export async function runChecksOnce(
     let eventlog: CollectorRunResult | null = null;
     let disk: DiskCollectResult | null = null;
     let services: ServicesScanResult | null = null;
+    let perf: PerfCollectResult | null = null;
 
     for (const check of CHECKS) {
       if (!selected[check.name]) continue;
@@ -154,11 +164,12 @@ export async function runChecksOnce(
       if (check.name === 'eventlog') eventlog = result as CollectorRunResult;
       if (check.name === 'disk') disk = result as DiskCollectResult;
       if (check.name === 'services') services = result as ServicesScanResult;
+      if (check.name === 'perf') perf = result as PerfCollectResult;
     }
 
     const durationMs = Date.now() - t0;
     logActivity('success', 'checks', `Checks done (${(durationMs / 1000).toFixed(1)}s)`);
-    return { eventlog, disk, services, durationMs, selected };
+    return { eventlog, disk, services, perf, durationMs, selected };
   } catch (err) {
     logActivity('error', 'checks', `Checks failed: ${String(err).split('\n')[0]}`);
     throw err;
@@ -174,7 +185,7 @@ async function runScheduledChecksIfAllowed(): Promise<void> {
 }
 
 export async function runAllChecksOnce(triggerSource: 'manual' | 'scheduled'): Promise<RunChecksResult | null> {
-  return runChecksOnce(triggerSource, { eventlog: true, disk: true, services: true });
+  return runChecksOnce(triggerSource, { eventlog: true, disk: true, services: true, perf: true });
 }
 
 export async function startChecksSchedule(): Promise<void> {

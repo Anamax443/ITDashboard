@@ -6,6 +6,7 @@ const PERIODIC_CHECKS = [
   { key: 'checks.run_eventlog', label: 'Eventlog collector' },
   { key: 'checks.run_disk', label: 'Disk scan' },
   { key: 'checks.run_services', label: 'Services scan' },
+  { key: 'checks.run_perf', label: 'Perf events (slow boot/shutdown)' },
 ] as const;
 
 const SCHEDULE_DAYS = [

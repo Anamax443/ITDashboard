@@ -247,6 +247,18 @@ export const api = {
     }
     return r.json() as Promise<{ ips: string[] }>;
   },
+  perfEvents: (q: { computer?: string; category?: PerfCategory; days?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (q.computer) params.set('computer', q.computer);
+    if (q.category) params.set('category', q.category);
+    if (q.days) params.set('days', String(q.days));
+    if (q.limit) params.set('limit', String(q.limit));
+    return jget<{ items: PerfEventItem[] }>(`/perf-events?${params}`);
+  },
+  perfSummary: (days = 7) => jget<PerfSummary>(`/perf-events/summary?days=${days}`),
+  perfTopCulprits: (days = 7, limit = 15) => jget<{ items: PerfCulprit[] }>(`/perf-events/top-culprits?days=${days}&limit=${limit}`),
+  perfTopPcs: (days = 7, limit = 15) => jget<{ items: PerfTopPc[] }>(`/perf-events/top-pcs?days=${days}&limit=${limit}`),
+  perfScan: () => jpost<PerfScanResult | { skipped: true }>('/perf-events/scan'),
   saveSettings: async (values: Record<string, string>) => {
     const r = await fetch(`${API_BASE}/settings`, {
       method: 'PUT',
@@ -349,12 +361,65 @@ export interface CollectorRunAllResult {
   eventlog: CollectorRunResult | null;
   disk: DiskCollectResult | null;
   services: ServicesScanResult | null;
+  perf: PerfScanResult | null;
   durationMs: number;
   selected: {
     eventlog: boolean;
     disk: boolean;
     services: boolean;
+    perf: boolean;
   };
+}
+
+export type PerfCategory = 'boot' | 'shutdown' | 'standby' | 'resume' | 'other';
+
+export interface PerfEventItem {
+  id: number;
+  computer: string;
+  time_created: string;
+  event_id: number;
+  level: number;
+  category: PerfCategory;
+  total_time_ms: number | null;
+  degradation_ms: number | null;
+  culprit_name: string | null;
+  culprit_friendly: string | null;
+  message: string | null;
+}
+
+export interface PerfSummary {
+  boot_count: number;
+  shutdown_count: number;
+  standby_count: number;
+  resume_count: number;
+  affected_pcs: number;
+  total_events: number;
+}
+
+export interface PerfCulprit {
+  culprit: string;
+  category: PerfCategory;
+  event_count: number;
+  pc_count: number;
+  avg_total_ms: number | null;
+  max_total_ms: number | null;
+}
+
+export interface PerfTopPc {
+  name: string;
+  event_count: number;
+  boot_count: number;
+  shutdown_count: number;
+  avg_boot_ms: number | null;
+  last_event_at: string;
+}
+
+export interface PerfScanResult {
+  pcs: number;
+  ok: number;
+  fail: number;
+  events: number;
+  durationMs: number;
 }
 
 export function levelName(level: number): 'crit' | 'err' | 'warn' | 'info' {

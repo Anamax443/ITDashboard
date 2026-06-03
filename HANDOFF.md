@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03
+Last updated: 2026-06-03 (perf-events)
 
 ## Current Live State
 
@@ -52,12 +52,13 @@ Important:
 - Events tab for Warning/Error/Critical eventlog data.
 - Computers tab with AD sync, monitor toggle, exclude toggle, disk status, reachability status.
 - Services tab with stopped auto-service detection, policy/drift classification, by-PC and by-service views, GPO script export.
+- Perf tab with Diagnostics-Performance event data (slow boot/shutdown/standby/resume) — summary cards, top culprits, most affected PCs, recent events table.
 - Activity tab with live in-memory log, pause, filter, copy.
 - Settings tab with:
   - Periodic checks frequency
   - Periodic checks day selection: Po, Ut, St, Ct, Pa, So, Ne
   - Periodic checks time window, default `06:00` to `18:00`
-  - Check selection: Eventlog collector, Disk scan, Services scan
+  - Check selection: Eventlog collector, Disk scan, Services scan, Perf events
   - Network firewall whitelist
   - Disk thresholds
 
@@ -124,9 +125,50 @@ Expected:
 
 ## Backlog Ideas
 
-- Per-PC detail page: timeline, disks, services, last errors.
-- Direct fix button per service-PC or bulk service remediation.
+- Per-PC detail page: timeline, disks, services, perf events, last errors.
 - Alerting through Resend email or Teams webhook.
 - Daily auto AD sync.
 - Setup guide/checklist in UI for GPO and permissions rollout.
 - Future checks should plug into the checks registry, not create standalone timers.
+
+## Design notes
+
+- ITDashboard is an **observer, not an executor** — the loop is
+  `observe → compare with threshold → show to operator`, never
+  `observe → act → re-observe`. Remediation is delegated to the human
+  at the screen. The Services tab "GPO script export" follows this rule
+  (we export a script, we don't execute it). Future backlog items like
+  "Direct fix button per service-PC" would cross that line and should
+  be evaluated against this principle before being implemented.
+- Absence of signal is ambiguous: an OFFLINE PC could mean the PC is
+  down, the network is down, or the monitor itself is blind. A
+  self-health indicator ("monitor sees X/Y targets, last sweep N sec
+  ago") would help disambiguate during incidents — currently missing.
+
+## Perf events (Diagnostics-Performance channel)
+
+Implemented in:
+- `apps/server/src/services/perf-collector.ts`
+- `apps/server/src/routes/perf-events.ts`
+- `apps/server/migrations/016_perf_events.sql`
+- `apps/desktop/src/pages/PerfPage.tsx`
+
+Source channel: `Microsoft-Windows-Diagnostics-Performance/Operational`,
+enabled by default on Windows 10/11 and Server. The collector pulls slow-event
+records via `Get-WinEvent -ComputerName ...` (same RPC path as eventlog
+collector — needs Event Log Readers + RPC). EventData is parsed from XML to
+extract `TotalTime`, `DegradationTime`, `Name`, `FriendlyName`.
+
+Event ID ranges:
+- 100–199 = boot (101 app-caused, 102 driver, 103 service, 108/109 slow service/device, 150 degradation)
+- 200–299 = shutdown
+- 300–399 = standby
+- 400–499 = resume
+
+Limitations:
+- Not a continuous CPU graph — only discrete slow-event records when Windows
+  itself flagged them as slow. Default channel retention is small (~1 MB ring
+  buffer), so we sweep into SQL to preserve history.
+- "Slow" threshold is Windows' opinion, not configurable.
+
+Setting key: `checks.run_perf` (default `true`).

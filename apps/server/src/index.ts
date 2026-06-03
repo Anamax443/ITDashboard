@@ -13,6 +13,7 @@ import { registerSettingsRoutes } from './routes/settings.js';
 import { registerDisksRoutes } from './routes/disks.js';
 import { registerFirewallRoutes } from './routes/firewall.js';
 import { registerServicesRoutes } from './routes/services.js';
+import { registerPerfEventsRoutes } from './routes/perf-events.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
 
@@ -44,6 +45,7 @@ await registerSettingsRoutes(app);
 await registerDisksRoutes(app);
 await registerFirewallRoutes(app);
 await registerServicesRoutes(app);
+await registerPerfEventsRoutes(app);
 await registerFrontendRoutes(app);
 
 app.listen({ port: PORT, host: BIND }).then(async () => {

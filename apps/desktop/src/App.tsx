@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary } from './api.js';
 import { parseDiskThresholds, summarizeDisks } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { EventsTable } from './components/EventsTable.js';
@@ -13,11 +13,12 @@ import { ActivityLog } from './components/ActivityLog.js';
 import { ComputersPage } from './pages/ComputersPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { ServicesPage } from './pages/ServicesPage.js';
+import { PerfPage } from './pages/PerfPage.js';
 import { HelpBox } from './components/HelpBox.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'events' | 'computers' | 'services' | 'activity' | 'settings';
+type View = 'dashboard' | 'events' | 'computers' | 'services' | 'perf' | 'activity' | 'settings';
 
 export function App() {
   const [view, setView] = useState<View>('dashboard');
@@ -37,6 +38,7 @@ export function App() {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [disks, setDisks] = useState<DiskItem[]>([]);
   const [serviceProblems, setServiceProblems] = useState<ServiceProblem[]>([]);
+  const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
   const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'failing' | null>(null);
 
@@ -44,6 +46,7 @@ export function App() {
     api.version().then(setVersion).catch(() => {});
     api.disks().then((r) => setDisks(r.items)).catch(() => {});
     api.serviceProblems().then((r) => setServiceProblems(r.items)).catch(() => {});
+    api.perfSummary(7).then(setPerfSummary).catch(() => {});
     api.settings().then(setSettingsMap).catch(() => {});
   }, []);
 
@@ -101,6 +104,7 @@ export function App() {
             <button className={view === 'events' ? 'active' : ''} onClick={() => setView('events')}>Events</button>
             <button className={view === 'computers' ? 'active' : ''} onClick={() => setView('computers')}>Computers</button>
             <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>Services</button>
+            <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>Perf</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>Activity</button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>Settings</button>
             <a
@@ -152,7 +156,9 @@ export function App() {
             computers={computers}
             diskSummary={diskSummary}
             serviceProblems={serviceProblems}
+            perfSummary={perfSummary}
             onClickServices={() => setView('services')}
+            onClickPerf={() => setView('perf')}
             onClickCritical={() => { setFilterLevel('critical'); setFilterHours(24); setView('events'); }}
             onClickError={() => { setFilterLevel('error'); setFilterHours(24); setView('events'); }}
             onClickWarning={() => { setFilterLevel('warning'); setFilterHours(24); setView('events'); }}
@@ -192,6 +198,12 @@ export function App() {
       {view === 'services' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <ServicesPage />
+        </div>
+      )}
+
+      {view === 'perf' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <PerfPage />
         </div>
       )}
 
