@@ -55,6 +55,18 @@ The frontend gate does not depend on the OS firewall being active — it just re
 rule contents as the whitelist source — so the UI is still gated correctly even with
 the OS firewall disabled.
 
+## /docs translation status (2026-06-03)
+
+`docs/dashboard.html` now has CS/EN parallel content across all major
+sections. TOC links, all H2 / H3 headings, intro paragraphs, all callouts,
+the Settings table, the Required Permissions section, all Troubleshooting
+items, and the Security model table all have CS translations alongside EN.
+Detailed reference tables (API endpoint list, DB schema column lists,
+SQL/code snippets) stay EN — keywords like `Win32_Service`, `Get-WinEvent`,
+`computer_id` are universal and don't translate. Each major collector
+section has a CS "shrnutí" callout that summarizes the technical content
+in Czech for readers who don't want to parse code-heavy English.
+
 ## i18n + theme (NEW since 2026-06-03)
 
 `apps/desktop/src/i18n.tsx` provides two React context providers mounted in

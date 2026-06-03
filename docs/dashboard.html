@@ -282,70 +282,148 @@ service restarts on new dist/, in-memory state cleared</div>
   <li><strong>Computers list</strong> — quick summary, no filters</li>
 </ul>
 
-<h3>Events tab</h3>
-<p>Full-width detailed events table:</p>
-<ul>
-  <li>Search across message / PC name / event ID / source</li>
-  <li>Filters: Computer dropdown, Source/Provider dropdown, Level (Critical/Error/Warning), Time range (1h / 24h / 7d / 30d)</li>
-  <li>Sortable columns (click header): Time, Computer, Level, Event ID, Source, Log</li>
-  <li>Click any row → detail modal with full message, all metadata</li>
-</ul>
-
-<h3>Computers tab</h3>
-<p>Complete inventory with operator controls:</p>
-<ul>
-  <li><strong>Status chips in header</strong> — clickable filter pills: <em>active</em>, <em>monitored</em>, <em>unmonitored</em>, <em>failing</em>, <em>disk critical</em>, <em>disk warning</em>, <em>disabled</em></li>
-  <li>Search across name / FQDN / OS / OU path</li>
-  <li>Status dropdown filter (mirror of chips)</li>
-  <li>Sortable columns: Name, OU path, FQDN, OS, Last seen, Status</li>
-  <li>Monitor checkbox per row — toggles whether collector polls this PC; persists across AD syncs; works on disabled PCs too (intent preserved if PC reactivates)</li>
-  <li><strong>✓ All</strong> / <strong>✗ None</strong> bulk toggle (respects current filter — useful for "Search: SRV" → ✓ All to monitor only servers)</li>
-  <li><strong>↻ Sync from AD</strong> — refreshes inventory from <code>Get-ADComputer</code></li>
-  <li><strong>💾 Scan disks</strong> — manual disk space scan; status feedback inline (Scanning…, then OK/fail/drives count)</li>
-  <li><strong>History</strong> — expands to show last 20 AD sync runs</li>
-  <li>Disks column — colored progress bars per drive, status by current thresholds</li>
-  <li>Status column — Online / Offline / RPC fail / Access denied / Disabled</li>
-  <li>Last collected / Last error columns</li>
-</ul>
-
-<h3>Perf tab</h3>
-<p>Surfaces slow boot / shutdown / standby / resume records pulled from the <code>Microsoft-Windows-Diagnostics-Performance/Operational</code> channel. This is <em>not</em> a continuous CPU graph — only the outliers Windows itself flagged as degraded, with the named culprit (process / service / driver / device) and how long it took.</p>
-<ul>
-  <li>5 summary cards: affected PCs, boot events, shutdown events, standby events, resume events (selectable time range: 24h / 7d / 30d / 90d)</li>
-  <li><strong>Top culprits</strong> — aggregated by culprit name across the fleet, with event count, distinct PC count, average and max time</li>
-  <li><strong>Most affected PCs</strong> — by total event count, with boot/shutdown breakdown, average boot time, last event timestamp; clicking a row filters the events table to that PC</li>
-  <li><strong>Recent events</strong> — full table sorted newest first: When, Computer, Category, Event ID, Total time, Degradation, Culprit (friendly name preferred, raw name in tooltip)</li>
-  <li><strong>▶ Run perf scan</strong> button — same one-shot sweep the scheduler runs</li>
-</ul>
-<p>Event ID ranges: 100–199 boot · 200–299 shutdown · 300–399 standby · 400–499 resume. Default channel retention on each PC is a small ring buffer (~1 MB), so we sweep into SQL to preserve history. Cold-start sweep pulls last 7 days; incremental sweeps pull only what's new since the last collection per PC.</p>
-
-<h3>Activity tab</h3>
-<p>Terminal-style live log, polled every 2s:</p>
-<ul>
-  <li>Filter input (matches source + message)</li>
-  <li>Level dropdown (Info / Success / Warning / Error)</li>
-  <li><strong>⏸ Pause / ▶ Resume</strong> — freeze auto-scroll for inspection</li>
-  <li><strong>📋 Copy</strong> — copies filtered entries as tab-separated text to clipboard</li>
-  <li><strong>Clear</strong> — wipes client-side buffer (server buffer untouched)</li>
-  <li>Color coded: success green, info dim, warning amber, error red</li>
-</ul>
-
-<h3>Settings tab</h3>
-<ul>
-  <li><strong>Periodic checks</strong> — one frequency, editable days/time window (default Po–Pá 06:00–18:00), plus checkboxes for Eventlog collector, Disk scan, Services scan, Perf events, and AD sync (AD sync off by default in periodic — manual "Run all" forces it on regardless); changes apply live (no service restart needed)</li>
-  <li><strong>AD sync defaults</strong> — toggle "New PCs default to monitored (Monitor = on)". Applied only on INSERT — existing PCs keep their flag.</li>
-  <li><strong>Disk space thresholds</strong> — Mode (Percent free / GB free / Either most-strict), Critical & Warning values for both % and GB</li>
-  <li>Save button only enabled when there are unsaved changes</li>
-</ul>
-
-<h3>Docs link</h3>
-<p>📖 Docs in topbar opens this page in a new tab. Has a 🖨 Print button at top for PDF export with print-friendly stylesheet (light theme, page break hints, URL footnotes).</p>
-
-<h2 id="collector">Eventlog collector</h2>
-<div class="callout callout-info" data-lang="cs">
-  <strong>📌 Pozn. k jazyku:</strong> následující technické sekce (Eventlog / Disk / Services / Perf / AD sync / Script runner / API reference / DB schéma / Retention / Permissions / Troubleshooting / Security) jsou zatím **jen v angličtině**. Plný překlad je v plánu jako samostatný PR aby diff zůstal reviewable. Pro uživatelské sekce (Přehled, Architektura, Deployment, Komponenty, UI prohlídka, Nastavení) je už CS překlad k dispozici.
+<h3><span data-lang="cs">Záložka Události</span><span data-lang="en">Events tab</span></h3>
+<div data-lang="en">
+  <p>Full-width detailed events table:</p>
+  <ul>
+    <li>Search across message / PC name / event ID / source</li>
+    <li>Filters: Computer dropdown, Source/Provider dropdown, Level (Critical/Error/Warning), Time range (1h / 24h / 7d / 30d)</li>
+    <li>Sortable columns (click header): Time, Computer, Level, Event ID, Source, Log</li>
+    <li>Click any row → detail modal with full message, all metadata</li>
+  </ul>
 </div>
-<p>Background job that pulls Warning/Error/Critical events from every monitored PC.</p>
+<div data-lang="cs">
+  <p>Full-width detailní tabulka událostí:</p>
+  <ul>
+    <li>Vyhledávání napříč message / PC name / event ID / source</li>
+    <li>Filtry: Computer dropdown, Source/Provider dropdown, Level (Critical/Error/Warning), Time range (1h / 24h / 7d / 30d)</li>
+    <li>Sortovatelné sloupce (klik na header): Time, Computer, Level, Event ID, Source, Log</li>
+    <li>Klik na řádek → detail modal s plnou zprávou a metadaty</li>
+  </ul>
+</div>
+
+<h3><span data-lang="cs">Záložka Počítače</span><span data-lang="en">Computers tab</span></h3>
+<div data-lang="en">
+  <p>Complete inventory with operator controls:</p>
+  <ul>
+    <li><strong>Status chips in header</strong> — clickable filter pills: <em>active</em>, <em>monitored</em>, <em>unmonitored</em>, <em>failing</em>, <em>disk critical</em>, <em>disk warning</em>, <em>disabled</em></li>
+    <li>Search across name / FQDN / OS / OU path / IP / current user</li>
+    <li>Status dropdown filter (mirror of chips)</li>
+    <li>Sortable columns: Name, OU path, FQDN, OS, IP, User, Last seen, Status</li>
+    <li>Monitor checkbox per row — toggles whether collector polls this PC; persists across AD syncs; works on disabled PCs too (intent preserved if PC reactivates)</li>
+    <li><strong>✓ All</strong> / <strong>✗ None</strong> bulk toggle (respects current filter — useful for "Search: SRV" → ✓ All to monitor only servers)</li>
+    <li><strong>↻ Sync from AD</strong> — refreshes inventory from <code>Get-ADComputer</code></li>
+    <li><strong>💾 Scan disks</strong> — manual disk space scan; status feedback inline (Scanning…, then OK/fail/drives count)</li>
+    <li><strong>History</strong> — expands to show last 20 AD sync runs</li>
+    <li>Disks column — colored progress bars per drive, status by current thresholds</li>
+    <li>Status column — Online / Offline / RPC fail / Access denied / Disabled</li>
+    <li>Last collected / Last error columns</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p>Kompletní inventář s operátorskými ovládacími prvky:</p>
+  <ul>
+    <li><strong>Status chips v hlavičce</strong> — klikatelné filtr pills: <em>active</em>, <em>monitored</em>, <em>unmonitored</em>, <em>failing</em>, <em>disk critical</em>, <em>disk warning</em>, <em>disabled</em></li>
+    <li>Vyhledávání napříč name / FQDN / OS / OU path / IP / aktuální user</li>
+    <li>Status dropdown filtr (zrcadlo chips)</li>
+    <li>Sortovatelné sloupce: Name, OU path, FQDN, OS, IP, User, Last seen, Status</li>
+    <li>Monitor checkbox per řádek — řídí jestli collector pollí daný PC; perzistuje napříč AD syncs; funguje i na disabled PC (intent zachován pokud se PC reaktivuje)</li>
+    <li><strong>✓ All</strong> / <strong>✗ None</strong> hromadný toggle (respektuje aktuální filtr — užitečné pro "Search: SRV" → ✓ All pro monitor jen serverů)</li>
+    <li><strong>↻ Sync from AD</strong> — refresh inventáře z <code>Get-ADComputer</code></li>
+    <li><strong>💾 Scan disks</strong> — manuální disk space scan; status feedback inline (Scanning…, pak OK/fail/drives count)</li>
+    <li><strong>History</strong> — rozbalí posledních 20 AD sync runs</li>
+    <li>Disks sloupec — barevné progress bary per drive, status podle aktuálních thresholds</li>
+    <li>Status sloupec — Online / Offline / RPC fail / Access denied / Disabled</li>
+    <li>Sloupce Last collected / Last error</li>
+  </ul>
+</div>
+
+<h3><span data-lang="cs">Záložka Výkon</span><span data-lang="en">Perf tab</span></h3>
+<div data-lang="en">
+  <p>Surfaces slow boot / shutdown / standby / resume records pulled from the <code>Microsoft-Windows-Diagnostics-Performance/Operational</code> channel. This is <em>not</em> a continuous CPU graph — only the outliers Windows itself flagged as degraded, with the named culprit (process / service / driver / device) and how long it took.</p>
+  <ul>
+    <li>5 summary cards: affected PCs, boot events, shutdown events, standby events, resume events (selectable time range: 24h / 7d / 30d / 90d)</li>
+    <li><strong>Top culprits</strong> — aggregated by culprit name across the fleet, with event count, distinct PC count, average and max time</li>
+    <li><strong>Most affected PCs</strong> — by total event count, with boot/shutdown breakdown, average boot time, last event timestamp; clicking a row filters the events table to that PC</li>
+    <li><strong>Recent events</strong> — full table sorted newest first: When, Computer, Category, Event ID, Total time, Degradation, Culprit (friendly name preferred, raw name in tooltip)</li>
+    <li><strong>▶ Run perf scan</strong> button — same one-shot sweep the scheduler runs</li>
+  </ul>
+  <p>Event ID ranges: 100–199 boot · 200–299 shutdown · 300–399 standby · 400–499 resume. Default channel retention on each PC is a small ring buffer (~1 MB), so we sweep into SQL to preserve history. Cold-start sweep pulls last 30 days (configurable); incremental sweeps pull only what's new since the last collection per PC.</p>
+</div>
+<div data-lang="cs">
+  <p>Zobrazuje záznamy pomalého boot / shutdown / standby / resume z kanálu <code>Microsoft-Windows-Diagnostics-Performance/Operational</code>. <em>Není</em> to kontinuální CPU graf — jen outliers, které Windows samo označilo jako degradované, s pojmenovaným culprit (proces / služba / driver / zařízení) a jak dlouho to trvalo.</p>
+  <ul>
+    <li>5 summary karet: affected PCs, boot events, shutdown events, standby events, resume events (volitelný time range: 24h / 7d / 30d / 90d)</li>
+    <li><strong>Top culprits</strong> — agregát podle culprit name napříč flotilou, s event count, distinct PC count, average a max time</li>
+    <li><strong>Nejvíce zasažené PC</strong> — podle total event count, s boot/shutdown rozkladem, average boot time, last event timestamp; klik na řádek filtruje events tabulku na daný PC</li>
+    <li><strong>Recent events</strong> — plná tabulka sortovaná newest first: When, Computer, Category, Event ID, Total time, Degradation, Culprit (friendly name preferovaný, raw name v tooltip)</li>
+    <li>Tlačítko <strong>▶ Run perf scan</strong> — stejný one-shot sweep jako spouští scheduler</li>
+  </ul>
+  <p>Event ID rozsahy: 100–199 boot · 200–299 shutdown · 300–399 standby · 400–499 resume. Default retention kanálu na PC je malý ring buffer (~1 MB), takže sweepujeme do SQL pro zachování historie. Cold-start sweep stáhne posledních 30 dní (konfigurovatelné); inkrementální sweepy stahují jen nové od posledního collection per PC.</p>
+</div>
+
+<h3><span data-lang="cs">Záložka Aktivita</span><span data-lang="en">Activity tab</span></h3>
+<div data-lang="en">
+  <p>Terminal-style live log, polled every 2s. Has <strong>📚 History</strong> mode toggle for DB-backed persistent log search.</p>
+  <ul>
+    <li>Filter input (matches source + message)</li>
+    <li>Level dropdown (Info / Success / Warning / Error)</li>
+    <li><strong>⏸ Pause / ▶ Resume</strong> — freeze auto-scroll for inspection</li>
+    <li><strong>📋 Copy</strong> — copies filtered entries as tab-separated text to clipboard (uses execCommand fallback for plain HTTP)</li>
+    <li><strong>Clear</strong> — wipes client-side buffer (server buffer untouched)</li>
+    <li>Color coded: success green, info dim, warning amber, error red</li>
+    <li><strong>History mode</strong> — DB-backed query with filters: time range (1h/24h/7d/30d/90d), level, source dropdown (populated from last 30 days), free-text message search, pagination 500 rows/page</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p>Terminal-style živý log, pollovaný každé 2s. Má toggle <strong>📚 History</strong> mode pro DB-backed perzistentní vyhledávání.</p>
+  <ul>
+    <li>Filtr input (matches source + message)</li>
+    <li>Level dropdown (Info / Success / Warning / Error)</li>
+    <li><strong>⏸ Pause / ▶ Resume</strong> — freeze auto-scroll pro inspekci</li>
+    <li><strong>📋 Copy</strong> — kopíruje filtrovaný obsah jako tab-separated text do clipboard (s execCommand fallback pro plain HTTP)</li>
+    <li><strong>Clear</strong> — smaže client-side buffer (server buffer netknutý)</li>
+    <li>Barevně kódované: success zelená, info dim, warning amber, error red</li>
+    <li><strong>History mode</strong> — DB-backed dotaz s filtry: time range (1h/24h/7d/30d/90d), level, source dropdown (z posledních 30 dní), full-text vyhledávání ve zprávách, paginátor 500 řádků/stránka</li>
+  </ul>
+</div>
+
+<h3><span data-lang="cs">Záložka Nastavení</span><span data-lang="en">Settings tab</span></h3>
+<div data-lang="en">
+  <ul>
+    <li><strong>Periodic checks</strong> — one frequency, editable days/time window (default Po–Pá 06:00–18:00), plus checkboxes for Eventlog collector, Disk scan, Services scan, Perf events, and AD sync (AD sync off by default in periodic — manual "Run all" forces it on regardless); changes apply live (no service restart needed)</li>
+    <li><strong>Perf-events lookback</strong> — configurable cold-start window (default 30 days, range 1–365)</li>
+    <li><strong>AD sync defaults</strong> — toggle "New PCs default to monitored (Monitor = on)". Applied only on INSERT — existing PCs keep their flag.</li>
+    <li><strong>Dashboard UI access</strong> — frontend whitelist + Windows Firewall mirror; banner shows Domain profile state with remedy command</li>
+    <li><strong>Disk space thresholds</strong> — Mode (Percent free / GB free / Either most-strict), Critical & Warning values for both % and GB</li>
+    <li>Save button only enabled when there are unsaved changes</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <ul>
+    <li><strong>Periodické checks</strong> — jedna frekvence, editovatelné dny/time window (default Po–Pá 06:00–18:00), plus checkboxy pro Eventlog collector, Disk scan, Services scan, Perf events a AD sync (AD sync defaultně off v periodic — manuální "Run all" ho nuceně zapne); změny se aplikují live (bez restart služby)</li>
+    <li><strong>Perf-events lookback</strong> — konfigurovatelné cold-start window (default 30 dní, rozsah 1–365)</li>
+    <li><strong>AD sync defaults</strong> — toggle "Nové PC defaultně monitorované (Monitor = on)". Aplikuje se jen na INSERT — existující PC si ponechají flag.</li>
+    <li><strong>Dashboard UI access</strong> — frontend whitelist + Windows Firewall mirror; banner zobrazuje stav Domain profile s remedy commandem</li>
+    <li><strong>Disk space thresholdy</strong> — Mode (Procento volného / GB volného / Oboje most-strict), Critical & Warning hodnoty pro % i GB</li>
+    <li>Tlačítko Save se aktivuje až když jsou neuložené změny</li>
+  </ul>
+</div>
+
+<h3><span data-lang="cs">Odkaz na Dokumentaci</span><span data-lang="en">Docs link</span></h3>
+<p>
+  <span data-lang="cs">📖 Docs v topbaru otevírá tuto stránku v nové záložce. Má 🖨 Print button nahoře pro PDF export s print-friendly stylesheetem (světlý theme, page break hints, URL footnoty). CS/EN přepínač přenáší jazyk z hlavního dashboardu (?lang= query param).</span>
+  <span data-lang="en">📖 Docs in topbar opens this page in a new tab. Has a 🖨 Print button at top for PDF export with print-friendly stylesheet (light theme, page break hints, URL footnotes). CS/EN switcher inherits language from the main dashboard via ?lang= query param.</span>
+</p>
+
+<h2 id="collector"><span data-lang="cs">Eventlog collector</span><span data-lang="en">Eventlog collector</span></h2>
+<p>
+  <span data-lang="cs">Background job který stahuje Warning/Error/Critical události z každého monitorovaného PC.</span>
+  <span data-lang="en">Background job that pulls Warning/Error/Critical events from every monitored PC.</span>
+</p>
+<div class="callout callout-info" data-lang="cs">
+  <strong>CS shrnutí:</strong> Spouští se podle scheduleru, paralelně 5 PC, max 500 událostí na PC za běh. Před PowerShell voláním node-side TCP probe na port 135 (fail-fast pro offline). Volá <code>Get-WinEvent -ComputerName</code> přes MS-EVEN6 RPC over SMB — nepotřebuje WinRM listener. Selhání klasifikuje: <code>rpc_unavailable</code> (RPC blokovaný, typicky firewall), <code>access_denied</code> (chybí Event Log Readers), <code>online + 0 events</code> (no events found je success), <code>unknown</code> (ostatní). Po 10 po sobě jdoucích selháních PC trvale skip až do manuálního resetu.
+</div>
 <table>
   <tr><th>Setting</th><th>Default</th><th>Configurable in</th></tr>
   <tr><td>Schedule</td><td>Selected in periodic checks</td><td>Settings → Periodic checks</td></tr>
@@ -383,8 +461,14 @@ service restarts on new dist/, in-memory state cleared</div>
   <tr><td>Filter to monitored PCs only</td><td>Computers tab → uncheck Monitor on PCs you don't want to poll</td></tr>
 </table>
 
-<h2 id="disk">Disk space collector</h2>
-<p>Periodic scan of free/total bytes per drive on every monitored PC.</p>
+<h2 id="disk"><span data-lang="cs">Disk space collector</span><span data-lang="en">Disk space collector</span></h2>
+<p>
+  <span data-lang="cs">Periodický sken volných/celkových bytů per drive na každém monitorovaném PC. Piggyback také stahuje současného přihlášeného uživatele a primární IPv4 přes stejnou DCOM session.</span>
+  <span data-lang="en">Periodic scan of free/total bytes per drive on every monitored PC. Also piggybacks current logged-in user + primary IPv4 over the same DCOM session.</span>
+</p>
+<div class="callout callout-info" data-lang="cs">
+  <strong>CS shrnutí:</strong> DCOM transport (<code>New-CimSession -Protocol Dcom</code>) místo default WinRM — používá stejný RPC stack jako Get-WinEvent, takže fleet-wide reachability je konzistentní. Sken pull také <code>Win32_ComputerSystem.UserName</code> (současný interactive user) a <code>Win32_NetworkAdapterConfiguration</code> filtrované na IPv4 — vyplňuje sloupce IP a User v Computers tabu. User se overwriteuje jen na non-null (zachováno přes logoff stavy), IP se overwriteuje vždy (roaming notebooky).
+</div>
 <table>
   <tr><th>Setting</th><th>Default</th><th>Configurable</th></tr>
   <tr><td>Schedule</td><td>Selected in periodic checks</td><td>Settings → Periodic checks</td></tr>
@@ -404,8 +488,14 @@ service restarts on new dist/, in-memory state cleared</div>
   <li><strong>Either (most strict)</strong> — flag if either threshold tripped (recommended for mixed fleet — small workstations want %, large servers want GB)</li>
 </ul>
 
-<h2 id="services">Services collector + policy</h2>
-<p>Detects Windows services with <strong>StartMode = Automatic</strong> but <strong>State ≠ Running</strong> on every monitored PC. Filters legitimate cases (Trigger Start, Delayed Start, per-user instances) and compares the rest against a policy table.</p>
+<h2 id="services"><span data-lang="cs">Services collector + policy</span><span data-lang="en">Services collector + policy</span></h2>
+<p>
+  <span data-lang="cs">Detekuje Windows služby s <strong>StartMode = Automatic</strong> ale <strong>State ≠ Running</strong> na každém monitorovaném PC. Filtruje legitimní případy (Trigger Start, Delayed Start, per-user instances) a zbytek porovnává proti policy tabulce.</span>
+  <span data-lang="en">Detects Windows services with <strong>StartMode = Automatic</strong> but <strong>State ≠ Running</strong> on every monitored PC. Filters legitimate cases (Trigger Start, Delayed Start, per-user instances) and compares the rest against a policy table.</span>
+</p>
+<div class="callout callout-info" data-lang="cs">
+  <strong>CS shrnutí:</strong> Po skenu jsou problémy klasifikované — <strong style="color:#15803d">OK</strong> (matchne policy a vyhovuje), <strong style="color:#b91c1c">Drift</strong> (matchne policy ale nevyhovuje), <strong style="color:#555">Unclassified</strong> (žádné policy pravidlo nematchne, operator review). UI nabízí <strong>By PC view</strong> (flat list problémů) nebo <strong>By service view</strong> (agregát "tato služba je stopnutá na 87 PC"). Tlačítko <strong>📤 GPO script</strong> exportuje PowerShell soubor co aplikuje aktuální policy přes GPO Computer Startup Script. Idempotentní, bezpečné re-run.
+</div>
 <table>
   <tr><th>Setting</th><th>Default</th></tr>
   <tr><td>Schedule</td><td>Selected in Settings → Periodic checks (default included)</td></tr>
@@ -441,8 +531,17 @@ service restarts on new dist/, in-memory state cleared</div>
 </ul>
 <p>Script iterates each policy pattern and calls <code>Set-Service -StartupType</code> for every matching local service. Idempotent and safe to re-run.</p>
 
-<h2 id="perf">Perf events (Diagnostics-Performance)</h2>
-<p>Sweeps the <code>Microsoft-Windows-Diagnostics-Performance/Operational</code> channel on every monitored PC and persists the slow-event records Windows itself diagnosed: boot, shutdown, standby, resume. Provides per-incident attribution (named culprit process / service / driver / device) with total time and degradation time.</p>
+<h2 id="perf"><span data-lang="cs">Perf events (Diagnostics-Performance)</span><span data-lang="en">Perf events (Diagnostics-Performance)</span></h2>
+<p>
+  <span data-lang="cs">Sweepuje kanál <code>Microsoft-Windows-Diagnostics-Performance/Operational</code> na každém monitorovaném PC a perzistuje slow-event záznamy, které Windows samo diagnostikovalo: boot, shutdown, standby, resume. Poskytuje per-incident atribuci (pojmenovaný culprit proces / služba / driver / zařízení) s total time a degradation time.</span>
+  <span data-lang="en">Sweeps the <code>Microsoft-Windows-Diagnostics-Performance/Operational</code> channel on every monitored PC and persists the slow-event records Windows itself diagnosed: boot, shutdown, standby, resume. Provides per-incident attribution (named culprit process / service / driver / device) with total time and degradation time.</span>
+</p>
+<div class="callout callout-info" data-lang="cs">
+  <strong>CS shrnutí:</strong> Diagnostics-Performance kanál je <strong>defaultně zapnutý na Win10/11</strong>, ale <strong>defaultně vypnutý na Windows Server SKU</strong>. Collector detekuje "There is not an event log" error a klasifikuje jako <code>channel-disabled</code> (separátní counter, ne failure). Pro povolení napříč server fleet: GPO startup script <code>wevtutil sl Microsoft-Windows-Diagnostics-Performance/Operational /e:true</code>. Cold-start lookback je konfigurovatelný (default 30 dní). Event ID rozsahy: 100–199 boot, 200–299 shutdown, 300–399 standby, 400–499 resume. PowerShell parsuje <code>$e.ToXml()</code> a extrahuje TotalTime, DegradationTime, Name (culprit), FriendlyName.
+</div>
+<div class="callout callout-warn" data-lang="cs">
+  <strong>Proč ne kontinuální CPU history?</strong> Windows nativně neuchovává kontinuální CPU křivku. Performance Monitor Data Collector Sets jsou defaultně off; SRUM má rough per-process daily data ale není přes WMI dostupné. Diagnostics-Performance kanál byl zvolen protože je on by default, dává named-culprit atribuci per incident a reused existing RPC path s nulovým agent installem. Tradeoff: vidíš Windowsí mínění o tom, které eventy byly "slow" — threshold není konfigurovatelný — a nevidíš sustained workday usage, jen diagnostikované degradations.
+</div>
 <table>
   <tr><th>Setting</th><th>Default</th></tr>
   <tr><td>Schedule</td><td>Selected in Settings → Periodic checks (default included)</td></tr>
@@ -481,12 +580,21 @@ service restarts on new dist/, in-memory state cleared</div>
 <h3>Why not continuous CPU history?</h3>
 <p>Windows does not natively retain a continuous CPU usage curve. Performance Monitor Data Collector Sets are off by default; SRUM stores per-process daily aggregates but isn't WMI-accessible. The Diagnostics-Performance channel was chosen because it is on by default, gives named-culprit attribution per incident, and reuses the existing RPC path with zero agent install. The tradeoff: you see Windows' opinion of which events were "slow" &mdash; the threshold is not configurable &mdash; and you don't see sustained workday usage, only diagnosed degradations.</p>
 
-<div class="callout callout-info">
+<div class="callout callout-info" data-lang="en">
 This is the <strong>observer-not-executor</strong> pattern applied to telemetry: ITDashboard never installs an agent, never enables polling on the target, and never holds the target's truth &mdash; it only reads what Windows itself decided to record, on its own schedule.
 </div>
+<div class="callout callout-info" data-lang="cs">
+Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetrii: ITDashboard nikdy neinstaluje agenta, nikdy nezapíná polling na cíli a nikdy nedrží pravdu cíle — jen čte to, co Windows samo rozhodlo zaznamenat, na svém vlastním schedulu.
+</div>
 
-<h2 id="ad-sync">AD sync</h2>
-<p>Calls <code>Get-ADComputer -Filter * -Properties OperatingSystem, LastLogonDate, DistinguishedName</code> against the domain controller, MERGE-upserts into <code>computers</code> table.</p>
+<h2 id="ad-sync"><span data-lang="cs">AD sync</span><span data-lang="en">AD sync</span></h2>
+<p>
+  <span data-lang="cs">Volá <code>Get-ADComputer -Filter * -Properties OperatingSystem, LastLogonDate, DistinguishedName</code> proti doménovému řadiči, MERGE-upsertuje do tabulky <code>computers</code>.</span>
+  <span data-lang="en">Calls <code>Get-ADComputer -Filter * -Properties OperatingSystem, LastLogonDate, DistinguishedName</code> against the domain controller, MERGE-upserts into <code>computers</code> table.</span>
+</p>
+<div class="callout callout-info" data-lang="cs">
+  <strong>CS shrnutí:</strong> Počítače chybějící z AD jsou soft-disabled (<code>enabled = 0</code>), ne smazané — zachovává historické eventy. AD sync vědomě <strong>netýká</strong> <code>monitor_enabled</code> na UPDATE — operator rozhodnutí perzistují napříč syncs. Na INSERT (nový PC) se <code>monitor_enabled</code> nastaví podle settingu <code>adsync.default_monitor_enabled</code> (default <code>true</code>). OU path se parsuje z DistinguishedName. Triggery: manuálně z Computers tab nebo "Run all checks" na Dashboardu (vždy zahrne AD sync). Periodic scheduler AD sync defaultně <strong>nezahrnuje</strong> — flip <code>checks.run_adsync</code> v Settings pokud chceš na každý periodic tick.
+</div>
 <ul>
   <li>Computers no longer present in AD are soft-disabled (<code>enabled = 0</code>) instead of deleted → preserves historical events.</li>
   <li>AD sync intentionally <strong>does not touch</strong> <code>monitor_enabled</code> on UPDATE — operator decisions persist across syncs.</li>
@@ -496,8 +604,11 @@ This is the <strong>observer-not-executor</strong> pattern applied to telemetry:
   <li>Triggers: manual from Computers tab (<code>↻ Sync from AD</code>) or via "Run all checks" on Dashboard collector bar (always includes AD sync). Periodic scheduler does <strong>not</strong> include AD sync by default — flip <code>checks.run_adsync</code> in Settings → Periodic checks if you want it on every periodic tick.</li>
 </ul>
 
-<h2 id="scripts">Script runner</h2>
-<p>Versioned PS/Python/C# script catalog at <code>scripts/</code> in the repo. Each script described in <code>scripts/manifest.json</code>:</p>
+<h2 id="scripts"><span data-lang="cs">Script runner</span><span data-lang="en">Script runner</span></h2>
+<p>
+  <span data-lang="cs">Verzovaný katalog PS/Python/C# skriptů v <code>scripts/</code> v repu. Každý skript popsán v <code>scripts/manifest.json</code>:</span>
+  <span data-lang="en">Versioned PS/Python/C# script catalog at <code>scripts/</code> in the repo. Each script described in <code>scripts/manifest.json</code>:</span>
+</p>
 <pre><code>{
   "scripts": [
     {
@@ -509,7 +620,10 @@ This is the <strong>observer-not-executor</strong> pattern applied to telemetry:
     }
   ]
 }</code></pre>
-<p>Run history persists in <code>script_runs</code> (invoker, target, params, exit code, stdout/stderr). UI for spawning is planned.</p>
+<p>
+  <span data-lang="cs">Historie běhů perzistuje v <code>script_runs</code> (invoker, target, params, exit code, stdout/stderr). UI pro spouštění je plánované.</span>
+  <span data-lang="en">Run history persists in <code>script_runs</code> (invoker, target, params, exit code, stdout/stderr). UI for spawning is planned.</span>
+</p>
 
 <h2 id="settings"><span data-lang="cs">Nastavení</span><span data-lang="en">Settings</span></h2>
 <p>
@@ -532,7 +646,7 @@ This is the <strong>observer-not-executor</strong> pattern applied to telemetry:
   <tr><td><code>disk.warning_gb</code></td><td>20</td><td>UI re-evaluates</td></tr>
 </table>
 
-<h2 id="api">API reference</h2>
+<h2 id="api"><span data-lang="cs">API reference</span><span data-lang="en">API reference</span></h2>
 <table>
   <tr><th>Method</th><th>Path</th><th>Description</th></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/health</code></td><td>Liveness ping</td></tr>
@@ -574,7 +688,7 @@ This is the <strong>observer-not-executor</strong> pattern applied to telemetry:
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/scripts</code></td><td>Script catalog (UI for run pending)</td></tr>
 </table>
 
-<h2 id="db">Database schema</h2>
+<h2 id="db"><span data-lang="cs">DB schéma</span><span data-lang="en">Database schema</span></h2>
 <table>
   <tr><th>Table</th><th>Purpose</th></tr>
   <tr><td><code>computers</code></td><td>Inventory + state. Columns: <code>id, name, fqdn, os_version, last_seen, enabled, monitor_enabled, last_collected_at, last_error, consecutive_failures, distinguished_name, ou_path, last_status</code></td></tr>
@@ -591,7 +705,7 @@ This is the <strong>observer-not-executor</strong> pattern applied to telemetry:
   <tr><td><code>schema_migrations</code></td><td>Migration tracking (applied <code>id</code> + timestamp)</td></tr>
 </table>
 
-<h2 id="retention">Retention policy</h2>
+<h2 id="retention"><span data-lang="cs">Retention policy</span><span data-lang="en">Retention policy</span></h2>
 <table>
   <tr><th>Data</th><th>Retention</th><th>Mechanism</th></tr>
   <tr><td>Raw <code>events</code></td><td>90 days</td><td><code>sp_purge_old_events @retention_days = 90</code> daily</td></tr>
@@ -602,8 +716,11 @@ This is the <strong>observer-not-executor</strong> pattern applied to telemetry:
   <tr><td><code>script_runs</code></td><td>1 year (planned)</td><td>TODO</td></tr>
 </table>
 
-<h2 id="permissions">Required permissions on target PCs</h2>
-<p>For both eventlog + disk collectors to succeed against a target PC, the service account <code>AXINETWORK\svc-itdashboard</code> needs:</p>
+<h2 id="permissions"><span data-lang="cs">Požadovaná oprávnění na cílových PC</span><span data-lang="en">Required permissions on target PCs</span></h2>
+<p>
+  <span data-lang="cs">Aby eventlog + disk collectory mohly úspěšně skenovat cílový PC, service account <code>AXINETWORK\svc-itdashboard</code> potřebuje:</span>
+  <span data-lang="en">For both eventlog + disk collectors to succeed against a target PC, the service account <code>AXINETWORK\svc-itdashboard</code> needs:</span>
+</p>
 <table>
   <tr><th>Permission</th><th>For</th><th>Granted via</th></tr>
   <tr><td>TCP/135 reachable</td><td>RPC endpoint mapper</td><td>Network / firewall: PC online and Domain profile firewall allows in</td></tr>
@@ -613,56 +730,106 @@ This is the <strong>observer-not-executor</strong> pattern applied to telemetry:
   <tr><td>WMI namespace ACL on <code>Root\CIMV2</code> — Remote Enable</td><td>DCOM remote query</td><td>GPO: wmimgmt.msc Security tab or PowerShell <code>Set-WmiNamespaceSecurity</code> via script</td></tr>
 </table>
 
-<div class="callout callout-info">
+<div class="callout callout-info" data-lang="en">
 <strong>Best-case fleet rollout</strong> — group all four GPO settings into one "ITDashboard collection" policy linked to all OUs containing target PCs. After <code>gpupdate /force</code>, collectors should reach 80–90% success rate (remaining failures will be offline PCs and individual ACL exceptions).
 </div>
+<div class="callout callout-info" data-lang="cs">
+<strong>Best-case fleet rollout</strong> — seskup všechny čtyři GPO settings do jedné "ITDashboard collection" policy linknuté na všechny OU obsahující cílové PC. Po <code>gpupdate /force</code> by collectory měly dosáhnout 80–90% success rate (zbývající failures budou offline PC a individuální ACL výjimky).
+</div>
 
-<h2 id="troubleshooting">Troubleshooting</h2>
+<h2 id="troubleshooting"><span data-lang="cs">Řešení problémů</span><span data-lang="en">Troubleshooting</span></h2>
 
-<h3>Topbar SHA doesn't match latest pushed commit</h3>
-<p><strong>Cause:</strong> deploy ran but service didn't restart cleanly (race in <code>net stop / net start</code>) OR service account lacks Stop/Start ACL on its own service. <strong>Fix:</strong> deploy.yml uses <code>sc stop</code> + polling for STOPPED state since commit <code>4779579</code>; the explicit ACL grant is documented in SETUP-SERVER.md.</p>
-
-<h3>Collector says "Connecting to remote server failed"</h3>
-<p><strong>Cause:</strong> old code used WinRM/PSRemoting. <strong>Fix:</strong> already deployed — uses <code>Get-WinEvent -ComputerName</code> (RPC). If still failing fleet-wide, see permissions section.</p>
-
-<h3>Disk scan says "WinRM cannot connect" or "Get-CimInstance: cannot connect to destination"</h3>
-<p><strong>Cause:</strong> old <code>Get-CimInstance</code> used default WinRM transport (port 5985). <strong>Fix:</strong> already deployed — uses explicit DCOM session option, same RPC stack as eventlog collector.</p>
-
-<h3>Czech diacritics garbled in event messages</h3>
-<p><strong>Cause:</strong> PowerShell stdout defaulted to Windows-1250, Node read as UTF-8. <strong>Fix:</strong> already deployed — PS scripts set <code>$OutputEncoding = [Console]::OutputEncoding = [UTF8]</code> at start.</p>
-
-<h3>Some PCs return "Access denied" — not all</h3>
-<p>That's the classification working — it means: TCP/135 OK, RPC OK, but ACL missing on that specific PC. Either:
-<ul>
-<li>That PC is in an OU not covered by your Restricted Groups GPO</li>
-<li>The PC was provisioned before the GPO existed and needs <code>gpupdate /force</code></li>
-<li>Local group membership was manually overridden</li>
-</ul>
+<h3><span data-lang="cs">Topbar SHA nesedí s posledním pushnutým commitem</span><span data-lang="en">Topbar SHA doesn't match latest pushed commit</span></h3>
+<p>
+  <span data-lang="cs"><strong>Příčina (historicky):</strong> /version četl <code>.git/refs/heads/main</code> v request čase, takže topbar se updatoval při každém git pull i kdyby restart služby selhal. <strong>Fix (commit <code>ae399cb</code>):</strong> SHA se nyní zachytává v npm-build čase přes <code>scripts/build-info.mjs</code> → <code>src/build-info.ts</code>. deploy.yml končí smoke testem, který fail-uje pokud <code>/version/sha</code> nesedí s <code>%GITHUB_SHA:~0,7%</code>.</span>
+  <span data-lang="en"><strong>Cause (historical):</strong> /version read <code>.git/refs/heads/main</code> at request time so topbar updated on every git pull even if the service restart later failed. <strong>Fix (commit <code>ae399cb</code>):</strong> SHA now captured at npm-build time via <code>scripts/build-info.mjs</code> → <code>src/build-info.ts</code>. deploy.yml ends with a smoke test that fails if <code>/version/sha</code> doesn't match <code>%GITHUB_SHA:~0,7%</code>.</span>
 </p>
 
-<h3>"A security package specific error occurred"</h3>
-<p>Kerberos / SSPI authentication issue specific to that target. Common causes: duplicate SPN registered, stale computer account, time skew &gt; 5 min, two A-records pointing to the same host. <strong>Try:</strong> <code>Test-ComputerSecureChannel -ComputerName X -Verbose</code>; reset the computer account password if it returns false.</p>
+<h3><span data-lang="cs">Collector vrací "Connecting to remote server failed"</span><span data-lang="en">Collector says "Connecting to remote server failed"</span></h3>
+<p>
+  <span data-lang="cs"><strong>Příčina:</strong> starý kód používal WinRM/PSRemoting. <strong>Fix:</strong> už nasazeno — používá <code>Get-WinEvent -ComputerName</code> (RPC). Pokud stále selhává napříč fleet, viz permissions sekce.</span>
+  <span data-lang="en"><strong>Cause:</strong> old code used WinRM/PSRemoting. <strong>Fix:</strong> already deployed — uses <code>Get-WinEvent -ComputerName</code> (RPC). If still failing fleet-wide, see permissions section.</span>
+</p>
 
-<h3>SQL connection fails with "untrusted domain"</h3>
-<p><strong>Cause:</strong> using pure-JS <code>tedious</code> driver instead of <code>msnodesqlv8</code>. <strong>Fix:</strong> already in code — <code>pool.ts</code> imports <code>mssql/msnodesqlv8.js</code>.</p>
+<h3><span data-lang="cs">Disk scan vrací "WinRM cannot connect" nebo "Get-CimInstance: cannot connect to destination"</span><span data-lang="en">Disk scan says "WinRM cannot connect" or "Get-CimInstance: cannot connect to destination"</span></h3>
+<p>
+  <span data-lang="cs"><strong>Příčina:</strong> starý <code>Get-CimInstance</code> používal default WinRM transport (port 5985). <strong>Fix:</strong> už nasazeno — používá explicitní DCOM session option, stejný RPC stack jako eventlog collector.</span>
+  <span data-lang="en"><strong>Cause:</strong> old <code>Get-CimInstance</code> used default WinRM transport (port 5985). <strong>Fix:</strong> already deployed — uses explicit DCOM session option, same RPC stack as eventlog collector.</span>
+</p>
 
-<h3>GitHub Actions workflow fails immediately with UnauthorizedAccess on .ps1</h3>
-<p><strong>Cause:</strong> AXINETWORK Group Policy enforces <code>AllSigned</code> ExecutionPolicy. Runner saves each step as temp .ps1, which can't load. <strong>Fix:</strong> already deployed — deploy.yml uses <code>defaults.run.shell: cmd</code>.</p>
+<h3><span data-lang="cs">České diakritiky rozházené v event messages</span><span data-lang="en">Czech diacritics garbled in event messages</span></h3>
+<p>
+  <span data-lang="cs"><strong>Příčina:</strong> PowerShell stdout defaultoval na Windows-1250, Node četl jako UTF-8. <strong>Fix:</strong> už nasazeno — PS skripty nastavují <code>$OutputEncoding = [Console]::OutputEncoding = [UTF8]</code> na začátku.</span>
+  <span data-lang="en"><strong>Cause:</strong> PowerShell stdout defaulted to Windows-1250, Node read as UTF-8. <strong>Fix:</strong> already deployed — PS scripts set <code>$OutputEncoding = [Console]::OutputEncoding = [UTF8]</code> at start.</span>
+</p>
 
-<h3>Operator-set Monitor checkbox keeps getting reset</h3>
-<p>It shouldn't — AD sync explicitly does not touch <code>monitor_enabled</code>. If a PC's checkbox reverts, check if someone else is editing via direct DB or if a custom script is running. The PATCH endpoint always stores the new value verbatim.</p>
+<h3><span data-lang="cs">Některé PC vrací "Access denied" — ne všechny</span><span data-lang="en">Some PCs return "Access denied" — not all</span></h3>
+<div data-lang="en">
+  <p>That's the classification working — it means: TCP/135 OK, RPC OK, but ACL missing on that specific PC. Either:</p>
+  <ul>
+    <li>That PC is in an OU not covered by your Restricted Groups GPO</li>
+    <li>The PC was provisioned before the GPO existed and needs <code>gpupdate /force</code></li>
+    <li>Local group membership was manually overridden</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p>To je klasifikace fungující — znamená: TCP/135 OK, RPC OK, ale ACL chybí na daném PC. Buď:</p>
+  <ul>
+    <li>Daný PC je v OU nepokrytém Restricted Groups GPO</li>
+    <li>PC byl provisionován před existencí GPO a potřebuje <code>gpupdate /force</code></li>
+    <li>Local group membership byl manuálně přepsán</li>
+  </ul>
+</div>
 
-<h2 id="security">Security model</h2>
-<table>
+<h3><span data-lang="cs">"A security package specific error occurred"</span><span data-lang="en">"A security package specific error occurred"</span></h3>
+<p>
+  <span data-lang="cs">Kerberos / SSPI autentizační problém specifický pro daný cíl. Časté příčiny: duplicitní SPN, stale computer account, time skew &gt; 5 min, dva A-records ukazují na stejný host. <strong>Zkus:</strong> <code>Test-ComputerSecureChannel -ComputerName X -Verbose</code>; resetuj computer account password pokud vrátí false.</span>
+  <span data-lang="en">Kerberos / SSPI authentication issue specific to that target. Common causes: duplicate SPN registered, stale computer account, time skew &gt; 5 min, two A-records pointing to the same host. <strong>Try:</strong> <code>Test-ComputerSecureChannel -ComputerName X -Verbose</code>; reset the computer account password if it returns false.</span>
+</p>
+
+<h3><span data-lang="cs">SQL connection selhává s "untrusted domain"</span><span data-lang="en">SQL connection fails with "untrusted domain"</span></h3>
+<p>
+  <span data-lang="cs"><strong>Příčina:</strong> používá se pure-JS <code>tedious</code> driver místo <code>msnodesqlv8</code>. <strong>Fix:</strong> už v kódu — <code>pool.ts</code> importuje <code>mssql/msnodesqlv8.js</code>.</span>
+  <span data-lang="en"><strong>Cause:</strong> using pure-JS <code>tedious</code> driver instead of <code>msnodesqlv8</code>. <strong>Fix:</strong> already in code — <code>pool.ts</code> imports <code>mssql/msnodesqlv8.js</code>.</span>
+</p>
+
+<h3><span data-lang="cs">GitHub Actions workflow okamžitě selhává s UnauthorizedAccess na .ps1</span><span data-lang="en">GitHub Actions workflow fails immediately with UnauthorizedAccess on .ps1</span></h3>
+<p>
+  <span data-lang="cs"><strong>Příčina:</strong> AXINETWORK Group Policy enforcuje <code>AllSigned</code> ExecutionPolicy. Runner ukládá každý step jako temp .ps1, který nemůže být loadnutý. <strong>Fix:</strong> už nasazeno — deploy.yml používá <code>defaults.run.shell: cmd</code>.</span>
+  <span data-lang="en"><strong>Cause:</strong> AXINETWORK Group Policy enforces <code>AllSigned</code> ExecutionPolicy. Runner saves each step as temp .ps1, which can't load. <strong>Fix:</strong> already deployed — deploy.yml uses <code>defaults.run.shell: cmd</code>.</span>
+</p>
+
+<h3><span data-lang="cs">Operátorský Monitor checkbox se neustále resetuje</span><span data-lang="en">Operator-set Monitor checkbox keeps getting reset</span></h3>
+<p>
+  <span data-lang="cs">Nemělo by — AD sync explicitně netýká <code>monitor_enabled</code>. Pokud se checkbox revertuje, zkontroluj jestli někdo jiný needituje přes přímou DB nebo jestli neběží custom skript. PATCH endpoint vždy ukládá novou hodnotu verbatim.</span>
+  <span data-lang="en">It shouldn't — AD sync explicitly does not touch <code>monitor_enabled</code>. If a PC's checkbox reverts, check if someone else is editing via direct DB or if a custom script is running. The PATCH endpoint always stores the new value verbatim.</span>
+</p>
+
+<h2 id="security"><span data-lang="cs">Bezpečnostní model</span><span data-lang="en">Security model</span></h2>
+<div class="callout callout-info" data-lang="cs">
+  <strong>CS shrnutí:</strong> ITDashboard je pasivní read-only nástroj pro interní doménu. Threat model = incidentální discovery non-IT uživatelem, ne adversarial access. Žádná API auth — kdo je v doméně a na whitelistu, je admin. Pokud potřebuješ skutečnou security boundary (BYOD, VPN dodavatelů, audit), jsou auth tokens / mTLS / TLS termination samostatná feature v backlog.
+</div>
+<table data-lang="en">
   <tr><th>Concern</th><th>Mitigation</th></tr>
   <tr><td>DB credentials in config</td><td>None — Integrated Auth (SSPI) under service account</td></tr>
   <tr><td>Stored credentials for remote operations</td><td>DPAPI CurrentUser scope; rotating service account invalidates secrets</td></tr>
   <tr><td>Script execution authorisation</td><td>Audit log in <code>script_runs</code>; destructive scripts require UI confirmation flag (planned)</td></tr>
-  <tr><td>API network exposure</td><td>Firewall rule whitelist: only specific IT-operator IPs allowed on port 4000</td></tr>
+  <tr><td>API network exposure</td><td>Frontend gate via IP whitelist (UX boundary); OS firewall rule mirrors same whitelist (defense-in-depth)</td></tr>
   <tr><td>Service account scope</td><td>Domain user (not Domain Admin); only Event Log Readers + Performance Monitor Users + DB <code>db_owner</code> + Service Stop/Start on ITDashboardAPI</td></tr>
   <tr><td>GitHub runner auth</td><td>Outbound HTTPS only; no inbound holes. Runner polls GitHub from inside the network.</td></tr>
   <tr><td>Code-in-transit</td><td>All git operations + Actions runner traffic uses HTTPS (TLS 1.2+) to github.com</td></tr>
   <tr><td>HTTPS on API → desktop</td><td>Currently HTTP on port 4000. Production TLS termination planned (Caddy / IIS reverse proxy)</td></tr>
+</table>
+<table data-lang="cs">
+  <tr><th>Riziko</th><th>Mitigace</th></tr>
+  <tr><td>DB credentials v configu</td><td>Žádné — Integrated Auth (SSPI) pod service account</td></tr>
+  <tr><td>Uložené credentials pro remote operace</td><td>DPAPI CurrentUser scope; rotace service account invaliduje secrets</td></tr>
+  <tr><td>Autorizace spouštění skriptů</td><td>Audit log v <code>script_runs</code>; destruktivní skripty vyžadují UI confirmation flag (plánováno)</td></tr>
+  <tr><td>Network exposure API</td><td>Frontend gate přes IP whitelist (UX hranice); OS firewall rule zrcadlí stejný whitelist (defense-in-depth)</td></tr>
+  <tr><td>Scope service account</td><td>Doménový user (ne Domain Admin); jen Event Log Readers + Performance Monitor Users + DB <code>db_owner</code> + Service Stop/Start na ITDashboardAPI</td></tr>
+  <tr><td>GitHub runner auth</td><td>Pouze outbound HTTPS; žádné inbound díry. Runner pollí GitHub zevnitř sítě.</td></tr>
+  <tr><td>Code-in-transit</td><td>Všechny git operace + Actions runner traffic používá HTTPS (TLS 1.2+) na github.com</td></tr>
+  <tr><td>HTTPS na API → desktop</td><td>Aktuálně HTTP na portu 4000. Produkční TLS termination plánováno (Caddy / IIS reverse proxy)</td></tr>
 </table>
 
 </main>
