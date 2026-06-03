@@ -62,6 +62,18 @@ export function App() {
     api.serviceProblems().then((r) => setServiceProblems(r.items)).catch(() => {});
     api.perfSummary(7).then(setPerfSummary).catch(() => {});
     api.inactiveStats().then(setInactiveStats).catch(() => {});
+    // Re-pull settings-derived data when Settings page broadcasts a save.
+    const onSettingsSaved = (e: Event) => {
+      const detail = (e as CustomEvent<{ changedKeys: string[] }>).detail;
+      const keys = detail?.changedKeys ?? [];
+      const isAll = keys.length === 0;
+      if (isAll || keys.includes('inactive.threshold_days')) {
+        api.inactiveStats().then(setInactiveStats).catch(() => {});
+      }
+      api.settings().then(setSettingsMap).catch(() => {});
+    };
+    window.addEventListener('itd:settings-saved', onSettingsSaved);
+    return () => window.removeEventListener('itd:settings-saved', onSettingsSaved);
     api.settings().then(setSettingsMap).catch(() => {});
   }, []);
 

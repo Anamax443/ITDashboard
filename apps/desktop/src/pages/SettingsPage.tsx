@@ -178,10 +178,14 @@ export function SettingsPage() {
     setError(null);
     setMessage(null);
     try {
+      const changedKeys = Object.keys(dirty);
       await api.saveSettings(dirty);
       setSettings({ ...settings, ...dirty });
       setDirty({});
-      setMessage(`${t('settings.saved')} (${Object.keys(dirty).length})`);
+      setMessage(`${t('settings.saved')} (${changedKeys.length})`);
+      // Broadcast so other tabs (Dashboard card, Computers chip) can refetch
+      // anything derived from settings — avoids stale UI until F5.
+      window.dispatchEvent(new CustomEvent('itd:settings-saved', { detail: { changedKeys } }));
     } catch (err) {
       setError(String(err));
     } finally {
