@@ -170,5 +170,12 @@ Limitations:
   itself flagged them as slow. Default channel retention is small (~1 MB ring
   buffer), so we sweep into SQL to preserve history.
 - "Slow" threshold is Windows' opinion, not configurable.
+- **Channel is disabled by default on Windows Server SKU.** Get-WinEvent
+  on a disabled channel returns `"There is not an event log on the X
+  computer that matches"`. The collector matches this pattern and
+  classifies it as `channel-disabled` (separate counter, not a failure)
+  with no per-PC noise — one aggregate count at end of run. To enable
+  across the server fleet, push a GPO computer-startup script:
+  `wevtutil sl Microsoft-Windows-Diagnostics-Performance/Operational /e:true`.
 
 Setting key: `checks.run_perf` (default `true`).
