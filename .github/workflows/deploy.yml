@@ -75,9 +75,9 @@ jobs:
       - name: Smoke test — running binary SHA matches commit
         # Up to ~30s polling because Node boot + DB pool init can take a moment
         # after the service starts. Fails the job if the running /version/sha
-        # does not match the deployed commit short SHA — that is the diagnostic
-        # signal "deploy reported success but the Node process did not actually
-        # pick up the new code" (historically masked by .git-based version).
+        # does not match the deployed commit short SHA or the browser UI root
+        # is not serving HTML. This catches both stale binaries and missing
+        # frontend dist artefacts.
         run: |
           set EXPECTED=%GITHUB_SHA:~0,7%
           echo Expected SHA: %EXPECTED%
@@ -88,8 +88,16 @@ jobs:
           set ACTUAL=%ACTUAL:"=%
           echo Attempt %tries%: actual=%ACTUAL%
           if "%ACTUAL%"=="%EXPECTED%" (
-            echo SMOKE TEST OK — /version/sha matches %EXPECTED%
-            exit /b 0
+            curl -s --max-time 3 http://127.0.0.1:4000/ > "%RUNNER_TEMP%\itd-root.html"
+            findstr /C:"root" "%RUNNER_TEMP%\itd-root.html" >nul
+            if not errorlevel 1 (
+              findstr /C:"/assets/" "%RUNNER_TEMP%\itd-root.html" >nul
+              if not errorlevel 1 (
+                echo SMOKE TEST OK — /version/sha matches %EXPECTED% and / serves browser UI
+                exit /b 0
+              )
+            )
+            echo SHA matched but / did not serve browser UI yet
           )
           if %tries% GEQ 15 (
             echo SMOKE TEST FAILED after %tries% attempts: expected %EXPECTED%, actual %ACTUAL%

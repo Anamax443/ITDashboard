@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { readFile } from 'node:fs/promises';
-import { join, normalize } from 'node:path';
+import { dirname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const FRONTEND_DIST = join(process.cwd(), '..', 'desktop', 'dist', 'renderer');
+const ROUTE_DIR = dirname(fileURLToPath(import.meta.url));
+const FRONTEND_DIST = join(ROUTE_DIR, '..', '..', '..', 'desktop', 'dist', 'renderer');
 
 const CONTENT_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',

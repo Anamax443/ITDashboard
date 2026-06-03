@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (protocol handler installer fix)
+Last updated: 2026-06-03 (frontend dist path fix)
 
 ## Current Live State
 
@@ -74,6 +74,26 @@ Docs/UI sync for this fix completed:
   Troubleshooting entry for "CMD window flashes and closes".
 - `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show the reinstall guidance in
   the Actions modal warning block.
+
+## Frontend build not found after green deploy (NEW since 2026-06-03)
+
+Operator screenshot showed `http://10.8.2.213:4000/` returning:
+`ITDashboard frontend build not found. Deploy must build apps/desktop first.`
+Deploy was green because smoke only checked `/version/sha`.
+
+Root cause: `apps/server/src/routes/frontend.ts` resolved
+`FRONTEND_DIST` from `process.cwd()`. Under NSSM/Windows Service, cwd is not
+guaranteed to be `C:\Apps\ITDashboard\apps\server`, so the server could look
+for `..\desktop\dist\renderer` next to the wrong directory even though
+`apps\desktop\dist\renderer` existed.
+
+Fix:
+- Resolve frontend dist from `import.meta.url` / module location instead of cwd.
+- Extend deploy smoke test to require `/` to serve browser HTML root, not just
+  `/version/sha`.
+
+Expected deploy verification: workflow fails if runtime SHA matches but `/`
+still returns the fallback text.
 
 ## Deployment Model
 

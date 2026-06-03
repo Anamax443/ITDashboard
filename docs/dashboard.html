@@ -846,6 +846,12 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <span data-lang="en"><strong>Cause:</strong> AXINETWORK Group Policy enforces <code>AllSigned</code> ExecutionPolicy. Runner saves each step as temp .ps1, which can't load. <strong>Fix:</strong> already deployed — deploy.yml uses <code>defaults.run.shell: cmd</code>.</span>
 </p>
 
+<h3><span data-lang="cs">Root stránka říká "frontend build not found"</span><span data-lang="en">Root page says "frontend build not found"</span></h3>
+<p>
+  <span data-lang="cs"><strong>Příčina:</strong> API běží, ale service proces hledá <code>apps/desktop/dist/renderer</code> relativně ke špatnému cwd. <strong>Fix:</strong> frontend dist se resolvuje z module path (<code>import.meta.url</code>) a deploy smoke test teď kontroluje i <code>/</code>, nejen <code>/version/sha</code>.</span>
+  <span data-lang="en"><strong>Cause:</strong> API is running, but the service process is looking for <code>apps/desktop/dist/renderer</code> relative to the wrong cwd. <strong>Fix:</strong> frontend dist is resolved from module path (<code>import.meta.url</code>) and deploy smoke now checks <code>/</code>, not only <code>/version/sha</code>.</span>
+</p>
+
 <h3><span data-lang="cs">Operátorský Monitor checkbox se neustále resetuje</span><span data-lang="en">Operator-set Monitor checkbox keeps getting reset</span></h3>
 <p>
   <span data-lang="cs">Nemělo by — AD sync explicitně netýká <code>monitor_enabled</code>. Pokud se checkbox revertuje, zkontroluj jestli někdo jiný needituje přes přímou DB nebo jestli neběží custom skript. PATCH endpoint vždy ukládá novou hodnotu verbatim.</span>

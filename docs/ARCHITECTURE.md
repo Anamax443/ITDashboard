@@ -121,6 +121,12 @@ Live view: ring buffer of 500 entries, polled by dashboard every 2s. Lost on ser
 ### Deploy.yml restart with sc + STOPPED polling
 `net stop` returns when service is `STOP_PENDING`, NOT yet `STOPPED`. If `net start` runs immediately, it can race and end up running on the old PID/binary. Workflow uses `sc stop` + cmd loop polling for `STOPPED` state via `sc query | findstr STOPPED`, then `sc start`. Verified by checking topbar SHA after every push.
 
+Deploy smoke checks both `/version/sha` and `/`. The SHA check confirms the
+running Node process picked up the expected build; the root-page check confirms
+the browser UI dist is reachable from the service process. Frontend dist paths
+must be resolved from module location (`import.meta.url`), not `process.cwd()`,
+because NSSM/Windows Service cwd is not a stable contract.
+
 ### Service Control ACL grant
 The runner runs as `svc-itdashboard` which by default cannot stop/start the `ITDashboardAPI` service it itself hosts. One-time setup grant via `sc sdset` adds explicit Stop/Start ACE for the SID. Without it deploys succeed at robocopy/build but service keeps running old code.
 

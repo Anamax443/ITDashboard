@@ -86,6 +86,8 @@ Protocol handler security follow-up from 2026-06-03 is archived in [docs/oponent
 
 Protocol handler installer fix from commit `0cc27a3`: Windows `.cmd/.bat` files are pinned to CRLF, the installer avoids cmd-unsafe comment text, and generated launchers leave the console open with a reason + `%LOCALAPPDATA%\ITDashboard\launchers\last-itd-*.log` on failure. If a workstation already installed older handlers and Launch only flashes a CMD window, download and run `/actions/install-handlers.cmd` again on that workstation.
 
+Deploy smoke tests now verify both the running `/version/sha` and the browser UI root `/`. This catches cases where the API service picked up the new commit but the server cannot find `apps/desktop/dist/renderer`.
+
 ## Setup
 
 - [docs/SETUP-SERVER.md](docs/SETUP-SERVER.md) — one-time server bootstrap (Node, NSSM, DB, runner registration, ACL grants)
