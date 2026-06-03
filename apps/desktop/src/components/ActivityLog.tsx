@@ -10,6 +10,36 @@ const LEVEL_COLORS: Record<ActivityLogEntry['level'], string> = {
   success: 'var(--ok)',
 };
 
+// navigator.clipboard requires a secure context (HTTPS or localhost). The dashboard
+// is served plain HTTP on the internal LAN so we fall back to the legacy
+// document.execCommand path when the modern API is unavailable.
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch { /* fall through */ }
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.left = '0';
+    ta.style.width = '1px';
+    ta.style.height = '1px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 export function ActivityLog({ height = 400, autoScroll = true }: { height?: number; autoScroll?: boolean }) {
   const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
   const [filter, setFilter] = useState('');
@@ -90,14 +120,12 @@ export function ActivityLog({ height = 400, autoScroll = true }: { height?: numb
           </button>
           <button
             className="refresh-btn"
-            onClick={() => {
+            onClick={async () => {
               const text = filtered.map((e) =>
                 `${new Date(e.ts).toLocaleString('cs-CZ')}\t[${e.source}]\t${e.level.toUpperCase()}\t${e.message}`
               ).join('\n');
-              navigator.clipboard.writeText(text).then(
-                () => setCopied(true),
-                () => setCopied(false)
-              );
+              const ok = await copyToClipboard(text);
+              setCopied(ok);
               setTimeout(() => setCopied(false), 2000);
             }}
             title="Copy filtered log lines to clipboard"
