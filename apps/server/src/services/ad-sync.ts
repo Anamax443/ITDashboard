@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
+import { getSetting } from './settings.js';
 
 export interface ADComputer {
   Name: string;
@@ -90,9 +91,14 @@ export async function syncComputersFromAD(triggerSource: 'manual' | 'scheduled' 
 
   logActivity('info', 'ad-sync', `Starting AD sync (${triggerSource}) — runId ${runId}`);
 
+  // Setting drives whether newly discovered PCs default to monitored.
+  // Existing PCs (UPDATE path) preserve their current monitor_enabled — operator intent persists.
+  const defaultMonitorRaw = await getSetting('adsync.default_monitor_enabled').catch(() => undefined);
+  const defaultMonitor = (defaultMonitorRaw ?? 'true').toLowerCase() !== 'false' ? 1 : 0;
+
   try {
     const adList = await fetchFromAD();
-    logActivity('info', 'ad-sync', `Fetched ${adList.length} computers from AD`);
+    logActivity('info', 'ad-sync', `Fetched ${adList.length} computers from AD (new PCs default monitor=${defaultMonitor === 1})`);
 
     let inserted = 0;
     let updated = 0;
@@ -107,14 +113,15 @@ export async function syncComputersFromAD(triggerSource: 'manual' | 'scheduled' 
         .input('enabled', c.Enabled ? 1 : 0)
         .input('dn', c.DistinguishedName)
         .input('ou', ouPath)
+        .input('mon', defaultMonitor)
         .query<{ action: 'INSERT' | 'UPDATE' }>(`
           MERGE computers AS tgt
           USING (SELECT @name AS name) AS src ON tgt.name = src.name
           WHEN MATCHED THEN UPDATE SET
             fqdn = @fqdn, os_version = @os, last_seen = @last_seen, enabled = @enabled,
             distinguished_name = @dn, ou_path = @ou
-          WHEN NOT MATCHED THEN INSERT (name, fqdn, os_version, last_seen, enabled, distinguished_name, ou_path)
-            VALUES (@name, @fqdn, @os, @last_seen, @enabled, @dn, @ou)
+          WHEN NOT MATCHED THEN INSERT (name, fqdn, os_version, last_seen, enabled, distinguished_name, ou_path, monitor_enabled)
+            VALUES (@name, @fqdn, @os, @last_seen, @enabled, @dn, @ou, @mon)
           OUTPUT $action AS action;
         `);
       const action = r.recordset[0]?.action;

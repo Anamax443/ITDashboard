@@ -77,11 +77,15 @@ Settings keys:
 - `checks.run_eventlog`
 - `checks.run_disk`
 - `checks.run_services`
+- `checks.run_perf`
+- `checks.run_adsync` (default `false` in periodic — fleet AD MERGE is overkill every 15 min)
+- `adsync.default_monitor_enabled` (default `true`) — applied to newly INSERTed PCs by AD sync. Existing PCs keep their current `monitor_enabled` flag (operator intent persists).
 
 Behavior:
 - Scheduled checks run only inside the selected day/time window.
-- Manual `Run all checks` runs even outside the window.
+- Manual `Run all checks` runs even outside the window AND forces every check on, including AD sync — regardless of the `checks.run_*` selection. So clicking "Run all" always refreshes inventory from AD even if periodic AD sync is off.
 - The checks runner uses a registry pattern so future checks can be added as new entries rather than new independent schedulers.
+- AD sync is registered as the first check in the run order so subsequent collectors see fresh inventory in the same run.
 
 ## Last Important Commits
 
@@ -127,7 +131,6 @@ Expected:
 
 - Per-PC detail page: timeline, disks, services, perf events, last errors.
 - Alerting through Resend email or Teams webhook.
-- Daily auto AD sync.
 - Setup guide/checklist in UI for GPO and permissions rollout.
 - Future checks should plug into the checks registry, not create standalone timers.
 

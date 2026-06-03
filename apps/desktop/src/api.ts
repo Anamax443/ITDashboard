@@ -362,12 +362,14 @@ export interface CollectorRunAllResult {
   disk: DiskCollectResult | null;
   services: ServicesScanResult | null;
   perf: PerfScanResult | null;
+  adsync: SyncResult | null;
   durationMs: number;
   selected: {
     eventlog: boolean;
     disk: boolean;
     services: boolean;
     perf: boolean;
+    adsync: boolean;
   };
 }
 

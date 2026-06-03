@@ -31,7 +31,8 @@
   - `settings` — get all, put bulk
   - `scripts` — list (run endpoint pending)
 - Background tasks:
-  - **Periodic checks scheduler** — every `checks.interval_sec` (default 900) within `checks.days` + `checks.window_start/end` runs selected checks from Settings: eventlog, disk, services, perf
+  - **Periodic checks scheduler** — every `checks.interval_sec` (default 900) within `checks.days` + `checks.window_start/end` runs selected checks from Settings: eventlog, disk, services, perf, adsync (adsync default OFF in periodic)
+  - **AD sync** — registered as the first check; `Get-ADComputer -Filter *` + MERGE. Default off in periodic, forced on by "Run all". New PCs default to `monitor_enabled = adsync.default_monitor_enabled` (default `true`)
   - **Eventlog collector** — pulls Warning/Error/Critical events
   - **Disk collector** — pulls Win32_LogicalDisk via DCOM
   - **Services collector** — checks Auto + non-running Windows services and drift policy
@@ -80,10 +81,17 @@ After fail-fast TCP probe, classify any PS failure by error message:
 Persisted in `computers.last_status`. UI shows breakdown in Dashboard Unreachable card subtitle + Status column in Computers tab.
 
 ### Operator monitor flag persists across AD sync
-`computers.monitor_enabled` is the operator's intent. AD sync explicitly does **not** touch this column — it only updates `fqdn`, `os_version`, `last_seen`, `enabled` (AD presence). When a PC is removed from AD it gets soft-disabled (`enabled = 0`) but its events stay. If it reappears, `enabled = 1` again and the original `monitor_enabled` state persists.
+`computers.monitor_enabled` is the operator's intent. AD sync explicitly does **not** touch this column on UPDATE — it only updates `fqdn`, `os_version`, `last_seen`, `enabled` (AD presence). When a PC is removed from AD it gets soft-disabled (`enabled = 0`) but its events stay. If it reappears, `enabled = 1` again and the original `monitor_enabled` state persists.
+
+On INSERT (newly discovered PC), AD sync applies `adsync.default_monitor_enabled` (default `true`). The previous column-level `DEFAULT 1` is preserved as a safety net, but the value is now explicit per the setting so an operator can flip the default to "off" if they want new PCs to require explicit opt-in.
 
 ### Settings live-reschedule
-`checks.interval_sec` causes immediate scheduler reschedule on save — no service restart. The day/time window and check enable flags (`checks.run_eventlog`, `checks.run_disk`, `checks.run_services`, `checks.run_perf`) are read on every scheduled run, so toggles apply to the next cycle.
+`checks.interval_sec` causes immediate scheduler reschedule on save — no service restart. The day/time window and check enable flags (`checks.run_eventlog`, `checks.run_disk`, `checks.run_services`, `checks.run_perf`, `checks.run_adsync`) are read on every scheduled run, so toggles apply to the next cycle.
+
+### AD sync in checks runner
+AD sync is registered as the first check in the registry. Order matters: if a periodic run includes both `adsync` and the data collectors, AD sync runs first so subsequent collectors operate on fresh inventory in the same cycle. By default `checks.run_adsync = false` (fleet-wide MERGE every 15 min is wasteful), but `runAllChecksOnce` (manual "Run all") forces all checks on regardless of selection — so clicking "Run all" always pulls a fresh AD view before the data collectors.
+
+`adsync.default_monitor_enabled` controls the `monitor_enabled` value applied to newly discovered PCs. Default `true` so a new domain join is automatically monitored. Existing PCs are not touched — operator intent persists across syncs (this was already true, the setting only governs the INSERT path).
 
 ### Observer, not executor
 The whole tool follows the loop `observe → compare with threshold → show to operator`, never `observe → act → re-observe`. Remediation is delegated to the human at the screen. The Services tab "GPO script export" stays on the right side of this line (we export a script, we don't execute it). Future backlog items like "Direct fix button per service-PC" would cross it, and should be evaluated against this principle before being implemented. Two reasons: (1) absence of signal is ambiguous — an OFFLINE PC could be down, the network could be down, or the monitor itself could be blind, so acting on incomplete state is dangerous; (2) the monitor doesn't own truth, the machines do — every shown value is a 30-second-to-15-minute-stale derivative, and acting on stale state is how races and storms start.
@@ -162,3 +170,4 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 014_service_policy | service_policy table with seeded defaults + service_problems drift columns |
 | 015_periodic_checks | unified periodic check scheduler settings |
 | 016_perf_events | perf_events table (Diagnostics-Performance channel) + checks.run_perf setting |
+| 017_adsync_in_runall | checks.run_adsync (default false) + adsync.default_monitor_enabled (default true) |

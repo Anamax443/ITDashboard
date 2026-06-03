@@ -263,7 +263,8 @@ service restarts on new dist/, in-memory state cleared</div>
 
 <h3>Settings tab</h3>
 <ul>
-  <li><strong>Periodic checks</strong> — one frequency, editable days/time window (default Po–Pá 06:00–18:00), plus checkboxes for Eventlog collector, Disk scan, Services scan, and Perf events; changes apply live (no service restart needed)</li>
+  <li><strong>Periodic checks</strong> — one frequency, editable days/time window (default Po–Pá 06:00–18:00), plus checkboxes for Eventlog collector, Disk scan, Services scan, Perf events, and AD sync (AD sync off by default in periodic — manual "Run all" forces it on regardless); changes apply live (no service restart needed)</li>
+  <li><strong>AD sync defaults</strong> — toggle "New PCs default to monitored (Monitor = on)". Applied only on INSERT — existing PCs keep their flag.</li>
   <li><strong>Disk space thresholds</strong> — Mode (Percent free / GB free / Either most-strict), Critical & Warning values for both % and GB</li>
   <li>Save button only enabled when there are unsaved changes</li>
 </ul>
@@ -416,10 +417,11 @@ This is the <strong>observer-not-executor</strong> pattern applied to telemetry:
 <p>Calls <code>Get-ADComputer -Filter * -Properties OperatingSystem, LastLogonDate, DistinguishedName</code> against the domain controller, MERGE-upserts into <code>computers</code> table.</p>
 <ul>
   <li>Computers no longer present in AD are soft-disabled (<code>enabled = 0</code>) instead of deleted → preserves historical events.</li>
-  <li>AD sync intentionally <strong>does not touch</strong> <code>monitor_enabled</code> — operator decisions persist across syncs.</li>
+  <li>AD sync intentionally <strong>does not touch</strong> <code>monitor_enabled</code> on UPDATE — operator decisions persist across syncs.</li>
+  <li>On INSERT (newly discovered PC), <code>monitor_enabled</code> is set from the setting <code>adsync.default_monitor_enabled</code> (Settings → AD sync defaults). Default <code>true</code> so a new domain join is automatically monitored. Flip to off if you prefer explicit opt-in.</li>
   <li>OU path parsed from DistinguishedName: <code>CN=PC1,OU=Sales,OU=Notebooks,DC=axinetwork,DC=loc → axinetwork.loc/Notebooks/Sales</code></li>
   <li>History of every sync stored in <code>ad_sync_runs</code> (fetched/inserted/updated/removed counts + duration + error if any)</li>
-  <li>Currently triggered manually from Computers tab → <code>↻ Sync from AD</code>. Daily auto-sync planned.</li>
+  <li>Triggers: manual from Computers tab (<code>↻ Sync from AD</code>) or via "Run all checks" on Dashboard collector bar (always includes AD sync). Periodic scheduler does <strong>not</strong> include AD sync by default — flip <code>checks.run_adsync</code> in Settings → Periodic checks if you want it on every periodic tick.</li>
 </ul>
 
 <h2 id="scripts">Script runner</h2>

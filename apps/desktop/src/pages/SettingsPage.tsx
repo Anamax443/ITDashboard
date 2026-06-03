@@ -7,6 +7,7 @@ const PERIODIC_CHECKS = [
   { key: 'checks.run_disk', label: 'Disk scan' },
   { key: 'checks.run_services', label: 'Services scan' },
   { key: 'checks.run_perf', label: 'Perf events (slow boot/shutdown)' },
+  { key: 'checks.run_adsync', label: 'AD sync (off by default in periodic)' },
 ] as const;
 
 const SCHEDULE_DAYS = [
@@ -208,6 +209,22 @@ export function SettingsPage() {
               />
             ))}
           </FieldGroup>
+        </Section>
+
+        <Section
+          title="AD sync defaults"
+          description='Applied when AD sync discovers a new computer (existing PCs keep their current monitor flag — operator intent persists across syncs).'
+        >
+          <FieldGroup>
+            <CheckField
+              label="New PCs default to monitored (Monitor = on)"
+              checked={value('adsync.default_monitor_enabled', 'true') === 'true'}
+              onChange={(checked) => set('adsync.default_monitor_enabled', String(checked))}
+            />
+          </FieldGroup>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>
+            "Run all checks" always includes AD sync regardless of the periodic checkbox above.
+          </p>
         </Section>
 
         <NetworkAccessSection />

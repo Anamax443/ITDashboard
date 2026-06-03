@@ -2,10 +2,11 @@ import { runCollectorOnce, type CollectorRunResult } from './eventlog-collector.
 import { runDiskCollectorOnce } from './disk-collector.js';
 import { runServicesScanOnce } from './services-collector.js';
 import { runPerfCollectorOnce, type PerfCollectResult } from './perf-collector.js';
+import { syncComputersFromAD, type SyncResult as AdSyncResult } from './ad-sync.js';
 import { logActivity } from './activity-log.js';
 import { getAllSettings } from './settings.js';
 
-type CheckName = 'eventlog' | 'disk' | 'services' | 'perf';
+type CheckName = 'eventlog' | 'disk' | 'services' | 'perf' | 'adsync';
 type CheckSelection = Record<CheckName, boolean>;
 
 interface CheckWindow {
@@ -35,6 +36,7 @@ export interface RunChecksResult {
   disk: DiskCollectResult | null;
   services: ServicesScanResult | null;
   perf: PerfCollectResult | null;
+  adsync: AdSyncResult | null;
   durationMs: number;
   selected: CheckSelection;
 }
@@ -47,8 +49,16 @@ const CHECKS: Array<{
   label: string;
   settingKey: string;
   defaultEnabled: boolean;
-  run: (triggerSource: 'manual' | 'scheduled') => Promise<CollectorRunResult | DiskCollectResult | ServicesScanResult | PerfCollectResult | null>;
+  run: (triggerSource: 'manual' | 'scheduled') => Promise<CollectorRunResult | DiskCollectResult | ServicesScanResult | PerfCollectResult | AdSyncResult | null>;
 }> = [
+  // AD sync runs first so subsequent collectors see fresh inventory in the same run.
+  {
+    name: 'adsync',
+    label: 'ad-sync',
+    settingKey: 'checks.run_adsync',
+    defaultEnabled: false,
+    run: (triggerSource) => syncComputersFromAD(triggerSource),
+  },
   {
     name: 'eventlog',
     label: 'eventlog',
@@ -153,6 +163,7 @@ export async function runChecksOnce(
     let disk: DiskCollectResult | null = null;
     let services: ServicesScanResult | null = null;
     let perf: PerfCollectResult | null = null;
+    let adsync: AdSyncResult | null = null;
 
     for (const check of CHECKS) {
       if (!selected[check.name]) continue;
@@ -165,11 +176,12 @@ export async function runChecksOnce(
       if (check.name === 'disk') disk = result as DiskCollectResult;
       if (check.name === 'services') services = result as ServicesScanResult;
       if (check.name === 'perf') perf = result as PerfCollectResult;
+      if (check.name === 'adsync') adsync = result as AdSyncResult;
     }
 
     const durationMs = Date.now() - t0;
     logActivity('success', 'checks', `Checks done (${(durationMs / 1000).toFixed(1)}s)`);
-    return { eventlog, disk, services, perf, durationMs, selected };
+    return { eventlog, disk, services, perf, adsync, durationMs, selected };
   } catch (err) {
     logActivity('error', 'checks', `Checks failed: ${String(err).split('\n')[0]}`);
     throw err;
@@ -185,7 +197,7 @@ async function runScheduledChecksIfAllowed(): Promise<void> {
 }
 
 export async function runAllChecksOnce(triggerSource: 'manual' | 'scheduled'): Promise<RunChecksResult | null> {
-  return runChecksOnce(triggerSource, { eventlog: true, disk: true, services: true, perf: true });
+  return runChecksOnce(triggerSource, { eventlog: true, disk: true, services: true, perf: true, adsync: true });
 }
 
 export async function startChecksSchedule(): Promise<void> {
