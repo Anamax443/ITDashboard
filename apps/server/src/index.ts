@@ -17,6 +17,7 @@ import { registerPerfEventsRoutes } from './routes/perf-events.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
 import { refreshIpGuard } from './services/ip-guard.js';
+import { startRetentionSchedule } from './services/retention-runner.js';
 
 const PORT = Number(process.env.API_PORT ?? 4000);
 const BIND = process.env.API_BIND ?? '0.0.0.0';
@@ -52,6 +53,7 @@ await registerFrontendRoutes(app);
 app.listen({ port: PORT, host: BIND }).then(async () => {
   await refreshIpGuard('boot');
   await startChecksSchedule();
+  await startRetentionSchedule();
 }).catch((err) => {
   app.log.error(err);
   process.exit(1);

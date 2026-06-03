@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getRecent } from '../services/activity-log.js';
 import { getPool } from '../db/pool.js';
+import { runRetentionOnce, getRetentionNextRun } from '../services/retention-runner.js';
 
 export async function registerActivityRoutes(app: FastifyInstance) {
   app.get('/activity/log', async (req) => {
@@ -59,6 +60,17 @@ export async function registerActivityRoutes(app: FastifyInstance) {
       limit: q.limit,
       offset: q.offset,
     };
+  });
+
+  app.get('/activity/retention/status', async () => {
+    return { nextRunAt: getRetentionNextRun() };
+  });
+
+  app.post('/activity/retention/run', async () => {
+    // Fire-and-forget so the operator doesn't wait on the full purge (large
+    // tables may take seconds-to-minutes). Result lands in activity_log.
+    void runRetentionOnce('manual');
+    return { started: true };
   });
 
   app.get('/activity/sources', async () => {
