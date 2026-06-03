@@ -55,6 +55,31 @@ The frontend gate does not depend on the OS firewall being active — it just re
 rule contents as the whitelist source — so the UI is still gated correctly even with
 the OS firewall disabled.
 
+## i18n + theme (NEW since 2026-06-03)
+
+`apps/desktop/src/i18n.tsx` provides two React context providers mounted in
+`main.tsx`:
+
+- **I18nProvider** — `useI18n()` returns `{ lang: 'cs' | 'en', setLang, t(key) }`.
+  Initial pick: `localStorage['itd-lang']` → `navigator.language` (cs/sk → cs)
+  → `en` fallback. Dictionary covers top-level UI (nav tabs, summary cards,
+  status bar, common buttons). HelpBoxes and per-page text are still
+  English-only this iteration — translation will roll in per-page so PRs
+  stay reviewable.
+- **ThemeProvider** — `useTheme()` returns `{ theme: 'dark' | 'light', setTheme }`.
+  Toggles `body.theme-light` / `body.theme-dark` class. Light theme CSS
+  variables live in `styles.css` next to the `:root` dark defaults.
+
+Topbar has a CS|EN segmented control + ☀/☾ toggle. Clicking the
+"ITDashboard" logo (h1) jumps to Dashboard view.
+
+`/docs` page has its own CS/EN switcher driven by inline JS (no React there).
+Pre-paint script in `<head>` sets `html[data-lang]` before content renders so
+the opposite-language siblings never flash. Initial pick: `?lang=` query
+→ `localStorage['itd-docs-lang']` → `navigator.language` → `en`. The React
+app's Docs link forwards the current React lang via `?lang=` so the docs page
+opens in the same language as the dashboard.
+
 ## Deploy diagnostic — topbar SHA is now load-bearing
 
 Since commit `ae399cb`, `/version` returns the SHA captured at npm-build
