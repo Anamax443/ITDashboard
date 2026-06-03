@@ -34,6 +34,9 @@ nav.toc li { margin: 2px 0; }
 nav.toc a { color: var(--text); text-decoration: none; font-size: 13px; padding: 4px 8px; display: block; border-radius: 4px; }
 nav.toc a:hover { background: var(--surface-2); }
 main { padding: 32px 48px; max-width: 900px; }
+.docs-header { position: sticky; top: 0; background: var(--bg); padding: 12px 0 8px 0; z-index: 10; border-bottom: 2px solid var(--accent); margin-bottom: 16px; }
+.docs-header h1 { margin: 0; font-size: 24px; padding: 0; border: none; }
+.docs-toolbar { display: flex; gap: 12px; align-items: center; margin-top: 8px; }
 h1 { font-size: 28px; margin-top: 0; border-bottom: 2px solid var(--accent); padding-bottom: 8px; }
 h2 { font-size: 20px; margin-top: 32px; color: var(--accent); }
 h3 { font-size: 16px; margin-top: 24px; color: var(--text); }
@@ -99,24 +102,24 @@ a.external { color: var(--accent); }
 <nav class="toc">
   <h2>Sections</h2>
   <ul>
-    <li><a href="#overview">Overview</a></li>
-    <li><a href="#architecture">Architecture</a></li>
-    <li><a href="#deployment">Deployment workflow</a></li>
-    <li><a href="#components">Components</a></li>
-    <li><a href="#ui-tour">UI tour</a></li>
+    <li><a href="#overview"><span data-lang="cs">Přehled</span><span data-lang="en">Overview</span></a></li>
+    <li><a href="#architecture"><span data-lang="cs">Architektura</span><span data-lang="en">Architecture</span></a></li>
+    <li><a href="#deployment"><span data-lang="cs">Deployment workflow</span><span data-lang="en">Deployment workflow</span></a></li>
+    <li><a href="#components"><span data-lang="cs">Komponenty</span><span data-lang="en">Components</span></a></li>
+    <li><a href="#ui-tour"><span data-lang="cs">UI prohlídka</span><span data-lang="en">UI tour</span></a></li>
     <li><a href="#collector">Eventlog collector</a></li>
-    <li><a href="#disk">Disk space collector</a></li>
+    <li><a href="#disk"><span data-lang="cs">Disk collector</span><span data-lang="en">Disk space collector</span></a></li>
     <li><a href="#services">Services collector + policy</a></li>
     <li><a href="#perf">Perf events (Diagnostics-Performance)</a></li>
     <li><a href="#ad-sync">AD sync</a></li>
     <li><a href="#scripts">Script runner</a></li>
-    <li><a href="#settings">Settings</a></li>
+    <li><a href="#settings"><span data-lang="cs">Nastavení</span><span data-lang="en">Settings</span></a></li>
     <li><a href="#api">API reference</a></li>
-    <li><a href="#db">Database schema</a></li>
+    <li><a href="#db"><span data-lang="cs">DB schéma</span><span data-lang="en">Database schema</span></a></li>
     <li><a href="#retention">Retention policy</a></li>
-    <li><a href="#permissions">Required permissions</a></li>
+    <li><a href="#permissions"><span data-lang="cs">Požadovaná oprávnění</span><span data-lang="en">Required permissions</span></a></li>
     <li><a href="#troubleshooting">Troubleshooting</a></li>
-    <li><a href="#security">Security model</a></li>
+    <li><a href="#security"><span data-lang="cs">Bezpečnostní model</span><span data-lang="en">Security model</span></a></li>
   </ul>
   <h2>External</h2>
   <ul>
@@ -127,15 +130,17 @@ a.external { color: var(--accent); }
 </nav>
 <main>
 
-<h1><span data-lang="cs">ITDashboard — Dokumentace</span><span data-lang="en">ITDashboard — Documentation</span></h1>
-<div style="display: flex; gap: 12px; margin-bottom: 16px; align-items: center;">
-  <button onclick="window.print()" style="background: var(--surface-2); color: var(--text); border: 1px solid var(--border); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 13px;">
-    <span data-lang="cs">🖨 Tisk / Uložit jako PDF</span>
-    <span data-lang="en">🖨 Print / Save as PDF</span>
-  </button>
-  <div class="lang-switcher">
-    <button id="lang-cs" onclick="setLang('cs')">CS</button>
-    <button id="lang-en" onclick="setLang('en')">EN</button>
+<div class="docs-header">
+  <h1><span data-lang="cs">ITDashboard — Dokumentace</span><span data-lang="en">ITDashboard — Documentation</span></h1>
+  <div class="docs-toolbar">
+    <button onclick="window.print()" style="background: var(--surface-2); color: var(--text); border: 1px solid var(--border); padding: 6px 14px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 13px;">
+      <span data-lang="cs">🖨 Tisk / Uložit jako PDF</span>
+      <span data-lang="en">🖨 Print / Save as PDF</span>
+    </button>
+    <div class="lang-switcher">
+      <button id="lang-cs" onclick="setLang('cs')">CS</button>
+      <button id="lang-en" onclick="setLang('en')">EN</button>
+    </div>
   </div>
 </div>
 <p>
@@ -162,9 +167,12 @@ a.external { color: var(--accent); }
     <li><strong>Per-PC reachability classification</strong> — every collector run categorises each PC as online / offline / RPC fail / access denied, surfaced as clickable dashboard cards that drill down into filtered lists.</li>
   </ul>
 </div>
-<p>Single Node.js API service on the internal admin server + per-PC Electron client (or browser via Vite dev) for IT specialists.</p>
+<p>
+  <span data-lang="cs">Jediná Node.js API služba na interním admin serveru + per-PC Electron klient (nebo browser přes Vite dev) pro IT specialisty.</span>
+  <span data-lang="en">Single Node.js API service on the internal admin server + per-PC Electron client (or browser via Vite dev) for IT specialists.</span>
+</p>
 
-<h2 id="architecture">Architecture</h2>
+<h2 id="architecture"><span data-lang="cs">Architektura</span><span data-lang="en">Architecture</span></h2>
 <div class="ascii">┌─────────────────┐       ┌──────────────────────┐       ┌─────────────────┐
 │ IT operator     │       │  10.8.2.213          │       │  10.8.2.225     │
 │ Electron client │◄─────►│  Node.js API svc     │◄─────►│  SQL Server     │
@@ -184,16 +192,26 @@ a.external { color: var(--accent); }
                           │ AXINETWORK domain    │
                           └──────────────────────┘</div>
 
-<table>
+<table data-lang="en">
   <tr><th>Component</th><th>Location</th><th>Runs as</th></tr>
   <tr><td>API + collectors + script runner</td><td><code>10.8.2.213</code> (B-S-W-MIKOS)</td><td>Windows Service <code>ITDashboardAPI</code> via NSSM under <code>AXINETWORK\svc-itdashboard</code></td></tr>
   <tr><td>SQL Server</td><td><code>10.8.2.225</code> (B-S-W-SQL-04, default instance)</td><td>DB <code>ITDashboard</code>, Integrated Auth</td></tr>
   <tr><td>GitHub Actions self-hosted runner</td><td><code>10.8.2.213</code></td><td>Windows Service, same service account</td></tr>
   <tr><td>Desktop client</td><td>Per IT-operator PC</td><td>Electron app or browser; HTTPS to API</td></tr>
 </table>
+<table data-lang="cs">
+  <tr><th>Komponenta</th><th>Umístění</th><th>Běží jako</th></tr>
+  <tr><td>API + collectory + script runner</td><td><code>10.8.2.213</code> (B-S-W-MIKOS)</td><td>Windows Service <code>ITDashboardAPI</code> přes NSSM pod <code>AXINETWORK\svc-itdashboard</code></td></tr>
+  <tr><td>SQL Server</td><td><code>10.8.2.225</code> (B-S-W-SQL-04, default instance)</td><td>DB <code>ITDashboard</code>, Integrated Auth</td></tr>
+  <tr><td>GitHub Actions self-hosted runner</td><td><code>10.8.2.213</code></td><td>Windows Service, stejný service account</td></tr>
+  <tr><td>Desktop klient</td><td>Per IT-operátor PC</td><td>Electron app nebo browser; HTTPS na API</td></tr>
+</table>
 
-<h2 id="deployment">Deployment workflow</h2>
-<p>Push-to-deploy via GitHub Actions self-hosted runner. No manual server intervention.</p>
+<h2 id="deployment"><span data-lang="cs">Deployment workflow</span><span data-lang="en">Deployment workflow</span></h2>
+<p>
+  <span data-lang="cs">Push-to-deploy přes GitHub Actions self-hosted runner. Žádný manuální zásah na serveru.</span>
+  <span data-lang="en">Push-to-deploy via GitHub Actions self-hosted runner. No manual server intervention.</span>
+</p>
 <div class="ascii">local edit (d:/git/ITDashboard)
   ↓ git push origin main
 GitHub Actions
@@ -203,15 +221,21 @@ robocopy → C:\Apps\ITDashboard (runtime location)
   ↓ sc stop ITDashboardAPI → poll for STOPPED state → sc start
 service restarts on new dist/, in-memory state cleared</div>
 
-<div class="callout callout-info">
-<strong>Commit hash in topbar</strong> — the deployed commit SHA is shown in the dashboard topbar (clickable → GitHub commit page). If after a push the hash doesn't change, the deploy didn't fully apply — check Actions logs.
+<div class="callout callout-info" data-lang="en">
+<strong>Commit hash in topbar</strong> — the deployed commit SHA is shown in the dashboard topbar (clickable → GitHub commit page). It is captured at npm-build time so it reflects the actually-running binary, not just <code>.git</code>. The deploy.yml ends with a smoke test that fails the job if <code>/version/sha</code> doesn't match — half-failed deploys are now red.
+</div>
+<div class="callout callout-info" data-lang="cs">
+<strong>Commit hash v topbaru</strong> — nasazený commit SHA je zobrazený v topbaru (klikatelné → GitHub commit page). Capturuje se v npm-build čase takže odráží reálně běžící binárku, ne jen <code>.git</code>. deploy.yml končí smoke testem, který fail-uje job pokud <code>/version/sha</code> nesedí — half-failed deploys jsou teď červené.
 </div>
 
-<div class="callout callout-warn">
+<div class="callout callout-warn" data-lang="en">
 <strong>Service control ACL gotcha</strong> — the runner is svc-itdashboard, which by default cannot stop/start a Windows Service it itself hosts. We grant explicit Stop/Start rights via <code>sc sdset</code> as a one-time setup step. Without it, deploys succeed at robocopy/build but the service keeps running the old code.
 </div>
+<div class="callout callout-warn" data-lang="cs">
+<strong>Service control ACL gotcha</strong> — runner je svc-itdashboard, který by default nemůže stop/start vlastní Windows Service kterou hostuje. Granteme explicitní Stop/Start rights přes <code>sc sdset</code> jako one-time setup step. Bez toho deploys úspěšně dokončí robocopy/build, ale služba běží dál starý kód.
+</div>
 
-<h2 id="components">Components</h2>
+<h2 id="components"><span data-lang="cs">Komponenty</span><span data-lang="en">Components</span></h2>
 <h3>Server (<code>apps/server</code>)</h3>
 <ul>
   <li>Fastify + TypeScript HTTP API on port <code>4000</code></li>
@@ -228,10 +252,14 @@ service restarts on new dist/, in-memory state cleared</div>
   <li>Auto-refresh dashboard every 30s; collector status polled every 2s during in-flight runs; activity log polled every 2s</li>
   <li>7 navigation tabs: Dashboard, Events, Computers, Services, Perf, Activity, Settings (+ external Docs link)</li>
 </ul>
+<div data-lang="cs" class="callout callout-info">
+<strong>Server (<code>apps/server</code>)</strong>: Fastify + TypeScript HTTP API na portu 4000; MSSQL přes <code>msnodesqlv8</code> driver (Windows-native, SSPI Integrated Auth); background tasks (periodic checks scheduler, retention purge); PowerShell child procesy pro AD/eventlog/disk reads; Node-side TCP probe na 135 (fail-fast pro offline); in-memory ring buffer 500 entries pro activity log.<br><br>
+<strong>Desktop klient (<code>apps/desktop</code>)</strong>: Electron + React + Vite + TypeScript; čistý consumer API; auto-refresh 30s; 7 navigačních tabů.
+</div>
 
-<h2 id="ui-tour">UI tour</h2>
+<h2 id="ui-tour"><span data-lang="cs">UI prohlídka</span><span data-lang="en">UI tour</span></h2>
 
-<h3>Dashboard tab</h3>
+<h3><span data-lang="cs">Záložka Dashboard</span><span data-lang="en">Dashboard tab</span></h3>
 <p>Summary-only overview, every card clickable for drill-down:</p>
 <ul>
   <li><strong>Collector status bar</strong> — last run summary or in-flight progress (X/N PCs · ✓ OK / ✗ fail · +events · elapsed · current batch); ▶ Run now / ⏹ Stop buttons; last log line</li>
@@ -314,6 +342,9 @@ service restarts on new dist/, in-memory state cleared</div>
 <p>📖 Docs in topbar opens this page in a new tab. Has a 🖨 Print button at top for PDF export with print-friendly stylesheet (light theme, page break hints, URL footnotes).</p>
 
 <h2 id="collector">Eventlog collector</h2>
+<div class="callout callout-info" data-lang="cs">
+  <strong>📌 Pozn. k jazyku:</strong> následující technické sekce (Eventlog / Disk / Services / Perf / AD sync / Script runner / API reference / DB schéma / Retention / Permissions / Troubleshooting / Security) jsou zatím **jen v angličtině**. Plný překlad je v plánu jako samostatný PR aby diff zůstal reviewable. Pro uživatelské sekce (Přehled, Architektura, Deployment, Komponenty, UI prohlídka, Nastavení) je už CS překlad k dispozici.
+</div>
 <p>Background job that pulls Warning/Error/Critical events from every monitored PC.</p>
 <table>
   <tr><th>Setting</th><th>Default</th><th>Configurable in</th></tr>
@@ -480,8 +511,11 @@ This is the <strong>observer-not-executor</strong> pattern applied to telemetry:
 }</code></pre>
 <p>Run history persists in <code>script_runs</code> (invoker, target, params, exit code, stdout/stderr). UI for spawning is planned.</p>
 
-<h2 id="settings">Settings</h2>
-<p>Key-value store in <code>settings</code> table. All values persist in DB and survive service restarts. Periodic check settings apply live:</p>
+<h2 id="settings"><span data-lang="cs">Nastavení</span><span data-lang="en">Settings</span></h2>
+<p>
+  <span data-lang="cs">Key-value store v tabulce <code>settings</code>. Všechny hodnoty perzistují v DB a přežijí restart služby. Periodické check settings se aplikují live:</span>
+  <span data-lang="en">Key-value store in <code>settings</code> table. All values persist in DB and survive service restarts. Periodic check settings apply live:</span>
+</p>
 <table>
   <tr><th>Key</th><th>Default</th><th>Effect on change</th></tr>
   <tr><td><code>checks.interval_sec</code></td><td>900</td><td>Live reschedule of unified periodic checks timer</td></tr>

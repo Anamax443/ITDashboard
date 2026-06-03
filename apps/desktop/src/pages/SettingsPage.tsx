@@ -2,26 +2,29 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import type { DomainProfileStatus } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
+import { useI18n } from '../i18n.js';
+import type { TKey } from '../i18n.js';
 
-const PERIODIC_CHECKS = [
-  { key: 'checks.run_eventlog', label: 'Eventlog collector' },
-  { key: 'checks.run_disk', label: 'Disk scan' },
-  { key: 'checks.run_services', label: 'Services scan' },
-  { key: 'checks.run_perf', label: 'Perf events (slow boot/shutdown)' },
-  { key: 'checks.run_adsync', label: 'AD sync (off by default in periodic)' },
-] as const;
+const PERIODIC_CHECKS: { key: string; tkey: TKey }[] = [
+  { key: 'checks.run_eventlog', tkey: 'settings.check.eventlog' },
+  { key: 'checks.run_disk', tkey: 'settings.check.disk' },
+  { key: 'checks.run_services', tkey: 'settings.check.services' },
+  { key: 'checks.run_perf', tkey: 'settings.check.perf' },
+  { key: 'checks.run_adsync', tkey: 'settings.check.adsync' },
+];
 
-const SCHEDULE_DAYS = [
-  { value: 1, label: 'Po' },
-  { value: 2, label: 'Út' },
-  { value: 3, label: 'St' },
-  { value: 4, label: 'Čt' },
-  { value: 5, label: 'Pá' },
-  { value: 6, label: 'So' },
-  { value: 0, label: 'Ne' },
-] as const;
+const SCHEDULE_DAYS: { value: number; tkey: TKey }[] = [
+  { value: 1, tkey: 'settings.day.mo' },
+  { value: 2, tkey: 'settings.day.tu' },
+  { value: 3, tkey: 'settings.day.we' },
+  { value: 4, tkey: 'settings.day.th' },
+  { value: 5, tkey: 'settings.day.fr' },
+  { value: 6, tkey: 'settings.day.sa' },
+  { value: 0, tkey: 'settings.day.su' },
+];
 
 function NetworkAccessSection() {
+  const { t } = useI18n();
   const [ips, setIps] = useState<string[]>([]);
   const [draft, setDraft] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -47,7 +50,7 @@ function NetworkAccessSection() {
       const result = await api.saveFirewallWhitelist(list);
       setIps(result.ips);
       setDraft(result.ips.join('\n'));
-      setMessage(`Saved ${result.ips.length} IP entries`);
+      setMessage(t('settings.network.savedIps').replace('{n}', String(result.ips.length)));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -59,14 +62,9 @@ function NetworkAccessSection() {
 
   return (
     <div style={{ marginBottom: 32, paddingBottom: 24, borderBottom: '1px solid var(--border)' }}>
-      <h3 style={{ margin: '0 0 4px 0', fontSize: 16 }}>Dashboard UI access</h3>
+      <h3 style={{ margin: '0 0 4px 0', fontSize: 16 }}>{t('settings.section.network')}</h3>
       <p style={{ margin: '0 0 16px 0', color: 'var(--text-dim)', fontSize: 12 }}>
-        Listed IPs / CIDRs see the dashboard UI. Other IPs get an "access not configured"
-        screen on load. The JSON API, the bundle download, and the <code>/docs</code> page
-        stay reachable to anyone on the internal network — this is a UX gate to prevent
-        incidental UI discovery by non-IT users, not a security boundary. Whitelist also
-        mirrors into the Windows Firewall rule "ITDashboard API (4000)" but that rule may
-        be inert if the Domain firewall profile is off.
+        {t('settings.section.networkDesc')}
       </p>
       {domainProfile && (
         <div style={{
@@ -83,35 +81,36 @@ function NetworkAccessSection() {
         }}>
           <span style={{ fontSize: 14 }}>{domainProfile.enabled === false ? '⚠' : '✓'}</span>
           <div style={{ flex: 1 }}>
-            <strong>Windows Firewall — Domain profile: {domainProfile.enabled === false ? 'DISABLED' : domainProfile.enabled === true ? 'enabled' : 'unknown'}</strong>
+            <strong>{domainProfile.enabled === false
+              ? t('settings.network.firewallDisabled')
+              : domainProfile.enabled === true
+              ? t('settings.network.firewallEnabled')
+              : t('settings.network.firewallUnknown')}</strong>
             {domainProfile.enabled === false && (
               <>
-                <div style={{ marginTop: 4 }}>
-                  The OS-level rule "ITDashboard API (4000)" is inert. UI access is gated by the frontend
-                  whitelist only. To restore defense-in-depth on <code>10.8.2.213</code>:
-                </div>
+                <div style={{ marginTop: 4 }}>{t('settings.network.firewallDisabledBody')}</div>
                 <code style={{ display: 'block', marginTop: 4, padding: '4px 6px', background: 'var(--bg)', borderRadius: 3 }}>
                   Set-NetFirewallProfile -Profile Domain -Enabled True
                 </code>
                 <div style={{ marginTop: 4, color: 'var(--text-dim)' }}>
-                  Check GPO first — may be enforced disabled by domain policy. Default inbound: {domainProfile.defaultInboundAction ?? '—'}.
+                  {t('settings.network.firewallDisabledGpo')}{domainProfile.defaultInboundAction ?? '—'}.
                 </div>
               </>
             )}
             {domainProfile.enabled === null && (
               <div style={{ marginTop: 4, color: 'var(--text-dim)' }}>
-                Could not read Domain profile state: {domainProfile.error ?? 'unknown'}
+                {t('settings.network.firewallReadError')}{domainProfile.error ?? 'unknown'}
               </div>
             )}
           </div>
         </div>
       )}
       {loading ? (
-        <div style={{ color: 'var(--text-dim)' }}>Loading current whitelist…</div>
+        <div style={{ color: 'var(--text-dim)' }}>{t('settings.network.loading')}</div>
       ) : (
         <>
           <label style={{ display: 'block', fontSize: 12, color: 'var(--text-dim)', marginBottom: 4 }}>
-            One per line (IP or CIDR, e.g. 10.8.2.50 or 10.8.2.0/24)
+            {t('settings.network.oneLine')}
           </label>
           <textarea
             value={draft}
@@ -132,14 +131,14 @@ function NetworkAccessSection() {
               disabled={!dirty || saving}
               style={{ minWidth: 80 }}
             >
-              {saving ? 'Saving…' : 'Apply'}
+              {saving ? t('settings.saving') : t('settings.network.apply')}
             </button>
-            {dirty && <span style={{ color: 'var(--warning)', fontSize: 11 }}>unsaved changes</span>}
+            {dirty && <span style={{ color: 'var(--warning)', fontSize: 11 }}>{t('settings.unsaved')}</span>}
             {message && <span style={{ color: 'var(--ok)', fontSize: 11 }}>✓ {message}</span>}
             {error && <span style={{ color: 'var(--critical)', fontSize: 11 }}>⚠ {error}</span>}
           </div>
           <div style={{ marginTop: 6, color: 'var(--text-dim)', fontSize: 11 }}>
-            Current ({ips.length}): {ips.join(', ') || '(none)'}
+            {t('settings.network.current')} ({ips.length}): {ips.join(', ') || '—'}
           </div>
         </>
       )}
@@ -148,6 +147,7 @@ function NetworkAccessSection() {
 }
 
 export function SettingsPage() {
+  const { t } = useI18n();
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -181,7 +181,7 @@ export function SettingsPage() {
       await api.saveSettings(dirty);
       setSettings({ ...settings, ...dirty });
       setDirty({});
-      setMessage(`Saved ${Object.keys(dirty).length} value(s)`);
+      setMessage(`${t('settings.saved')} (${Object.keys(dirty).length})`);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -194,30 +194,27 @@ export function SettingsPage() {
   return (
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1', overflowY: 'auto' }}>
       <div className="panel-header">
-        <h2>Settings</h2>
+        <h2>{t('settings.title')}</h2>
         <div className="panel-actions filters">
           {message && <span style={{ color: 'var(--ok)', fontSize: 11 }}>✓ {message}</span>}
           {error && <span style={{ color: 'var(--critical)', fontSize: 11 }}>⚠ {error}</span>}
-          {hasChanges && <span style={{ color: 'var(--warning)', fontSize: 11 }}>{Object.keys(dirty).length} unsaved change(s)</span>}
+          {hasChanges && <span style={{ color: 'var(--warning)', fontSize: 11 }}>{Object.keys(dirty).length} {t('settings.unsaved')}</span>}
           <button className="refresh-btn" onClick={save} disabled={!hasChanges || saving} style={{ minWidth: 80 }}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? t('settings.saving') : t('btn.save')}
           </button>
         </div>
       </div>
       <div className="panel-body" style={{ padding: 24 }}>
 
-        <HelpBox title="What this tab does">
-          <p>Configure all background-scan intervals, dashboard thresholds, and which IPs may reach the API. All settings persist in the DB and apply live — no service restart needed.</p>
-          <p><strong>Periodic checks</strong> — how often the scheduler runs, on which days/time window, and which checks are included. Manual runs are still allowed outside the window.</p>
-          <p><strong>Network access</strong> — Windows Firewall whitelist for inbound 4000. Be careful: removing your own IP locks you out (you'd need RDP to fix it).</p>
-          <p><strong>Disk space thresholds</strong> — when a drive's free % or GB drops below the threshold, it's flagged Critical / Warning on the dashboard and in Computers tab.</p>
+        <HelpBox title={t('settings.helpTitle')}>
+          <p>{t('settings.helpBody')}</p>
         </HelpBox>
 
-        <Section title="Periodic checks" description="One scheduler runs selected checks in order. Changes apply immediately, no service restart needed.">
-          <Field label="Run every">
+        <Section title={t('settings.section.periodic')} description={t('settings.section.periodicDesc')}>
+          <Field label={t('settings.field.runEvery')}>
             <IntervalInput v={value('checks.interval_sec', '900')} onChange={(v) => set('checks.interval_sec', v)} />
           </Field>
-          <Field label="Days">
+          <Field label={t('settings.field.days')}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {SCHEDULE_DAYS.map((day) => (
                 <button
@@ -231,16 +228,16 @@ export function SettingsPage() {
                     color: selectedDays.has(day.value) ? 'white' : 'var(--text-dim)',
                   }}
                 >
-                  {day.label}
+                  {t(day.tkey)}
                 </button>
               ))}
             </div>
           </Field>
           <FieldGroup>
-            <Field label="Window from">
+            <Field label={t('settings.field.windowFrom')}>
               <input type="time" value={value('checks.window_start', '06:00')} onChange={(e) => set('checks.window_start', e.target.value)} style={{ ...fieldStyle, minWidth: 120 }} />
             </Field>
-            <Field label="Window to">
+            <Field label={t('settings.field.windowTo')}>
               <input type="time" value={value('checks.window_end', '18:00')} onChange={(e) => set('checks.window_end', e.target.value)} style={{ ...fieldStyle, minWidth: 120 }} />
             </Field>
           </FieldGroup>
@@ -248,7 +245,7 @@ export function SettingsPage() {
             {PERIODIC_CHECKS.map((check) => (
               <CheckField
                 key={check.key}
-                label={check.label}
+                label={t(check.tkey)}
                 checked={value(check.key, 'true') === 'true'}
                 onChange={(checked) => set(check.key, String(checked))}
               />
@@ -257,61 +254,60 @@ export function SettingsPage() {
         </Section>
 
         <Section
-          title="Perf-events lookback"
-          description="How far back to scan on the very first sweep of a PC (cold-start). Subsequent sweeps go incrementally from the last collected event."
+          title={t('settings.section.perfLookback')}
+          description={t('settings.section.perfLookbackDesc')}
         >
-          <Field label="Cold-start lookback (days)">
+          <Field label={t('settings.field.coldStart')}>
             <NumberInput
               v={value('perf.cold_start_days', '30')}
               onChange={(v) => set('perf.cold_start_days', v)}
-              suffix="days"
+              suffix={t('settings.unit.days')}
             />
           </Field>
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '0' }}>
-            Default 30. Workstations are typically rebooted infrequently — a 7-day window often misses
-            the previous boot's events. Range 1–365.
+            {t('settings.field.coldStartHelp')}
           </p>
         </Section>
 
         <Section
-          title="AD sync defaults"
-          description='Applied when AD sync discovers a new computer (existing PCs keep their current monitor flag — operator intent persists across syncs).'
+          title={t('settings.section.adsync')}
+          description={t('settings.section.adsyncDesc')}
         >
           <FieldGroup>
             <CheckField
-              label="New PCs default to monitored (Monitor = on)"
+              label={t('settings.field.newPcsMonitored')}
               checked={value('adsync.default_monitor_enabled', 'true') === 'true'}
               onChange={(checked) => set('adsync.default_monitor_enabled', String(checked))}
             />
           </FieldGroup>
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>
-            "Run all checks" always includes AD sync regardless of the periodic checkbox above.
+            {t('settings.field.runAllAlwaysSyncs')}
           </p>
         </Section>
 
         <NetworkAccessSection />
 
-        <Section title="Disk space thresholds" description="When a disk drops below these levels, it's flagged on the dashboard.">
-          <Field label="Threshold mode">
+        <Section title={t('settings.section.disk')} description={t('settings.section.diskDesc')}>
+          <Field label={t('settings.field.thresholdMode')}>
             <select value={value('disk.threshold_mode', 'pct')} onChange={(e) => set('disk.threshold_mode', e.target.value)} style={fieldStyle}>
-              <option value="pct">Percent free only</option>
-              <option value="gb">GB free only</option>
-              <option value="either">Either (most strict wins)</option>
+              <option value="pct">{t('settings.thresholdMode.pct')}</option>
+              <option value="gb">{t('settings.thresholdMode.gb')}</option>
+              <option value="either">{t('settings.thresholdMode.either')}</option>
             </select>
           </Field>
           <FieldGroup>
-            <Field label="Critical (% free)">
+            <Field label={t('settings.field.criticalPct')}>
               <NumberInput v={value('disk.critical_pct', '5')} onChange={(v) => set('disk.critical_pct', v)} suffix="%" />
             </Field>
-            <Field label="Warning (% free)">
+            <Field label={t('settings.field.warningPct')}>
               <NumberInput v={value('disk.warning_pct', '15')} onChange={(v) => set('disk.warning_pct', v)} suffix="%" />
             </Field>
           </FieldGroup>
           <FieldGroup>
-            <Field label="Critical (GB free)">
+            <Field label={t('settings.field.criticalGb')}>
               <NumberInput v={value('disk.critical_gb', '5')} onChange={(v) => set('disk.critical_gb', v)} suffix="GB" />
             </Field>
-            <Field label="Warning (GB free)">
+            <Field label={t('settings.field.warningGb')}>
               <NumberInput v={value('disk.warning_gb', '20')} onChange={(v) => set('disk.warning_gb', v)} suffix="GB" />
             </Field>
           </FieldGroup>
@@ -323,7 +319,7 @@ export function SettingsPage() {
 }
 
 function IntervalInput({ v, onChange }: { v: string; onChange: (v: string) => void }) {
-  // Show as number + unit selector (minutes/hours/seconds)
+  const { t } = useI18n();
   const n = Number(v);
   const [unit, setUnit] = React.useState<'sec' | 'min' | 'hour'>(
     n >= 3600 && n % 3600 === 0 ? 'hour' : n >= 60 && n % 60 === 0 ? 'min' : 'sec'
@@ -342,9 +338,9 @@ function IntervalInput({ v, onChange }: { v: string; onChange: (v: string) => vo
     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
       <input type="number" value={display} onChange={(e) => onValueChange(e.target.value)} style={{ ...fieldStyle, minWidth: 80 }} step="1" min="0" />
       <select value={unit} onChange={(e) => setUnit(e.target.value as 'sec' | 'min' | 'hour')} style={{ ...fieldStyle, minWidth: 80 }}>
-        <option value="sec">seconds</option>
-        <option value="min">minutes</option>
-        <option value="hour">hours</option>
+        <option value="sec">{t('settings.unit.seconds')}</option>
+        <option value="min">{t('settings.unit.minutes')}</option>
+        <option value="hour">{t('settings.unit.hours')}</option>
       </select>
       <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>({v}s)</span>
     </div>
