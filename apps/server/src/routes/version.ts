@@ -55,6 +55,12 @@ export async function registerVersionRoutes(app: FastifyInstance) {
 
   app.get('/docs', async (_req, reply) => {
     const html = await readDocsHtml();
+    // Docs is static read-only content. Helmet's default CSP (script-src 'self')
+    // blocks the inline `onclick="window.print()"` button and any future inline
+    // toggles (e.g. CS/EN language switch). Override CSP to allow inline scripts
+    // for this single route — the page never accepts user input and has no
+    // privileged context.
+    reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
     reply.type('text/html').send(html);
   });
 }
