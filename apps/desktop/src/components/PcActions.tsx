@@ -2,12 +2,23 @@ import React, { useState } from 'react';
 import type { DiskItem } from '../api.js';
 import { api, API_BASE } from '../api.js';
 import { useI18n } from '../i18n.js';
+import { useAuth, getLaunchUrl } from './AuthGate.js';
 
-function launch(url: string): void {
-  // Browser navigates to the custom-scheme URL; if a handler is registered
-  // (via install-itd-handlers.cmd) Windows triggers it. Otherwise the
-  // browser shows "no app handles this protocol" and the operator falls
-  // back to the Copy / Download buttons on the same row.
+function toolFromUrl(url: string): { tool: string; target: string } | null {
+  const m = url.match(/^itd-([a-z]+):\/\/([^/?#]+)/);
+  if (!m || !m[1] || !m[2]) return null;
+  return { tool: m[1], target: m[2] };
+}
+
+async function launchWithAuth(url: string, ensure: () => Promise<boolean>): Promise<void> {
+  const parsed = toolFromUrl(url);
+  if (parsed) {
+    const ok = await ensure();
+    if (!ok) return;
+    const tokenized = await getLaunchUrl(parsed.target, parsed.tool, url);
+    window.location.href = tokenized ?? url;
+    return;
+  }
   window.location.href = url;
 }
 
@@ -377,6 +388,7 @@ function ActionRow({ label, hint, buttonLabel, onClick, secondary, launchUrl, la
   launchUrl?: string;
   launchLabel?: string;
 }) {
+  const { ensure } = useAuth();
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: '1px dashed var(--border)' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -386,7 +398,7 @@ function ActionRow({ label, hint, buttonLabel, onClick, secondary, launchUrl, la
       {launchUrl && (
         <button
           className="refresh-btn"
-          onClick={() => launch(launchUrl)}
+          onClick={() => { void launchWithAuth(launchUrl, ensure); }}
           style={{ padding: '2px 10px', fontSize: 11, background: 'var(--accent)', color: 'white', border: 'none' }}
         >{launchLabel}</button>
       )}

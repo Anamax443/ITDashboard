@@ -158,6 +158,16 @@ const dict = {
     'actions.installCopiedPerUser': 'PS one-liner zkopírovaný — paste do PowerShellu a Enter (instaluje pro tvůj Windows účet)',
     'actions.installCopiedMachine': 'PS one-liner zkopírovaný — paste do PowerShellu, UAC prompt na admin, jeden install pokryje VŠECHNY Windows účty na téhle stanici',
     'actions.installScopeHint': 'Per-user (HKCU) = každý IT specialista jednou na svém PC. /machine (HKLM) = admin jednou na stanici → všichni uživatelé té stanice.',
+    'auth.modalTitle': 'Přihlášení admin účtu',
+    'auth.modalHint': 'Dashboard si dočasně uloží tyto credentials pro tvojí browser-session. Každý další klik na Launch v Akcích automaticky použije tyto credentials — žádné per-launch zadávání hesla.',
+    'auth.user': 'Uživatel',
+    'auth.password': 'Heslo',
+    'auth.signIn': 'Přihlásit',
+    'auth.signingIn': 'Přihlašuji…',
+    'auth.cancel': 'Zrušit',
+    'auth.invalidCredentials': 'Neplatné credentials. Zkontroluj username (DOMAIN\\user nebo user@domain) a heslo.',
+    'auth.error': 'Chyba: {detail}',
+    'auth.modalFooter': 'Auth režim: {mode}. Session timeout: 30 min idle, max 8 h. Heslo se nikdy neukládá na disk.',
     'actions.installedNote': 'Po instalaci browser jednou zeptá "Povolit otevírat tyto odkazy?" — DOPORUČUJEME NEZAŠKRTÁVAT "Vždy povolit". Per-klik prompt je druhá vrstva obrany proti tomu aby cizí webová stránka zneužila tvůj zaregistrovaný protokol.',
     'actions.psexecOptIn': 'PsExec handler se neinstaluje by default (spouští cmd jako SYSTEM na cílovém PC). Pro opt-in spusť installer s argumentem /with-psexec.',
     'actions.validationNote': 'Všechny launchery odmítnou hostname obsahující cokoliv jiného než písmena, číslice, tečku, pomlčku nebo podtržítko (max 63 znaků).',
@@ -378,6 +388,16 @@ const dict = {
     'actions.installCopiedPerUser': 'PS one-liner copied — paste into PowerShell and Enter (installs for your Windows account)',
     'actions.installCopiedMachine': 'PS one-liner copied — paste into PowerShell, UAC prompt for admin, one install covers ALL Windows accounts on this workstation',
     'actions.installScopeHint': 'Per-user (HKCU) = each IT specialist runs once on their PC. /machine (HKLM) = admin runs once per workstation → all users on that workstation.',
+    'auth.modalTitle': 'Admin sign-in',
+    'auth.modalHint': 'Dashboard temporarily caches these credentials for your browser session. Every subsequent Launch click in Actions automatically uses these credentials — no per-launch password prompt.',
+    'auth.user': 'Username',
+    'auth.password': 'Password',
+    'auth.signIn': 'Sign in',
+    'auth.signingIn': 'Signing in…',
+    'auth.cancel': 'Cancel',
+    'auth.invalidCredentials': 'Invalid credentials. Check username (DOMAIN\\user or user@domain) and password.',
+    'auth.error': 'Error: {detail}',
+    'auth.modalFooter': 'Auth mode: {mode}. Session timeout: 30 min idle, 8 h hard max. Password is never written to disk.',
     'actions.installedNote': 'After install, browser asks once "Allow this site to open these links?" — DO NOT tick "Always allow". Per-click prompt is your second defense layer against unrelated websites probing your registered protocol.',
     'actions.psexecOptIn': 'PsExec handler is NOT installed by default (it spawns cmd as SYSTEM on the remote). To opt in, run installer with /with-psexec.',
     'actions.validationNote': 'All launchers reject hostnames containing anything other than letters, digits, dot, dash or underscore (max 63 chars).',
@@ -454,7 +474,7 @@ export type TKey = keyof (typeof dict)['en'];
 interface I18nContextValue {
   lang: Lang;
   setLang: (lang: Lang) => void;
-  t: (key: TKey) => string;
+  t: (key: TKey, vars?: Record<string, string | number>) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -475,7 +495,15 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(LANG_KEY, next);
     setLangState(next);
   };
-  const t = (key: TKey): string => dict[lang][key] ?? dict.en[key] ?? key;
+  const t = (key: TKey, vars?: Record<string, string | number>): string => {
+    let s: string = dict[lang][key] ?? dict.en[key] ?? key;
+    if (vars) {
+      for (const [k, v] of Object.entries(vars)) {
+        s = s.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+      }
+    }
+    return s;
+  };
   return (
     <I18nContext.Provider value={{ lang, setLang, t }}>
       {children}

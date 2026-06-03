@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (machine-wide install via /machine flag — zero per-user setup for multi-IT-specialist workstations)
+Last updated: 2026-06-03 (Auth Gate Sprint 1 — page-load credentials, session-scoped, server-mediated token mode for launchers)
 
 ## Current Live State
 
@@ -117,6 +117,155 @@ Docs/UI sync for this fix completed:
   a CS/EN troubleshooting entry "URL line missing from fail screen".
 - `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show a one-line note in the
   Actions modal warning block.
+
+## Auth Gate Sprint 1 — page-load credentials + token mode (NEW since 2026-06-03)
+
+Real deployment scenario: many workstations, many IT specialists. Operator
+wanted: "send a link, recipient opens the page, types their admin creds
+once, every Launch from that browser session uses those creds — no
+per-launch password prompt".
+
+Implemented as a server-mediated short-lived credential vault. New auth
+backend stores session creds in MEMORY only (Node Map), per-launch
+generates a one-shot redeem token, launchers redeem the token over HTTP
+and use the creds via cmdkey (then clean up on tool exit).
+
+### Backend (`apps/server/src/auth/*` + `apps/server/src/routes/auth.ts`)
+
+- `session-store.ts` — in-memory `sessions` and `tokens` Maps with TTLs:
+  - Session: 30 min idle, 8 h hard max; sweeper runs every 60 s.
+  - Launch token: 30 s TTL, one-shot (redeemed flag).
+- `ldap.ts` — `ldapBind(user, pass)` using `ldapts` against `AD_LDAP_URL`.
+  - Falls back to stub validation when `AD_LDAP_STUB=1` and no URL set
+    (for dev / first-deploy testing).
+  - Domain default `AXINETWORK.LOC`; user accepts NetBIOS `DOMAIN\u`,
+    UPN `u@domain`, or bare `u` (normalized to UPN).
+- 5 routes under `/api/auth/*`:
+  - `POST /api/auth/session` — LDAP bind, store creds, set HttpOnly
+    `itd-session` cookie with `SameSite=Strict`.
+  - `POST /api/auth/logout` — invalidate session + clear cookie.
+  - `GET /api/auth/whoami` — session check (returns `authenticated`,
+    `user`, `expiresAt`, `ldapMode`).
+  - `POST /api/auth/launch-token` — generate one-shot token for a
+    target+tool combo; requires active session cookie.
+  - `GET /api/auth/redeem?token=X` — consume token, return
+    `{user, password, target, tool}`. Called by launcher .cmd.
+  - `GET /api/auth/stats` — diagnostic (active session count, pending
+    tokens, ldap mode).
+- Every state-change route emits to `logActivity` for audit trail
+  (session_created / launch_token_created / redeem_ok / redeem_failed /
+  LDAP bind failed reasons).
+
+`@fastify/cookie` plugin registered in `apps/server/src/index.ts`.
+
+### Frontend (`apps/desktop/src/components/AuthGate.tsx`)
+
+- `<AuthProvider>` wraps `<App>` in `main.tsx`.
+- Exposes `useAuth()` hook with: `state` (authenticated, user,
+  expiresAt, ldapMode), `refresh()`, `ensure()` (returns Promise<boolean>
+  — pops modal if not authenticated), `signOut()`.
+- Modal has user + password fields, submits to `/api/auth/session`,
+  shows error message on `invalid_credentials` or other failures.
+- `getLaunchUrl(target, tool, baseUrl)` helper POSTs to
+  `/api/auth/launch-token`, returns the protocol URL with `?tk=TOKEN`
+  appended.
+
+### PcActions integration (`apps/desktop/src/components/PcActions.tsx`)
+
+- `ActionRow` Launch button now calls `launchWithAuth(url, ensure)`:
+  1. Parse `itd-<tool>://<target>` to extract tool + target.
+  2. Call `ensure()` to make sure session exists (pops auth modal if
+     not — operator types creds once per browser session).
+  3. Call `getLaunchUrl()` to get tokenized URL.
+  4. Navigate to that URL → protocol launcher fires.
+- Fallback: if step 3 fails (network down, session expired between
+  ensure() and getLaunchUrl()), navigate to the un-tokenized URL —
+  launcher falls back to per-launch ask mode (CMD prompt).
+
+### Launchers (`apps/server/scripts/install-itd-handlers.cmd`)
+
+All 5 generated launchers (mmc, rdp, explorer, psexec, ps) now:
+
+1. Extract `?tk=TOKEN` from URL into `!token!`, strip query from `!url!`.
+2. Validate host as before.
+3. If `!token!` is defined, `goto :token_mode`.
+4. Otherwise: existing ask / preset / current dispatch.
+
+`:token_mode` blocks (per tool):
+- MMC: `Invoke-RestMethod` redeem → `cmdkey /add:HOST` → `Start-Process
+  mmc.exe -ArgumentList 'X.msc /computer=HOST' -PassThru` → wait → `cmdkey
+  /delete:HOST`. Hidden PowerShell wrapper (`-WindowStyle Hidden`).
+- RDP: same pattern, `cmdkey /add:'TERMSRV/HOST'` (RDP-specific target),
+  `Start-Process mstsc.exe /v:HOST`.
+- Explorer: `cmdkey /add:HOST`, `Start-Process explorer.exe \\HOST\X$`,
+  10 s grace then cleanup (explorer exits immediately so waitForExit is
+  meaningless).
+- PsExec: `psexec -u USER -p PASS` directly (no cmdkey needed, psexec
+  takes creds via args).
+- PS: `ConvertTo-SecureString` + `New-Object PSCredential`, then
+  `Enter-PSSession -ComputerName HOST -Credential $c`. `-NoExit` keeps PS
+  console open for operator.
+
+API base URL templated at install time:
+- `set "ITD_API_BASE=http://10.8.2.213:4000"` at the top of installer.
+- Override via env: `set ITD_API_BASE_OVERRIDE=https://itd.example.com`
+  before running installer.
+
+### Security model
+
+| Asset | Lifetime | Where |
+|---|---|---|
+| Session creds (user + password) | 30 min idle / 8 h hard max | Server memory only (Map) |
+| Session cookie | 8 h (HttpOnly, SameSite=Strict) | Browser |
+| Launch token | 30 s, one-shot | Server memory only |
+| Token in URL | <1 s (DOM → protocol handler) | Process arg + logs |
+| cmdkey cred entry | duration of tool (mmc / rdp / explorer / psexec) | Windows Credential Manager |
+
+- All `redeem` events audit-logged (who, when, target, tool, ip).
+- Token can only be redeemed once.
+- Server side: passwords NEVER persisted to disk. Process restart =
+  all sessions cleared, operators re-auth.
+
+### Deployment notes
+
+- New env vars on server (optional):
+  - `AD_LDAP_URL=ldap://10.8.2.X:389` — DC URL for LDAP bind.
+  - `AD_LDAP_DOMAIN=AXINETWORK.LOC` — default suffix for bare usernames.
+  - `AD_LDAP_STUB=1` — accept any non-empty creds (development only).
+  - `AD_LDAP_TIMEOUT_MS=5000` — LDAP timeout.
+- Without LDAP env vars and without stub flag, the route returns
+  `misconfigured` reason and operator sees an error in the modal.
+- Operator should set `AD_LDAP_URL` to the AXINETWORK DC IP and restart
+  service after deploy.
+
+### What's next (Sprint 2+)
+
+- AD Users tab (parallel to Computers): cron `Get-ADUser` → MSSQL table,
+  searchable list, click-through to detail panel with reset / unlock /
+  disable actions via PS Remoting using session creds.
+- Click-through cross-linking: Computer detail shows recent
+  interactive logins → Click user → User detail; User detail shows
+  recent devices → Click computer → Computer detail.
+
+Files touched in Sprint 1:
+- NEW: `apps/server/src/auth/session-store.ts`
+- NEW: `apps/server/src/auth/ldap.ts`
+- NEW: `apps/server/src/routes/auth.ts`
+- NEW: `apps/desktop/src/components/AuthGate.tsx`
+- MOD: `apps/server/src/index.ts` (register cookie plugin + auth routes)
+- MOD: `apps/server/package.json` (`@fastify/cookie`, `ldapts`)
+- MOD: `apps/server/scripts/install-itd-handlers.cmd` (token extraction
+  + `:token_mode` blocks in all 5 launchers, `ITD_API_BASE` at top)
+- MOD: `apps/desktop/src/main.tsx` (wrap App in AuthProvider)
+- MOD: `apps/desktop/src/components/PcActions.tsx` (`launchWithAuth`)
+- MOD: `apps/desktop/src/i18n.tsx` (CS+EN auth strings + interpolation)
+- MOD: docs (README, ARCHITECTURE, dashboard.html CS+EN)
+
+Local sandbox-tested: installer ran clean against temp LOCALAPPDATA,
+all 7 generated launchers (4 MMC variants + rdp/explorer/ps/psexec)
+verified syntactically — no stray `^|` carets in any PS -Command string.
+Token mode dispatch present, fallback to ask mode intact for sessions
+without token. Backend + frontend typecheck both green.
 
 ## Machine-wide install via /machine flag (NEW since 2026-06-03)
 

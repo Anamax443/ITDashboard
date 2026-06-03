@@ -2,6 +2,8 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import cookie from '@fastify/cookie';
+import { registerAuthRoutes } from './routes/auth.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerEventsRoutes } from './routes/events.js';
 import { registerComputersRoutes } from './routes/computers.js';
@@ -36,7 +38,9 @@ await app.register(helmet, {
   },
 });
 await app.register(cors, { origin: true, credentials: true });
+await app.register(cookie);
 
+await registerAuthRoutes(app);
 await registerHealthRoutes(app);
 await registerEventsRoutes(app);
 await registerComputersRoutes(app);

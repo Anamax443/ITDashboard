@@ -34,6 +34,12 @@
 ::   defense against unrelated websites probing the protocol.
 
 setlocal EnableExtensions
+
+:: API base URL used by launchers in token mode (auth-session redemption).
+:: Override at install time: set ITD_API_BASE_OVERRIDE=https://itd.example.com
+set "ITD_API_BASE=http://10.8.2.213:4000"
+if defined ITD_API_BASE_OVERRIDE set "ITD_API_BASE=%ITD_API_BASE_OVERRIDE%"
+
 set WITH_PSEXEC=0
 set MACHINE_INSTALL=0
 set UNINSTALL_HKCU=0
@@ -175,12 +181,19 @@ exit /b 0
 >>"%BASE%\%1.cmd" echo if not exist "%%LOCALAPPDATA%%\ITDashboard\launchers" mkdir "%%LOCALAPPDATA%%\ITDashboard\launchers" ^>nul 2^>^&1
 >>"%BASE%\%1.cmd" echo set "log=%%LOCALAPPDATA%%\ITDashboard\launchers\last-%%~n0.log"
 >>"%BASE%\%1.cmd" echo set "url=%%~1"
+>>"%BASE%\%1.cmd" echo set "token="
+>>"%BASE%\%1.cmd" echo set "tmp="
+>>"%BASE%\%1.cmd" echo echo !url!^|findstr /C:"?tk=" ^>nul ^&^& set "tmp=!url!"
+>>"%BASE%\%1.cmd" echo if defined tmp set "tmp=!tmp:*?tk=!"
+>>"%BASE%\%1.cmd" echo if defined tmp for /f "tokens=1 delims=^&" %%%%a in ("!tmp!") do set "token=%%%%a"
+>>"%BASE%\%1.cmd" echo if defined token for /f "tokens=1 delims=?" %%%%a in ("!url!") do set "url=%%%%a"
 >>"%BASE%\%1.cmd" echo set "host=%%url:%1://=%%"
 >>"%BASE%\%1.cmd" echo set "host=%%host:/=%%"
 >>"%BASE%\%1.cmd" echo if not defined host ^(set "reason=empty_host" ^& goto :fail^)
 >>"%BASE%\%1.cmd" echo if not "!host:~63,1!"=="" ^(set "reason=host_too_long" ^& goto :fail^)
 >>"%BASE%\%1.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
->>"%BASE%\%1.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching %1 url="!url!" host="!host!"
+>>"%BASE%\%1.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching %1 url="!url!" host="!host!" token=!token:~0,8!...
+>>"%BASE%\%1.cmd" echo if defined token goto :token_mode
 >>"%BASE%\%1.cmd" echo if not defined ITD_ADMIN_USER set "ITD_ADMIN_USER=ask"
 >>"%BASE%\%1.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
 >>"%BASE%\%1.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="current" goto :no_admin_mode
@@ -206,6 +219,9 @@ exit /b 0
 >>"%BASE%\%1.cmd" echo :no_admin_mode
 >>"%BASE%\%1.cmd" echo start "" mmc.exe %2 /computer="!host!"
 >>"%BASE%\%1.cmd" echo goto :eof
+>>"%BASE%\%1.cmd" echo :token_mode
+>>"%BASE%\%1.cmd" echo start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $r = Invoke-RestMethod '%ITD_API_BASE%/api/auth/redeem?token=!token!' -ErrorAction Stop; if(-not $r.ok){throw}; cmdkey /add:!host! /user:$($r.user) /pass:$($r.password) | Out-Null; $p = Start-Process mmc.exe -ArgumentList '%2 /computer=!host!' -PassThru; $p.WaitForExit(); cmdkey /delete:!host! | Out-Null } catch { exit 1 }"
+>>"%BASE%\%1.cmd" echo goto :eof
 call :append_common_footer "%BASE%\%1.cmd"
 goto :eof
 
@@ -215,12 +231,19 @@ goto :eof
 >>"%BASE%\itd-rdp.cmd" echo if not exist "%%LOCALAPPDATA%%\ITDashboard\launchers" mkdir "%%LOCALAPPDATA%%\ITDashboard\launchers" ^>nul 2^>^&1
 >>"%BASE%\itd-rdp.cmd" echo set "log=%%LOCALAPPDATA%%\ITDashboard\launchers\last-%%~n0.log"
 >>"%BASE%\itd-rdp.cmd" echo set "url=%%~1"
+>>"%BASE%\itd-rdp.cmd" echo set "token="
+>>"%BASE%\itd-rdp.cmd" echo set "tmp="
+>>"%BASE%\itd-rdp.cmd" echo echo !url!^|findstr /C:"?tk=" ^>nul ^&^& set "tmp=!url!"
+>>"%BASE%\itd-rdp.cmd" echo if defined tmp set "tmp=!tmp:*?tk=!"
+>>"%BASE%\itd-rdp.cmd" echo if defined tmp for /f "tokens=1 delims=^&" %%%%a in ("!tmp!") do set "token=%%%%a"
+>>"%BASE%\itd-rdp.cmd" echo if defined token for /f "tokens=1 delims=?" %%%%a in ("!url!") do set "url=%%%%a"
 >>"%BASE%\itd-rdp.cmd" echo set "host=%%url:itd-rdp://=%%"
 >>"%BASE%\itd-rdp.cmd" echo set "host=%%host:/=%%"
 >>"%BASE%\itd-rdp.cmd" echo if not defined host ^(set "reason=empty_host" ^& goto :fail^)
 >>"%BASE%\itd-rdp.cmd" echo if not "!host:~63,1!"=="" ^(set "reason=host_too_long" ^& goto :fail^)
 >>"%BASE%\itd-rdp.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
->>"%BASE%\itd-rdp.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-rdp url="!url!" host="!host!"
+>>"%BASE%\itd-rdp.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-rdp url="!url!" host="!host!" token=!token:~0,8!...
+>>"%BASE%\itd-rdp.cmd" echo if defined token goto :token_mode
 >>"%BASE%\itd-rdp.cmd" echo if not defined ITD_ADMIN_USER set "ITD_ADMIN_USER=ask"
 >>"%BASE%\itd-rdp.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
 >>"%BASE%\itd-rdp.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="current" goto :no_admin_mode
@@ -246,6 +269,9 @@ goto :eof
 >>"%BASE%\itd-rdp.cmd" echo :no_admin_mode
 >>"%BASE%\itd-rdp.cmd" echo start "" mstsc.exe /v:"!host!"
 >>"%BASE%\itd-rdp.cmd" echo goto :eof
+>>"%BASE%\itd-rdp.cmd" echo :token_mode
+>>"%BASE%\itd-rdp.cmd" echo start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $r = Invoke-RestMethod '%ITD_API_BASE%/api/auth/redeem?token=!token!' -ErrorAction Stop; if(-not $r.ok){throw}; cmdkey /add:'TERMSRV/!host!' /user:$($r.user) /pass:$($r.password) | Out-Null; $p = Start-Process mstsc.exe -ArgumentList '/v:!host!' -PassThru; $p.WaitForExit(); cmdkey /delete:'TERMSRV/!host!' | Out-Null } catch { exit 1 }"
+>>"%BASE%\itd-rdp.cmd" echo goto :eof
 call :append_common_footer "%BASE%\itd-rdp.cmd"
 goto :eof
 
@@ -256,6 +282,12 @@ goto :eof
 >>"%BASE%\itd-explorer.cmd" echo if not exist "%%LOCALAPPDATA%%\ITDashboard\launchers" mkdir "%%LOCALAPPDATA%%\ITDashboard\launchers" ^>nul 2^>^&1
 >>"%BASE%\itd-explorer.cmd" echo set "log=%%LOCALAPPDATA%%\ITDashboard\launchers\last-%%~n0.log"
 >>"%BASE%\itd-explorer.cmd" echo set "url=%%~1"
+>>"%BASE%\itd-explorer.cmd" echo set "token="
+>>"%BASE%\itd-explorer.cmd" echo set "tmp="
+>>"%BASE%\itd-explorer.cmd" echo echo !url!^|findstr /C:"?tk=" ^>nul ^&^& set "tmp=!url!"
+>>"%BASE%\itd-explorer.cmd" echo if defined tmp set "tmp=!tmp:*?tk=!"
+>>"%BASE%\itd-explorer.cmd" echo if defined tmp for /f "tokens=1 delims=^&" %%%%a in ("!tmp!") do set "token=%%%%a"
+>>"%BASE%\itd-explorer.cmd" echo if defined token for /f "tokens=1 delims=?" %%%%a in ("!url!") do set "url=%%%%a"
 >>"%BASE%\itd-explorer.cmd" echo set "rest=%%url:itd-explorer://=%%"
 >>"%BASE%\itd-explorer.cmd" echo if not defined rest ^(set "reason=empty_path" ^& goto :fail^)
 >>"%BASE%\itd-explorer.cmd" echo for /f "tokens=1,2 delims=/" %%%%a in ("!rest!") do set "host=%%%%a" ^& set "letter=%%%%b"
@@ -265,6 +297,7 @@ goto :eof
 >>"%BASE%\itd-explorer.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
 >>"%BASE%\itd-explorer.cmd" echo echo !letter!^| findstr /R /X "[a-zA-Z]" ^>nul ^|^| ^(set "reason=invalid_drive_letter" ^& goto :fail^)
 >>"%BASE%\itd-explorer.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-explorer url="!url!" host="!host!" letter="!letter!"
+>>"%BASE%\itd-explorer.cmd" echo if defined token goto :token_mode
 >>"%BASE%\itd-explorer.cmd" echo if not defined ITD_ADMIN_USER set "ITD_ADMIN_USER=ask"
 >>"%BASE%\itd-explorer.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
 >>"%BASE%\itd-explorer.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="current" goto :no_admin_mode
@@ -290,6 +323,9 @@ goto :eof
 >>"%BASE%\itd-explorer.cmd" echo :no_admin_mode
 >>"%BASE%\itd-explorer.cmd" echo start "" explorer.exe "\\!host!\!letter!$"
 >>"%BASE%\itd-explorer.cmd" echo goto :eof
+>>"%BASE%\itd-explorer.cmd" echo :token_mode
+>>"%BASE%\itd-explorer.cmd" echo start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $r = Invoke-RestMethod '%ITD_API_BASE%/api/auth/redeem?token=!token!' -ErrorAction Stop; if(-not $r.ok){throw}; cmdkey /add:!host! /user:$($r.user) /pass:$($r.password) | Out-Null; $p = Start-Process explorer.exe -ArgumentList '\\!host!\!letter!$' -PassThru; Start-Sleep -Seconds 10; cmdkey /delete:!host! | Out-Null } catch { exit 1 }"
+>>"%BASE%\itd-explorer.cmd" echo goto :eof
 call :append_common_footer "%BASE%\itd-explorer.cmd"
 goto :eof
 
@@ -301,12 +337,19 @@ goto :eof
 >>"%BASE%\itd-psexec.cmd" echo if not exist "%%LOCALAPPDATA%%\ITDashboard\launchers" mkdir "%%LOCALAPPDATA%%\ITDashboard\launchers" ^>nul 2^>^&1
 >>"%BASE%\itd-psexec.cmd" echo set "log=%%LOCALAPPDATA%%\ITDashboard\launchers\last-%%~n0.log"
 >>"%BASE%\itd-psexec.cmd" echo set "url=%%~1"
+>>"%BASE%\itd-psexec.cmd" echo set "token="
+>>"%BASE%\itd-psexec.cmd" echo set "tmp="
+>>"%BASE%\itd-psexec.cmd" echo echo !url!^|findstr /C:"?tk=" ^>nul ^&^& set "tmp=!url!"
+>>"%BASE%\itd-psexec.cmd" echo if defined tmp set "tmp=!tmp:*?tk=!"
+>>"%BASE%\itd-psexec.cmd" echo if defined tmp for /f "tokens=1 delims=^&" %%%%a in ("!tmp!") do set "token=%%%%a"
+>>"%BASE%\itd-psexec.cmd" echo if defined token for /f "tokens=1 delims=?" %%%%a in ("!url!") do set "url=%%%%a"
 >>"%BASE%\itd-psexec.cmd" echo set "host=%%url:itd-psexec://=%%"
 >>"%BASE%\itd-psexec.cmd" echo set "host=%%host:/=%%"
 >>"%BASE%\itd-psexec.cmd" echo if not defined host ^(set "reason=empty_host" ^& goto :fail^)
 >>"%BASE%\itd-psexec.cmd" echo if not "!host:~63,1!"=="" ^(set "reason=host_too_long" ^& goto :fail^)
 >>"%BASE%\itd-psexec.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
->>"%BASE%\itd-psexec.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-psexec url="!url!" host="!host!"
+>>"%BASE%\itd-psexec.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-psexec url="!url!" host="!host!" token=!token:~0,8!...
+>>"%BASE%\itd-psexec.cmd" echo if defined token goto :token_mode
 >>"%BASE%\itd-psexec.cmd" echo if not defined ITD_ADMIN_USER set "ITD_ADMIN_USER=ask"
 >>"%BASE%\itd-psexec.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
 >>"%BASE%\itd-psexec.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="current" goto :no_admin_mode
@@ -332,6 +375,9 @@ goto :eof
 >>"%BASE%\itd-psexec.cmd" echo :no_admin_mode
 >>"%BASE%\itd-psexec.cmd" echo start "" cmd /k psexec /accepteula "\\!host!" cmd.exe
 >>"%BASE%\itd-psexec.cmd" echo goto :eof
+>>"%BASE%\itd-psexec.cmd" echo :token_mode
+>>"%BASE%\itd-psexec.cmd" echo start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "try { $r = Invoke-RestMethod '%ITD_API_BASE%/api/auth/redeem?token=!token!' -ErrorAction Stop; if(-not $r.ok){throw}; $p = Start-Process cmd.exe -ArgumentList ('/k psexec /accepteula \\\\!host! -u ' + $r.user + ' -p ' + $r.password + ' cmd.exe') -PassThru; $p.WaitForExit() } catch { exit 1 }"
+>>"%BASE%\itd-psexec.cmd" echo goto :eof
 call :append_common_footer "%BASE%\itd-psexec.cmd"
 goto :eof
 
@@ -346,6 +392,12 @@ goto :eof
 >>"%BASE%\itd-ps.cmd" echo if not exist "%%LOCALAPPDATA%%\ITDashboard\launchers" mkdir "%%LOCALAPPDATA%%\ITDashboard\launchers" ^>nul 2^>^&1
 >>"%BASE%\itd-ps.cmd" echo set "log=%%LOCALAPPDATA%%\ITDashboard\launchers\last-%%~n0.log"
 >>"%BASE%\itd-ps.cmd" echo set "url=%%~1"
+>>"%BASE%\itd-ps.cmd" echo set "token="
+>>"%BASE%\itd-ps.cmd" echo set "tmp="
+>>"%BASE%\itd-ps.cmd" echo echo !url!^|findstr /C:"?tk=" ^>nul ^&^& set "tmp=!url!"
+>>"%BASE%\itd-ps.cmd" echo if defined tmp set "tmp=!tmp:*?tk=!"
+>>"%BASE%\itd-ps.cmd" echo if defined tmp for /f "tokens=1 delims=^&" %%%%a in ("!tmp!") do set "token=%%%%a"
+>>"%BASE%\itd-ps.cmd" echo if defined token for /f "tokens=1 delims=?" %%%%a in ("!url!") do set "url=%%%%a"
 >>"%BASE%\itd-ps.cmd" echo set "host=%%url:itd-ps://=%%"
 >>"%BASE%\itd-ps.cmd" echo set "host=%%host:/=%%"
 >>"%BASE%\itd-ps.cmd" echo if not defined host ^(set "reason=empty_host" ^& goto :fail^)
@@ -353,6 +405,7 @@ goto :eof
 >>"%BASE%\itd-ps.cmd" echo echo !host!^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| ^(set "reason=invalid_host_chars" ^& goto :fail^)
 >>"%BASE%\itd-ps.cmd" echo ^>^>"%%log%%" echo [%%date%% %%time%%] launching itd-ps url="!url!" host="!host!"
 >>"%BASE%\itd-ps.cmd" echo set "lastuserfile=%%LOCALAPPDATA%%\ITDashboard\launchers\last-admin-user.txt"
+>>"%BASE%\itd-ps.cmd" echo if defined token goto :token_mode
 >>"%BASE%\itd-ps.cmd" echo if not defined ITD_ADMIN_USER set "ITD_ADMIN_USER=ask"
 >>"%BASE%\itd-ps.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="ask" goto :ask_mode
 >>"%BASE%\itd-ps.cmd" echo if /i "%%ITD_ADMIN_USER%%"=="current" goto :no_admin_mode
@@ -365,6 +418,9 @@ goto :eof
 >>"%BASE%\itd-ps.cmd" echo goto :eof
 >>"%BASE%\itd-ps.cmd" echo :no_admin_mode
 >>"%BASE%\itd-ps.cmd" echo start "" powershell -NoExit -Command "Enter-PSSession -ComputerName '!host!'"
+>>"%BASE%\itd-ps.cmd" echo goto :eof
+>>"%BASE%\itd-ps.cmd" echo :token_mode
+>>"%BASE%\itd-ps.cmd" echo start "" powershell -NoExit -Command "try { $r = Invoke-RestMethod '%ITD_API_BASE%/api/auth/redeem?token=!token!' -ErrorAction Stop; if(-not $r.ok){throw}; $sp = ConvertTo-SecureString $r.password -AsPlainText -Force; $c = New-Object PSCredential($r.user, $sp); Enter-PSSession -ComputerName '!host!' -Credential $c } catch { Write-Host 'Token redemption failed: ' $_.Exception.Message }"
 >>"%BASE%\itd-ps.cmd" echo goto :eof
 call :append_common_footer "%BASE%\itd-ps.cmd"
 goto :eof
