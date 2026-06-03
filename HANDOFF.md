@@ -28,6 +28,32 @@ Important:
 - After every commit, report the commit hash in chat.
 - Local branch may be `scaffold/initial`; push explicitly with `git push origin HEAD:main`.
 
+## Dashboard UI access (whitelist)
+
+The dashboard UI surfaces — `/` (the React bundle entry), `/assets/*` (the JS/CSS chunks),
+and `/docs` (the HTML reference page) — are gated by an app-layer IP whitelist enforced
+in a Fastify preHandler (`apps/server/src/services/ip-guard.ts`). Non-whitelisted IPs get
+a 403 HTML page that names the IP and tells them to ask the operator to add it via
+Settings → Dashboard UI access.
+
+The **JSON API endpoints are not gated** — the server lives on an internal domain network
+and the API is intentionally reachable by anyone in the domain. The whitelist only
+prevents incidental UI discovery by non-IT users browsing the LAN. If you need a true
+API-level security boundary, that's a separate feature (auth tokens, mTLS, …).
+
+Source of truth is the Windows Firewall rule "ITDashboard API (4000)". The app-layer
+cache is populated at boot from the rule and refreshed after every PUT to
+`/firewall/whitelist`. If the firewall rule is missing or unreadable at boot, the guard
+fails closed — only loopback `127.0.0.1` / `::1` is allowed until the operator fixes the
+rule via local RDP. Loopback is always allowed regardless of cache state so the service
+can hit itself.
+
+Known operational gotcha: the Windows Firewall rule can be **inert** if the Domain
+profile is `Enabled=False` (often set by GPO). Check with:
+`Get-NetFirewallProfile | Format-Table Name, Enabled`.
+The app-layer guard does not depend on the OS firewall being active, so the UI is still
+gated correctly even in that case.
+
 ## Runtime Services
 
 - API service: Windows Service `ITDashboardAPI` managed by NSSM

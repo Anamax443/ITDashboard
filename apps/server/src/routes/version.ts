@@ -53,7 +53,8 @@ async function readDocsHtml(): Promise<string> {
 export async function registerVersionRoutes(app: FastifyInstance) {
   app.get('/version', async () => readVersion());
 
-  app.get('/docs', async (_req, reply) => {
+  const { ipGuardHook } = await import('../services/ip-guard.js');
+  app.get('/docs', { preHandler: ipGuardHook }, async (_req, reply) => {
     const html = await readDocsHtml();
     reply.type('text/html').send(html);
   });

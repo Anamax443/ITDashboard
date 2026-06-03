@@ -146,7 +146,7 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
   - DB `db_owner`
   - Stop/Start ACL on its own service (`ITDashboardAPI`)
 - **Credentials vault:** DPAPI CurrentUser scope — encryption bound to the service account. Rotating account invalidates secrets.
-- **API → desktop:** currently HTTP on port 4000. Firewall whitelist limits to specific IT-operator IPs. TLS termination planned (Caddy / IIS reverse proxy).
+- **API → desktop:** currently HTTP on port 4000. The dashboard UI (HTML/JS bundle + `/docs`) is gated by an app-layer IP whitelist enforced in a Fastify preHandler — non-listed IPs get a 403 HTML page. The Windows Firewall rule "ITDashboard API (4000)" mirrors the same list as defense-in-depth, but it can be inert (e.g. if the Domain profile is disabled by GPO) so the app-layer check is authoritative. **The JSON API endpoints themselves are NOT gated** — the server is on an internal domain network and the API is intentionally reachable by anyone in the domain; the IP whitelist only prevents incidental discovery of the UI. TLS termination planned (Caddy / IIS reverse proxy).
 - **Audit:** every script run captured in `script_runs` (invoker, target, params, exit code, stdout/stderr).
 - **Runner auth:** outbound HTTPS only. No inbound holes from GitHub into the network.
 

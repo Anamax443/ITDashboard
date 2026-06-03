@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { readFile } from 'node:fs/promises';
 import { join, normalize } from 'node:path';
+import { ipGuardHook } from '../services/ip-guard.js';
 
 const FRONTEND_DIST = join(process.cwd(), '..', 'desktop', 'dist', 'renderer');
 
@@ -31,7 +32,7 @@ function assetPathFromWildcard(wildcard: unknown): string | null {
 }
 
 export async function registerFrontendRoutes(app: FastifyInstance) {
-  app.get('/', async (_req, reply) => {
+  app.get('/', { preHandler: ipGuardHook }, async (_req, reply) => {
     try {
       const html = await readFile(join(FRONTEND_DIST, 'index.html'), 'utf8');
       reply.header('Cache-Control', 'no-store');
@@ -42,7 +43,7 @@ export async function registerFrontendRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get('/assets/*', async (req, reply) => {
+  app.get('/assets/*', { preHandler: ipGuardHook }, async (req, reply) => {
     const params = req.params as { '*': unknown };
     const assetPath = assetPathFromWildcard(params['*']);
     if (!assetPath) {

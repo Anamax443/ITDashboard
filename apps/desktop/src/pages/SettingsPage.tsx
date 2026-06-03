@@ -56,10 +56,14 @@ function NetworkAccessSection() {
 
   return (
     <div style={{ marginBottom: 32, paddingBottom: 24, borderBottom: '1px solid var(--border)' }}>
-      <h3 style={{ margin: '0 0 4px 0', fontSize: 16 }}>Network access (API firewall whitelist)</h3>
+      <h3 style={{ margin: '0 0 4px 0', fontSize: 16 }}>Dashboard UI access</h3>
       <p style={{ margin: '0 0 16px 0', color: 'var(--text-dim)', fontSize: 12 }}>
-        Only listed IPs / CIDRs can reach the API on port 4000. Domain profile only.
-        Changes apply immediately to the Windows Firewall rule "ITDashboard API (4000)".
+        Listed IPs / CIDRs can load the dashboard UI (the HTML/JS bundle and <code>/docs</code>).
+        The JSON API itself stays reachable to anyone on the internal network — this gate just
+        prevents incidental discovery of the UI by non-IT users browsing the LAN. Enforced
+        twice: at the app layer (Fastify preHandler) and via the Windows Firewall rule
+        "ITDashboard API (4000)". App layer is the authoritative one; firewall rule is
+        defense-in-depth and may be inert if the Domain firewall profile is disabled.
       </p>
       {loading ? (
         <div style={{ color: 'var(--text-dim)' }}>Loading current whitelist…</div>
