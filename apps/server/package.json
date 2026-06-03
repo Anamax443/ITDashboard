@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "node scripts/build-info.mjs && tsx watch src/index.ts",
     "build": "node scripts/build-info.mjs && tsc -p tsconfig.json",
-    "prebuild-info": "node scripts/build-info.mjs",
     "start": "node dist/index.js",
+    "pretypecheck": "node scripts/build-info.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate": "tsx src/db/migrate.ts"
   },
