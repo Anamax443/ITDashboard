@@ -50,6 +50,33 @@ const dict = {
     'dashboard.help.collector': 'Collector bar ukazuje živý progress eventlog skenu (▶ Spustit teď / ⏹ Stop) a může spouštět všechny checks sekvenčně (eventlog → disk → services).',
     'dashboard.help.footer': 'Detailní seznamy (Události, Počítače, Služby, Aktivita, Nastavení) mají vlastní záložky.',
 
+    'help.tabTitle': 'Co tato záložka ukazuje',
+
+    'events.help.intro': 'Plně zobrazená tabulka surových událostí ze System a Application logu napříč všemi monitorovanými PC. Stahuje eventlog collector přes RPC.',
+    'events.help.filters': 'Filtry: Počítač, Úroveň (Critical / Error / Warning), Časový rozsah. Klik na sloupec řadí. Klik na řádek otevře detail eventu s plnou message.',
+    'events.help.noise': 'Application log obsahuje hodně šumu (Office crashes, WMI). Pro signál spíš sleduj Critical úroveň, nebo agregát "Top event IDs" v Dashboardu.',
+
+    'computers.help.intro': 'Plný inventář doménových PC s operátorskými ovládacími prvky. Aktualizováno AD syncem; ostatní sloupce z collectorů.',
+    'computers.help.chips': 'Status chips v hlavičce jsou klikatelné filtry: active, monitored, unmonitored, failing (consecutive_failures > 0), disk critical/warning, inactive (Nd+), disabled, excluded.',
+    'computers.help.monitor': 'Monitor checkbox řídí jestli collectory pollí daný PC. Perzistuje napříč AD syncs. Exclude = hard skip i z dashboard statistik. Klik na User otevře historii přihlášených.',
+    'computers.help.actions': 'Tlačítka: ↻ Sync from AD (znovu Get-ADComputer + MERGE), 💾 Scan disks (manuální disk scan), ✓ All / ✗ None (bulk toggle Monitor respektující filtr).',
+
+    'services.help.intro': 'Detekuje Windows služby s StartMode = Automatic ale State ≠ Running napříč monitorovanými PC. Filtruje legitimní případy (Trigger / Delayed / per-user) a porovnává proti policy tabulce.',
+    'services.help.views': '📋 By PC view = flat list problémů. 📊 By service view = agregát "tato služba je stopnutá na N PC". Klasifikace: OK (matchne policy, vyhovuje), Drift (matchne, nevyhovuje), Unclassified (žádný policy match).',
+    'services.help.actions': 'Filtry: Hide trigger-start (default ON), Hide delayed-start, Hide per-user (default ON), Hide compliant. 🔧 Scan services = manuální scan. 📤 GPO script = stáhne PowerShell pro hromadnou opravu přes GPO startup script.',
+
+    'perf.help.intro': 'Pomalé boot / shutdown / standby / resume události z kanálu Microsoft-Windows-Diagnostics-Performance/Operational. Není to kontinuální CPU graf — jen outliers, které Windows samo označilo jako degradované.',
+    'perf.help.ids': 'Event ID rozsahy: 100–199 boot · 200–299 shutdown · 300–399 standby · 400–499 resume. Cold-start sweep stahuje posledních N dní (default 30, konfigurovatelné v Nastavení).',
+    'perf.help.serverNote': 'Kanál je defaultně off na Windows Server SKU. Servery vidíš jako "channel-disabled" v aggregátu. Pro povolení: GPO startup script wevtutil sl Microsoft-Windows-Diagnostics-Performance/Operational /e:true.',
+
+    'activity.live.help.intro': 'Real-time stream každé background akce: eventlog collector, AD sync, disk scan, services scan, perf scan, firewall změny, IP guard. Pollováno každé 2s.',
+    'activity.live.help.tags': 'Source tagy: [checks], [collector], [disk], [services], [perf], [ad-sync], [firewall], [access-check], [retention]. Úrovně: Success (zelená), Info (dim), Warning (amber), Error (red).',
+    'activity.live.help.buffer': 'Buffer je in-memory (posledních 500 položek), ztrácí se při restart služby. 📋 Copy exportuje filtrované řádky jako tab-separated text. 📚 History přepne na DB-backed perzistentní vyhledávání.',
+
+    'activity.history.help.intro': 'Perzistentní historie aktivit — každá logActivity volání se fire-and-forget INSERTuje do activity_log tabulky. Přežije restart služby. Default retence 30 dní (Nastavení → activity.retention_days).',
+    'activity.history.help.filters': 'Filtry: časový rozsah, level, source dropdown (plněný z posledních 30 dní reálných sources), full-text vyhledávání ve zprávách. Vrací max {limit} řádků na stránku; paginátor pro víc.',
+    'activity.history.help.live': 'Přepnutí zpět na Živě = in-memory ring buffer (posledních 500 položek, pollování každé 2s).',
+
     'btn.refresh': 'Obnovit',
     'btn.runAll': 'Spustit vše',
     'btn.runNow': 'Spustit teď',
@@ -193,6 +220,33 @@ const dict = {
     'dashboard.help.bullet.computers': 'Computers — active / total inventory → Computers tab',
     'dashboard.help.collector': 'Collector bar shows live progress of the eventlog scan (▶ Run now / ⏹ Stop) and can run all checks sequentially (eventlog → disk → services).',
     'dashboard.help.footer': 'The detailed lists (Events, Computers, Services, Activity, Settings) have their own tabs.',
+
+    'help.tabTitle': 'What this tab shows',
+
+    'events.help.intro': 'Full-width raw events table from System and Application logs across every monitored PC. Fed by the eventlog collector over RPC.',
+    'events.help.filters': 'Filters: Computer, Level (Critical / Error / Warning), Time range. Click a column to sort. Click a row for the detail view with the full message.',
+    'events.help.noise': 'Application log carries a lot of noise (Office crashes, WMI). For signal stick to Critical, or check the "Top event IDs" aggregate on the Dashboard.',
+
+    'computers.help.intro': 'Full inventory of domain PCs with operator controls. Refreshed by AD sync; other columns come from the collectors.',
+    'computers.help.chips': 'Status chips in the header are clickable filter pills: active, monitored, unmonitored, failing (consecutive_failures > 0), disk critical/warning, inactive (Nd+), disabled, excluded.',
+    'computers.help.monitor': 'Monitor checkbox controls whether collectors poll this PC. Persists across AD syncs. Exclude = hard skip even from Dashboard stats. Click the User cell to open login history.',
+    'computers.help.actions': 'Buttons: ↻ Sync from AD (re-run Get-ADComputer + MERGE), 💾 Scan disks (manual disk scan), ✓ All / ✗ None (bulk Monitor toggle, respects current filter).',
+
+    'services.help.intro': 'Detects Windows services with StartMode = Automatic but State ≠ Running across all monitored PCs. Filters legitimate cases (Trigger / Delayed / per-user) and matches the rest against a policy table.',
+    'services.help.views': '📋 By PC view = flat list of problems. 📊 By service view = aggregate "this service is stopped on N PCs". Classification: OK (matches policy, complies), Drift (matches, does not comply), Unclassified (no policy match).',
+    'services.help.actions': 'Filters: Hide trigger-start (default ON), Hide delayed-start, Hide per-user (default ON), Hide compliant. 🔧 Scan services = manual run. 📤 GPO script = downloads PowerShell for fleet-wide remediation via GPO startup script.',
+
+    'perf.help.intro': 'Slow boot / shutdown / standby / resume events from the Microsoft-Windows-Diagnostics-Performance/Operational channel. Not a continuous CPU graph — only the outliers Windows itself flagged as degraded.',
+    'perf.help.ids': 'Event ID ranges: 100–199 boot · 200–299 shutdown · 300–399 standby · 400–499 resume. Cold-start sweep pulls last N days (default 30, configurable in Settings).',
+    'perf.help.serverNote': 'Channel is off by default on Windows Server SKU. Servers show up as "channel-disabled" in the aggregate. To enable: GPO startup script wevtutil sl Microsoft-Windows-Diagnostics-Performance/Operational /e:true.',
+
+    'activity.live.help.intro': 'Real-time stream of every background action: eventlog collector, AD sync, disk scan, services scan, perf scan, firewall changes, IP guard. Polled every 2s.',
+    'activity.live.help.tags': 'Source tags: [checks], [collector], [disk], [services], [perf], [ad-sync], [firewall], [access-check], [retention]. Levels: Success (green), Info (dim), Warning (amber), Error (red).',
+    'activity.live.help.buffer': 'Buffer is in-memory (last 500 entries), lost on service restart. 📋 Copy exports filtered lines as tab-separated text. 📚 History switches to DB-backed persistent search.',
+
+    'activity.history.help.intro': 'Persistent activity history — every logActivity call is fire-and-forget INSERTed into the activity_log table. Survives service restart. Default retention 30 days (Settings → activity.retention_days).',
+    'activity.history.help.filters': 'Filters: time range, level, source dropdown (populated from last 30 days of actual sources), free-text message search. Returns up to {limit} matching rows per page; use pager for more.',
+    'activity.history.help.live': 'Switch back to Live for the in-memory ring buffer (last 500 entries, polled every 2s).',
 
     'btn.refresh': 'Refresh',
     'btn.runAll': 'Run all',

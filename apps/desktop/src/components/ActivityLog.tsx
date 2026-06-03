@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ActivityLogEntry, ActivityHistoryItem } from '../api.js';
 import { api } from '../api.js';
 import { HelpBox } from './HelpBox.js';
+import { useI18n } from '../i18n.js';
 
 const LEVEL_COLORS: Record<ActivityLogEntry['level'], string> = {
   info: 'var(--text-dim)',
@@ -41,6 +42,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 export function ActivityLog({ height = 400, autoScroll = true }: { height?: number; autoScroll?: boolean }) {
+  const { t } = useI18n();
   const [mode, setMode] = useState<'live' | 'history'>('live');
   const [entries, setEntries] = useState<ActivityLogEntry[]>([]);
   const [filter, setFilter] = useState('');
@@ -97,12 +99,10 @@ export function ActivityLog({ height = 400, autoScroll = true }: { height?: numb
   return (
     <div className="panel" style={{ minHeight: 0 }}>
       <div style={{ padding: 12 }}>
-        <HelpBox title="What this tab shows">
-          <p>Real-time stream of every background action: eventlog collector, AD sync, disk scan, services scan, firewall changes. Polled every 2s.</p>
-          <p><strong>Source tags:</strong> <code>[checks]</code>, <code>[collector]</code>, <code>[disk]</code>, <code>[services]</code>, <code>[ad-sync]</code>, <code>[firewall]</code></p>
-          <p><strong>Levels:</strong> Success (green) · Info (dim) · Warning (amber) · Error (red)</p>
-          <p>Buffer is in-memory (last 500 entries), lost on service restart. For permanent audit see DB tables <code>collector_runs</code>, <code>ad_sync_runs</code>.</p>
-          <p><strong>📋 Copy</strong> exports filtered lines as tab-separated text to clipboard.</p>
+        <HelpBox title={t('help.tabTitle')}>
+          <p>{t('activity.live.help.intro')}</p>
+          <p>{t('activity.live.help.tags')}</p>
+          <p>{t('activity.live.help.buffer')}</p>
         </HelpBox>
       </div>
       <div className="panel-header">
@@ -174,6 +174,7 @@ const HOURS_OPTIONS: { value: number; label: string }[] = [
 ];
 
 function ActivityHistory({ height, onSwitchToLive }: { height: number; onSwitchToLive: () => void }) {
+  const { t } = useI18n();
   const [items, setItems] = useState<ActivityHistoryItem[]>([]);
   const [total, setTotal] = useState(0);
   const [hours, setHours] = useState(24);
@@ -229,10 +230,10 @@ function ActivityHistory({ height, onSwitchToLive }: { height: number; onSwitchT
   return (
     <div className="panel" style={{ minHeight: 0 }}>
       <div style={{ padding: 12 }}>
-        <HelpBox title="What this tab shows">
-          <p><strong>Persistent activity history</strong> — every log line written by collectors, schedulers, and route handlers is also stored in the <code>activity_log</code> table. Survives service restarts. Retention defaults to 30 days (Settings → activity.retention_days).</p>
-          <p>Filters: time range, level, source (dropdown populated from last 30 days of actual sources), free-text search across messages. Returns up to {limit} matching rows per page; use pager for more.</p>
-          <p>Switch back to <strong>Live</strong> for the in-memory ring buffer (last 500 entries, polled every 2s).</p>
+        <HelpBox title={t('help.tabTitle')}>
+          <p>{t('activity.history.help.intro')}</p>
+          <p>{t('activity.history.help.filters').replace('{limit}', String(limit))}</p>
+          <p>{t('activity.history.help.live')}</p>
         </HelpBox>
       </div>
       <div className="panel-header">

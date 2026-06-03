@@ -3,8 +3,10 @@ import type { ServiceProblem, ServiceAggregate } from '../api.js';
 import { api, timeAgo } from '../api.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 import { HelpBox } from '../components/HelpBox.js';
+import { useI18n } from '../i18n.js';
 
 export function ServicesPage() {
+  const { t } = useI18n();
   const [view, setView] = useState<'by-pc' | 'by-service'>('by-pc');
   const [items, setItems] = useState<ServiceProblem[]>([]);
   const [aggregate, setAggregate] = useState<ServiceAggregate[]>([]);
@@ -82,21 +84,10 @@ export function ServicesPage() {
   return (
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1' }}>
       <div style={{ padding: 12 }}>
-        <HelpBox title="What this tab shows">
-          <p>Lists Windows services whose <strong>StartMode = Automatic</strong> but <strong>State ≠ Running</strong> on each monitored PC.</p>
-          <p><strong>Drift</strong> column compares each row against your <code>service_policy</code> rules (DB-backed, seeded with known noise patterns like <code>GoogleUpdater*</code>, <code>Intel(R)*</code>, etc):</p>
-          <ul style={{ marginLeft: 16 }}>
-            <li><span style={{ color: 'var(--ok)' }}>● OK</span> — service matches an expected pattern (e.g. GoogleUpdater is allowed to be Manual+Stopped)</li>
-            <li><span style={{ color: 'var(--critical)' }}>● Drift</span> — service violates its policy (e.g. CCAgent should be Running but is Stopped)</li>
-            <li><span style={{ color: 'var(--text-dim)' }}>● Unclassified</span> — no policy rule matches this service yet; review manually</li>
-          </ul>
-          <p>Categories:</p>
-          <ul style={{ marginLeft: 16 }}>
-            <li><strong>Auto</strong> (red) — pure Automatic, should be running; real candidates for investigation</li>
-            <li><strong>Trigger</strong> (blue) — Auto+Trigger Start: designed to start only on events (device plug-in, GPO change). Legitimately stopped.</li>
-            <li><strong>Delayed</strong> (amber) — Auto+Delayed: starts ~2 min after boot. May still be in delay window.</li>
-            <li><strong>Per-user</strong> (grey) — per-user service instance (suffix is LUID). Stopped when no user is logged on. Filtered by default.</li>
-          </ul>
+        <HelpBox title={t('help.tabTitle')}>
+          <p>{t('services.help.intro')}</p>
+          <p>{t('services.help.views')}</p>
+          <p>{t('services.help.actions')}</p>
         </HelpBox>
       </div>
       <div className="panel-header">

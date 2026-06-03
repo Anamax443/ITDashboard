@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { api, timeAgo } from '../api.js';
 import type { PerfCategory, PerfCulprit, PerfEventItem, PerfSummary, PerfTopPc } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
+import { useI18n } from '../i18n.js';
 
 const CATEGORIES: { value: '' | PerfCategory; label: string }[] = [
   { value: '', label: 'All' },
@@ -20,6 +21,7 @@ function formatMs(ms: number | null): string {
 }
 
 export function PerfPage() {
+  const { t } = useI18n();
   const [summary, setSummary] = useState<PerfSummary | null>(null);
   const [items, setItems] = useState<PerfEventItem[]>([]);
   const [culprits, setCulprits] = useState<PerfCulprit[]>([]);
@@ -101,32 +103,10 @@ export function PerfPage() {
       </div>
       <div className="panel-body" style={{ padding: 16 }}>
 
-        <HelpBox title="What this tab shows">
-          <p>
-            Slow boot / shutdown / standby / resume events from the Windows
-            <code> Microsoft-Windows-Diagnostics-Performance/Operational </code>
-            channel. Windows itself decides when an event is "slow" — you only
-            see the outliers it diagnosed, with the named culprit (process,
-            service, driver, or device) and how long it took.
-          </p>
-          <p>
-            This is <strong>not</strong> a continuous CPU graph — it's a record
-            of the times when Windows said "this took longer than it should
-            have". Useful for: "which stations have slow boots lately and what's
-            blocking them".
-          </p>
-          <p style={{ color: 'var(--text-dim)', fontSize: 11 }}>
-            Event ID ranges: 100–199 boot · 200–299 shutdown · 300–399 standby ·
-            400–499 resume. Cold-start sweep pulls last 7 days; incremental
-            sweeps pull only what's new since last collection.
-          </p>
-          <p style={{ color: 'var(--text-dim)', fontSize: 11 }}>
-            <strong>Server SKU note:</strong> the channel is on by default on
-            Windows 10/11 client, but off by default on Windows Server. Servers
-            are reported as "channel-disabled" and skipped silently — to enable
-            on the fleet, push a GPO startup script that runs
-            <code> wevtutil sl Microsoft-Windows-Diagnostics-Performance/Operational /e:true</code>.
-          </p>
+        <HelpBox title={t('help.tabTitle')}>
+          <p>{t('perf.help.intro')}</p>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11 }}>{t('perf.help.ids')}</p>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11 }}>{t('perf.help.serverNote')}</p>
         </HelpBox>
 
         {scanMessage && <div style={{ color: 'var(--ok)', fontSize: 12, marginBottom: 8 }}>✓ {scanMessage}</div>}
