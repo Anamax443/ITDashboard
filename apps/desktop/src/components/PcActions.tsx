@@ -1,6 +1,15 @@
 import React, { useState } from 'react';
 import type { DiskItem } from '../api.js';
+import { API_BASE } from '../api.js';
 import { useI18n } from '../i18n.js';
+
+function launch(url: string): void {
+  // Browser navigates to the custom-scheme URL; if a handler is registered
+  // (via install-itd-handlers.cmd) Windows triggers it. Otherwise the
+  // browser shows "no app handles this protocol" and the operator falls
+  // back to the Copy / Download buttons on the same row.
+  window.location.href = url;
+}
 
 // Browser security blocks running arbitrary native commands, so each action
 // is one of: clipboard copy (operator pastes into Win+R) or generated file
@@ -131,29 +140,52 @@ export function PcActionsButton({ name, fqdn, ipAddress, disks }: Props) {
 
             <div style={{ padding: 16, fontSize: 12, lineHeight: 1.6 }}>
               <p style={{ marginTop: 0, color: 'var(--text-dim)' }}>{t('actions.hint')}</p>
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.08)',
+                border: '1px solid var(--accent)',
+                borderRadius: 4, padding: '8px 12px', marginBottom: 16, fontSize: 11,
+              }}>
+                <div>{t('actions.installBanner')}</div>
+                <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <a
+                    href={`${API_BASE}/actions/install-handlers.cmd`}
+                    className="refresh-btn"
+                    style={{ padding: '2px 10px', fontSize: 11, textDecoration: 'none', color: 'var(--text)' }}
+                  >📦 {t('actions.installDownload')}</a>
+                  <span style={{ color: 'var(--text-dim)' }}>{t('actions.installedNote')}</span>
+                </div>
+              </div>
 
               <Section title={t('actions.section.remote')}>
                 <ActionRow
                   label={t('actions.compmgmt')}
                   hint={compmgmtCmd}
+                  launchUrl={`itd-mmc://${name}`}
+                  launchLabel={t('actions.launch')}
                   buttonLabel={t('actions.copyCmd')}
                   onClick={async () => { (await copyText(compmgmtCmd)) ? flash(t('actions.copied')) : flash(t('actions.failed')); }}
                 />
                 <ActionRow
                   label={t('actions.services')}
                   hint={servicesCmd}
+                  launchUrl={`itd-services://${name}`}
+                  launchLabel={t('actions.launch')}
                   buttonLabel={t('actions.copyCmd')}
                   onClick={async () => { (await copyText(servicesCmd)) ? flash(t('actions.copied')) : flash(t('actions.failed')); }}
                 />
                 <ActionRow
                   label={t('actions.eventvwr')}
                   hint={eventvwrCmd}
+                  launchUrl={`itd-eventvwr://${name}`}
+                  launchLabel={t('actions.launch')}
                   buttonLabel={t('actions.copyCmd')}
                   onClick={async () => { (await copyText(eventvwrCmd)) ? flash(t('actions.copied')) : flash(t('actions.failed')); }}
                 />
                 <ActionRow
                   label={t('actions.taskschd')}
                   hint={taskmgrCmd}
+                  launchUrl={`itd-taskschd://${name}`}
+                  launchLabel={t('actions.launch')}
                   buttonLabel={t('actions.copyCmd')}
                   onClick={async () => { (await copyText(taskmgrCmd)) ? flash(t('actions.copied')) : flash(t('actions.failed')); }}
                 />
@@ -163,12 +195,16 @@ export function PcActionsButton({ name, fqdn, ipAddress, disks }: Props) {
                 <ActionRow
                   label={t('actions.rdp')}
                   hint={`${name}.rdp → mstsc`}
+                  launchUrl={`itd-rdp://${name}`}
+                  launchLabel={t('actions.launch')}
                   buttonLabel={t('actions.downloadFile')}
                   onClick={() => { downloadBlob(`${name}.rdp`, rdpFileContent(name)); flash(t('actions.downloaded')); }}
                 />
                 <ActionRow
                   label={t('actions.psexec')}
                   hint={`psexec \\\\${name} cmd.exe`}
+                  launchUrl={`itd-psexec://${name}`}
+                  launchLabel={t('actions.launch')}
                   buttonLabel={t('actions.downloadBat')}
                   onClick={() => { downloadBlob(`psexec-${name}.bat`, psexecBat(name)); flash(t('actions.downloaded')); }}
                 />
@@ -186,6 +222,8 @@ export function PcActionsButton({ name, fqdn, ipAddress, disks }: Props) {
                       key={d.drive_letter}
                       label={`${d.drive_letter} (${d.volume_label ?? ''})`.trim()}
                       hint={unc}
+                      launchUrl={`itd-explorer://${name}/${letter}`}
+                      launchLabel={t('actions.launch')}
                       buttonLabel={t('actions.openShareBat')}
                       onClick={() => { downloadBlob(`open-${letter}-${name}.bat`, shareBat(name, d.drive_letter)); flash(t('actions.downloaded')); }}
                       secondary={{
@@ -244,9 +282,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function ActionRow({ label, hint, buttonLabel, onClick, secondary }: {
+function ActionRow({ label, hint, buttonLabel, onClick, secondary, launchUrl, launchLabel }: {
   label: string; hint: string; buttonLabel: string; onClick: () => void;
   secondary?: { label: string; onClick: () => void };
+  launchUrl?: string;
+  launchLabel?: string;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', borderBottom: '1px dashed var(--border)' }}>
@@ -254,6 +294,13 @@ function ActionRow({ label, hint, buttonLabel, onClick, secondary }: {
         <div style={{ fontWeight: 600 }}>{label}</div>
         <div style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hint}</div>
       </div>
+      {launchUrl && (
+        <button
+          className="refresh-btn"
+          onClick={() => launch(launchUrl)}
+          style={{ padding: '2px 10px', fontSize: 11, background: 'var(--accent)', color: 'white', border: 'none' }}
+        >{launchLabel}</button>
+      )}
       {secondary && (
         <button className="refresh-btn" onClick={secondary.onClick} style={{ padding: '2px 8px', fontSize: 11 }}>{secondary.label}</button>
       )}

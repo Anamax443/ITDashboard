@@ -55,6 +55,34 @@ The frontend gate does not depend on the OS firewall being active — it just re
 rule contents as the whitelist source — so the UI is still gated correctly even with
 the OS firewall disabled.
 
+## One-click "Launch" via URL protocol handlers (NEW since 2026-06-03)
+
+The browser cannot run native commands directly. For true 1-click
+launch from the Actions modal, the operator runs a small `.cmd`
+installer **once per workstation** that registers custom URL protocol
+handlers under `HKCU\Software\Classes\itd-*`. After install:
+
+- `itd-mmc://NAME` → `mmc.exe compmgmt.msc /computer=NAME`
+- `itd-services://NAME` → `mmc.exe services.msc /computer=NAME`
+- `itd-eventvwr://NAME` → `mmc.exe eventvwr.msc /computer=NAME`
+- `itd-taskschd://NAME` → `mmc.exe taskschd.msc /computer=NAME`
+- `itd-rdp://NAME` → `mstsc /v:NAME`
+- `itd-psexec://NAME` → `cmd /k psexec /accepteula \\NAME cmd.exe`
+- `itd-explorer://NAME/LETTER` → `explorer.exe \\NAME\LETTER$`
+
+Installer at `apps/server/scripts/install-itd-handlers.cmd`, served as
+download via `GET /actions/install-handlers.cmd`. The Actions modal
+shows a banner with the download link the first time it's opened.
+
+Each ActionRow in the modal renders both the **🚀 Launch** button
+(protocol URL) and the **Copy command / Download .bat / .rdp** fallback
+so the same UI works whether handlers are installed or not.
+
+Install puts launcher .cmd files in `%LOCALAPPDATA%\ITDashboard\launchers\`
+and registry entries in HKCU. No admin privileges required.
+
+PsExec needs to be on PATH (Sysinternals typically deployed via GPO).
+
 ## Per-PC actions menu (NEW since 2026-06-03)
 
 Computers tab gains a per-row "⚡ Actions" button that opens a modal
