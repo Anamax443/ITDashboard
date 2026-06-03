@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (default-to-ask + itd-ps PowerShell Remote launcher)
+Last updated: 2026-06-03 (default-to-ask + itd-ps PowerShell Remote launcher; installer header + welcome message synced)
 
 ## Current Live State
 

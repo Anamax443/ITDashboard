@@ -1,7 +1,7 @@
 @echo off
 :: ITDashboard URL protocol handlers - one-time install per operator station.
 ::
-:: SAFETY MODEL (post-oponentura-2 review):
+:: SAFETY MODEL (post-oponentura-4 review):
 ::  - Each launcher applies a strict allowlist regex on the hostname read
 ::    from the URL: only [a-zA-Z0-9._-], max 63 chars, non-empty.
 ::    Anything else -> exit /b 1 without spawning the target tool.
@@ -11,6 +11,23 @@
 ::    To opt in, run this installer with the argument:  install-itd-handlers.cmd /with-psexec
 ::  - Registers under HKCU only (no admin needed). Uninstall by deleting
 ::    HKCU\Software\Classes\itd-* and %LOCALAPPDATA%\ITDashboard\launchers.
+::  - Generated launcher fail block never echoes the raw URL to the console
+::    (attacker-controllable URLs could embed ANSI escape sequences for
+::    terminal manipulation). Raw URL is still recorded in last-itd-*.log.
+::
+:: ADMIN CREDENTIALS (per-launch):
+::  Default (ITD_ADMIN_USER unset): launcher prompts in CMD for the admin
+::  account, then runas /netonly opens Windows credential dialog for password.
+::  Last typed admin user is cached in
+::  %LOCALAPPDATA%\ITDashboard\launchers\last-admin-user.txt for pre-fill
+::  on next launch (Enter accepts). Password is never persisted.
+::  Overrides: ITD_ADMIN_USER=AXINETWORK\trnka_admin (fixed pre-fill),
+::  ITD_ADMIN_USER=current (no admin wrap, run as current user).
+::
+:: NEW LAUNCHER itd-ps:// (PowerShell Remote via Enter-PSSession):
+::  Uses PowerShell Get-Credential for a native both-fields dialog.
+::  PowerShell -Command inline form bypasses .ps1 ExecutionPolicy
+::  restrictions (works on GPO AllSigned workstations).
 ::
 :: BROWSER HINT: when prompted "Allow this site to open these links?" do
 ::   NOT tick "Always allow". Per-click prompt is your second layer of
@@ -57,10 +74,17 @@ echo.
 echo  All launchers reject hostnames that contain anything other
 echo  than letters, digits, dot, dash or underscore (max 63 chars).
 echo.
-echo  ADMIN ACCOUNT (optional): set ITD_ADMIN_USER user-env-var to
-echo  e.g. AXINETWORK\trnka_admin to have each Launch wrap the
-echo  command in `runas /netonly` so remote auth uses your admin
-echo  credentials. Leave unset to run as your current account.
+echo  ADMIN CREDENTIALS: by default (ITD_ADMIN_USER unset) every Launch
+echo  first prompts in CMD for the admin account ^(empty the first time,
+echo  pre-fills the last typed user on subsequent runs - Enter accepts^),
+echo  then opens the Windows credential dialog for the password. The
+echo  password is never persisted. No per-user setup needed; this default
+echo  works for multi-admin workstations where several IT specialists
+echo  share one operator PC. Overrides ^(optional^):
+echo    setx ITD_ADMIN_USER AXINETWORK\trnka_admin
+echo      = fixed pre-filled user, dialog asks only for password
+echo    setx ITD_ADMIN_USER current
+echo      = run launchers as your current Windows user, no admin wrap
 if "%WITH_PSEXEC%"=="1" (
   echo.
   echo  PsExec handler INSTALLED ^(opt-in via /with-psexec^).
