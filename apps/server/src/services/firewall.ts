@@ -32,6 +32,44 @@ $addr | ConvertTo-Json -Compress
   return Array.isArray(parsed) ? parsed : [parsed];
 }
 
+export interface DomainProfileStatus {
+  enabled: boolean | null;   // null when query failed
+  defaultInboundAction: string | null;
+  error?: string;
+}
+
+// Reads whether the Windows Firewall Domain profile is enabled. On the live
+// server the Domain profile is currently Enabled=False, which makes our
+// 'ITDashboard API (4000)' allow rule inert — the OS firewall does not
+// evaluate it. The frontend UX gate still works, but operators should know
+// the OS-level boundary is down so they can choose to fix it (or accept it).
+export async function getDomainProfileStatus(): Promise<DomainProfileStatus> {
+  const ps = `
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$p = Get-NetFirewallProfile -Profile Domain -ErrorAction Stop
+[pscustomobject]@{
+  Enabled = [bool]$p.Enabled
+  DefaultInboundAction = "$($p.DefaultInboundAction)"
+} | ConvertTo-Json -Compress
+`;
+  try {
+    const out = await runPs(ps);
+    if (!out) return { enabled: null, defaultInboundAction: null, error: 'empty output' };
+    const parsed = JSON.parse(out) as { Enabled: boolean; DefaultInboundAction: string };
+    return {
+      enabled: parsed.Enabled,
+      defaultInboundAction: parsed.DefaultInboundAction ?? null,
+    };
+  } catch (err) {
+    return {
+      enabled: null,
+      defaultInboundAction: null,
+      error: String(err).split('\n')[0]?.slice(0, 200) ?? 'unknown',
+    };
+  }
+}
+
 export async function setAllowedIPs(ips: string[]): Promise<void> {
   // Validate input — only IPs and CIDRs allowed
   for (const ip of ips) {

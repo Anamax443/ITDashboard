@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { getAllowedIPs, setAllowedIPs } from '../services/firewall.js';
+import { getAllowedIPs, setAllowedIPs, getDomainProfileStatus } from '../services/firewall.js';
 import { refreshIpGuard, getCurrentWhitelist, isIpAllowed, normalizeRequestIp } from '../services/ip-guard.js';
 
 export async function registerFirewallRoutes(app: FastifyInstance) {
@@ -10,6 +10,10 @@ export async function registerFirewallRoutes(app: FastifyInstance) {
   app.get('/access-check', async (req) => {
     const ip = normalizeRequestIp(req.ip);
     return { ip, allowed: isIpAllowed(req.ip) };
+  });
+
+  app.get('/firewall/domain-profile', async () => {
+    return await getDomainProfileStatus();
   });
 
   app.get('/firewall/whitelist', async (_req, reply) => {

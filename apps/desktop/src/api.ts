@@ -190,6 +190,12 @@ export interface AccessCheck {
   allowed: boolean;
 }
 
+export interface DomainProfileStatus {
+  enabled: boolean | null;
+  defaultInboundAction: string | null;
+  error?: string;
+}
+
 export interface ActivityHistoryItem {
   id: number;
   ts: string;
@@ -264,6 +270,7 @@ export const api = {
   servicesGpoScriptUrl: () => `${API_BASE}/services/gpo-script`,
   settings: () => jget<Record<string, string>>('/settings'),
   firewallWhitelist: () => jget<{ ips: string[] }>('/firewall/whitelist'),
+  firewallDomainProfile: () => jget<DomainProfileStatus>('/firewall/domain-profile'),
   saveFirewallWhitelist: async (ips: string[]) => {
     const r = await fetch(`${API_BASE}/firewall/whitelist`, {
       method: 'PUT',
