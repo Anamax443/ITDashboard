@@ -70,7 +70,7 @@ try {
     foreach ($a in $adapters) {
       if ($a.IPAddress) {
         foreach ($candidate in $a.IPAddress) {
-          if ($candidate -match '^\d+\.\d+\.\d+\.\d+$' -and $candidate -notmatch '^(0\.|127\.|169\.254\.)') {
+          if ($candidate -match '^\\d+\\.\\d+\\.\\d+\\.\\d+$' -and $candidate -notmatch '^(0\\.|127\\.|169\\.254\\.)') {
             $ip = $candidate
             break
           }
