@@ -144,6 +144,29 @@ async function upsertPcInfo(computerId: number, info: PcInfo): Promise<void> {
         pc_info_collected_at = SYSUTCDATETIME()
       WHERE id = @cid;
     `);
+
+  // Per-PC interactive-login history. Skip when nobody is logged in. If the
+  // most-recent row for this PC has the same user, bump last_seen — that means
+  // the same person stayed logged on across our scans. Otherwise insert a new
+  // row to record a new "session" (user change since the last observation).
+  if (info.UserName != null && info.UserName !== '') {
+    await pool.request()
+      .input('cid', computerId)
+      .input('user', info.UserName)
+      .query(`
+        DECLARE @last_id BIGINT, @last_user NVARCHAR(255);
+        SELECT TOP 1 @last_id = id, @last_user = user_name
+        FROM pc_user_history
+        WHERE computer_id = @cid
+        ORDER BY last_seen DESC;
+
+        IF @last_id IS NOT NULL AND @last_user = @user
+          UPDATE pc_user_history SET last_seen = SYSUTCDATETIME() WHERE id = @last_id;
+        ELSE
+          INSERT INTO pc_user_history (computer_id, user_name, first_seen, last_seen)
+          VALUES (@cid, @user, SYSUTCDATETIME(), SYSUTCDATETIME());
+      `);
+  }
 }
 
 interface Target { id: number; name: string; }

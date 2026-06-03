@@ -50,6 +50,23 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     return { thresholdDays, ...row };
   });
 
+  app.get('/computers/:id/user-history', async (req, reply) => {
+    const params = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    const q = z.object({ days: z.coerce.number().int().min(1).max(3650).default(90) }).parse(req.query);
+    const pool = await getPool();
+    const r = await pool.request()
+      .input('cid', params.id)
+      .input('days', q.days)
+      .query<{ id: number; user_name: string; first_seen: string; last_seen: string }>(`
+        SELECT id, user_name, first_seen, last_seen
+        FROM pc_user_history
+        WHERE computer_id = @cid
+          AND last_seen >= DATEADD(DAY, -@days, SYSUTCDATETIME())
+        ORDER BY last_seen DESC;
+      `);
+    reply.send({ items: r.recordset });
+  });
+
   app.get('/computers/sync/history', async () => {
     const items = await getSyncHistory(20);
     return { items };

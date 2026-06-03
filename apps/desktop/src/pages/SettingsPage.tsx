@@ -287,6 +287,19 @@ export function SettingsPage() {
         </Section>
 
         <Section
+          title={t('settings.section.pcUserHistory')}
+          description={t('settings.section.pcUserHistoryDesc')}
+        >
+          <Field label={t('settings.field.pcUserHistoryDays')}>
+            <NumberInput
+              v={value('pcUserHistory.retention_days', '90')}
+              onChange={(v) => set('pcUserHistory.retention_days', v)}
+              suffix={t('settings.unit.days')}
+            />
+          </Field>
+        </Section>
+
+        <Section
           title={t('settings.section.adsync')}
           description={t('settings.section.adsyncDesc')}
         >

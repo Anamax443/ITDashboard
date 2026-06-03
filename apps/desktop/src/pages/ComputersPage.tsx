@@ -4,6 +4,7 @@ type ComputerItem = CI;
 import { api, timeAgo, parseDiskThresholds } from '../api.js';
 import { DisksCell } from '../components/DiskBar.js';
 import { HelpBox } from '../components/HelpBox.js';
+import { UserHistoryModal } from '../components/UserHistoryModal.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
 export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed, inactiveThresholdDays }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | 'failing' | 'inactive' | null; onFilterConsumed?: () => void; inactiveThresholdDays?: number }) {
@@ -13,6 +14,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
   const [history, setHistory] = useState<AdSyncRun[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [userHistoryFor, setUserHistoryFor] = useState<{ id: number; name: string } | null>(null);
 
   const [disks, setDisks] = useState<DiskItem[]>([]);
   const [diskSettings, setDiskSettings] = useState<Record<string, string>>({});
@@ -342,8 +344,15 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }} title={c.distinguished_name ?? ''}>{c.ou_path ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{c.fqdn ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{c.os_version ?? '—'}</td>
-                  <td style={{ color: 'var(--text-dim)', fontSize: 11, fontFamily: 'Consolas, monospace' }}>{c.ip_address ?? '—'}</td>
-                  <td style={{ color: 'var(--text-dim)', fontSize: 11 }} title={c.current_user_seen_at ? `Last seen logged in: ${timeAgo(c.current_user_seen_at)}` : ''}>{c.current_user ?? '—'}</td>
+                  <td
+                    style={{ color: 'var(--text-dim)', fontSize: 11, fontFamily: 'Consolas, monospace' }}
+                    title={c.pc_info_collected_at ? `Collected ${timeAgo(c.pc_info_collected_at)}` : ''}
+                  >{c.ip_address ?? '—'}</td>
+                  <td
+                    style={{ color: 'var(--text-dim)', fontSize: 11, cursor: c.current_user ? 'pointer' : 'default', textDecoration: c.current_user ? 'underline dotted' : 'none' }}
+                    title={c.current_user_seen_at ? `Last seen logged in: ${timeAgo(c.current_user_seen_at)} · click for history` : 'No login captured yet'}
+                    onClick={c.current_user ? () => setUserHistoryFor({ id: c.id, name: c.name }) : undefined}
+                  >{c.current_user ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{timeAgo(c.last_seen)}</td>
                   <td style={{ fontSize: 11 }}>
                     {!c.enabled
@@ -366,6 +375,13 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
           </table>
         )}
       </div>
+      {userHistoryFor && (
+        <UserHistoryModal
+          computerId={userHistoryFor.id}
+          computerName={userHistoryFor.name}
+          onClose={() => setUserHistoryFor(null)}
+        />
+      )}
     </div>
   );
 }

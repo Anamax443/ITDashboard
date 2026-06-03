@@ -204,6 +204,13 @@ export interface InactiveStats {
   totalDisabled: number;
 }
 
+export interface PcUserHistoryItem {
+  id: number;
+  user_name: string;
+  first_seen: string;
+  last_seen: string;
+}
+
 export interface ActivityHistoryItem {
   id: number;
   ts: string;
@@ -239,6 +246,8 @@ export const api = {
   topComputers: (hours = 24, limit = 10) => jget<{ items: TopComputer[] }>(`/events/top-computers?hours=${hours}&limit=${limit}`),
   computers: () => jget<{ items: ComputerItem[] }>('/computers'),
   inactiveStats: () => jget<InactiveStats>('/computers/inactive-stats'),
+  userHistory: (computerId: number, days = 90) =>
+    jget<{ items: PcUserHistoryItem[] }>(`/computers/${computerId}/user-history?days=${days}`),
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),

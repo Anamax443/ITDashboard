@@ -55,6 +55,28 @@ The frontend gate does not depend on the OS firewall being active — it just re
 rule contents as the whitelist source — so the UI is still gated correctly even with
 the OS firewall disabled.
 
+## PC user history (NEW since 2026-06-03)
+
+For shared workstations (`ZAST*` etc.) where multiple operators rotate
+through one machine, the disk collector now also records interactive
+login history into `pc_user_history`. On each scan:
+- If `Win32_ComputerSystem.UserName` is null → skip (nobody logged in)
+- If the most recent row for this PC has the same user → bump `last_seen`
+  (same session continuing)
+- Otherwise INSERT a new row (user change observed since last sweep)
+
+API: `GET /computers/:id/user-history?days=N`. UI: clicking the User
+cell in Computers tab opens a modal showing user, first_seen, last_seen,
+duration per recorded session.
+
+Retention via `pcUserHistory.retention_days` setting (default 90),
+purged nightly by `sp_purge_pc_user_history` in the retention runner.
+
+The IP cell in Computers tab now also has a tooltip showing
+`Collected Nm ago` so the operator can see when the value was last
+captured — both IP and current_user persist across offline states
+(we only update them on successful scans).
+
 ## Inactive PCs feature (NEW since 2026-06-03)
 
 Dashboard gets an **Inactive PCs (Nd+)** summary card mirroring the

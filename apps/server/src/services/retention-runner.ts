@@ -50,7 +50,8 @@ async function readNum(key: string, fallback: number): Promise<number> {
 export async function runRetentionOnce(triggerSource: 'manual' | 'scheduled' = 'manual'): Promise<void> {
   const eventsDays = await readNum('events.retention_days', 90);
   const activityDays = await readNum('activity.retention_days', 30);
-  logActivity('info', 'retention', `Starting (${triggerSource}) — events>${eventsDays}d, activity>${activityDays}d`);
+  const pcUserDays = await readNum('pcUserHistory.retention_days', 90);
+  logActivity('info', 'retention', `Starting (${triggerSource}) — events>${eventsDays}d, activity>${activityDays}d, pc_user_history>${pcUserDays}d`);
 
   const eventsRes = await callPurge('sp_purge_old_events', eventsDays);
   if (eventsRes.ok) {
@@ -64,6 +65,13 @@ export async function runRetentionOnce(triggerSource: 'manual' | 'scheduled' = '
     logActivity('success', 'retention', `activity_log purge: ${activityRes.rowsAffected} rows removed (${(activityRes.durationMs/1000).toFixed(1)}s)`);
   } else {
     logActivity('error', 'retention', `activity_log purge failed: ${activityRes.error}`);
+  }
+
+  const pcUserRes = await callPurge('sp_purge_pc_user_history', pcUserDays);
+  if (pcUserRes.ok) {
+    logActivity('success', 'retention', `pc_user_history purge: ${pcUserRes.rowsAffected} rows removed (${(pcUserRes.durationMs/1000).toFixed(1)}s)`);
+  } else {
+    logActivity('error', 'retention', `pc_user_history purge failed: ${pcUserRes.error}`);
   }
 }
 
