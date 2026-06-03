@@ -143,7 +143,7 @@ export function PcActionsButton({ name, fqdn, ipAddress, disks }: Props) {
               <div style={{
                 background: 'rgba(59, 130, 246, 0.08)',
                 border: '1px solid var(--accent)',
-                borderRadius: 4, padding: '8px 12px', marginBottom: 16, fontSize: 11,
+                borderRadius: 4, padding: '8px 12px', marginBottom: 12, fontSize: 11,
               }}>
                 <div>{t('actions.installBanner')}</div>
                 <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -152,8 +152,17 @@ export function PcActionsButton({ name, fqdn, ipAddress, disks }: Props) {
                     className="refresh-btn"
                     style={{ padding: '2px 10px', fontSize: 11, textDecoration: 'none', color: 'var(--text)' }}
                   >📦 {t('actions.installDownload')}</a>
-                  <span style={{ color: 'var(--text-dim)' }}>{t('actions.installedNote')}</span>
                 </div>
+              </div>
+              <div style={{
+                background: 'rgba(234, 179, 8, 0.10)',
+                border: '1px solid var(--warning)',
+                borderRadius: 4, padding: '8px 12px', marginBottom: 16, fontSize: 11,
+                color: 'var(--text)',
+              }}>
+                <div style={{ marginBottom: 4 }}>⚠ {t('actions.installedNote')}</div>
+                <div style={{ marginBottom: 4, color: 'var(--text-dim)' }}>{t('actions.validationNote')}</div>
+                <div style={{ color: 'var(--text-dim)' }}>{t('actions.psexecOptIn')}</div>
               </div>
 
               <Section title={t('actions.section.remote')}>
