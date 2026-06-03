@@ -58,12 +58,12 @@ function NetworkAccessSection() {
     <div style={{ marginBottom: 32, paddingBottom: 24, borderBottom: '1px solid var(--border)' }}>
       <h3 style={{ margin: '0 0 4px 0', fontSize: 16 }}>Dashboard UI access</h3>
       <p style={{ margin: '0 0 16px 0', color: 'var(--text-dim)', fontSize: 12 }}>
-        Listed IPs / CIDRs can load the dashboard UI (the HTML/JS bundle and <code>/docs</code>).
-        The JSON API itself stays reachable to anyone on the internal network — this gate just
-        prevents incidental discovery of the UI by non-IT users browsing the LAN. Enforced
-        twice: at the app layer (Fastify preHandler) and via the Windows Firewall rule
-        "ITDashboard API (4000)". App layer is the authoritative one; firewall rule is
-        defense-in-depth and may be inert if the Domain firewall profile is disabled.
+        Listed IPs / CIDRs see the dashboard UI. Other IPs get an "access not configured"
+        screen on load. The JSON API, the bundle download, and the <code>/docs</code> page
+        stay reachable to anyone on the internal network — this is a UX gate to prevent
+        incidental UI discovery by non-IT users, not a security boundary. Whitelist also
+        mirrors into the Windows Firewall rule "ITDashboard API (4000)" but that rule may
+        be inert if the Domain firewall profile is off.
       </p>
       {loading ? (
         <div style={{ color: 'var(--text-dim)' }}>Loading current whitelist…</div>

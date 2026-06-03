@@ -30,29 +30,30 @@ Important:
 
 ## Dashboard UI access (whitelist)
 
-The dashboard UI surfaces — `/` (the React bundle entry), `/assets/*` (the JS/CSS chunks),
-and `/docs` (the HTML reference page) — are gated by an app-layer IP whitelist enforced
-in a Fastify preHandler (`apps/server/src/services/ip-guard.ts`). Non-whitelisted IPs get
-a 403 HTML page that names the IP and tells them to ask the operator to add it via
-Settings → Dashboard UI access.
+The dashboard UI gate is **frontend-side, not API-side**. When the React app loads on
+the browser, `App.tsx` calls `GET /access-check` which returns
+`{ ip: req.ip, allowed: bool }`. If `allowed=false`, the app renders
+`<AccessDenied ip={...} />` instead of the dashboard layout.
 
-The **JSON API endpoints are not gated** — the server lives on an internal domain network
-and the API is intentionally reachable by anyone in the domain. The whitelist only
-prevents incidental UI discovery by non-IT users browsing the LAN. If you need a true
-API-level security boundary, that's a separate feature (auth tokens, mTLS, …).
+The **JSON API endpoints, the bundle, and `/docs` are not gated** — the server lives on
+an internal domain network and is intentionally domain-wide reachable. This is a UX
+gate ("you're not on the operator list, here's who to ask"), not a security boundary.
+Bypass via DevTools is possible and considered acceptable for the threat model
+(incidental UI discovery by non-IT users browsing the LAN). If you need a true API
+security boundary, that's a separate feature (auth tokens, mTLS, …).
 
-Source of truth is the Windows Firewall rule "ITDashboard API (4000)". The app-layer
-cache is populated at boot from the rule and refreshed after every PUT to
-`/firewall/whitelist`. If the firewall rule is missing or unreadable at boot, the guard
-fails closed — only loopback `127.0.0.1` / `::1` is allowed until the operator fixes the
-rule via local RDP. Loopback is always allowed regardless of cache state so the service
-can hit itself.
+Source of truth for the whitelist is the Windows Firewall rule "ITDashboard API (4000)".
+The server caches the rule contents in memory (`apps/server/src/services/ip-guard.ts`):
+loaded at boot via `getAllowedIPs()`, refreshed after every PUT to `/firewall/whitelist`.
+Loopback `127.0.0.1` / `::1` is always allowed regardless of cache state so the service
+can self-call.
 
-Known operational gotcha: the Windows Firewall rule can be **inert** if the Domain
+Known operational gotcha: the Windows Firewall rule may be **inert** if the Domain
 profile is `Enabled=False` (often set by GPO). Check with:
 `Get-NetFirewallProfile | Format-Table Name, Enabled`.
-The app-layer guard does not depend on the OS firewall being active, so the UI is still
-gated correctly even in that case.
+The frontend gate does not depend on the OS firewall being active — it just reads the
+rule contents as the whitelist source — so the UI is still gated correctly even with
+the OS firewall disabled.
 
 ## Runtime Services
 

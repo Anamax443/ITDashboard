@@ -1,9 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getAllowedIPs, setAllowedIPs } from '../services/firewall.js';
-import { refreshIpGuard, getCurrentWhitelist } from '../services/ip-guard.js';
+import { refreshIpGuard, getCurrentWhitelist, isIpAllowed, normalizeRequestIp } from '../services/ip-guard.js';
 
 export async function registerFirewallRoutes(app: FastifyInstance) {
+  // Called by the frontend on mount to decide whether to render the dashboard
+  // or the "access not configured" screen. Always returns 200 — the gate is
+  // expressed in the `allowed` field, not the HTTP status.
+  app.get('/access-check', async (req) => {
+    const ip = normalizeRequestIp(req.ip);
+    return { ip, allowed: isIpAllowed(req.ip) };
+  });
+
   app.get('/firewall/whitelist', async (_req, reply) => {
     try {
       const ips = await getAllowedIPs();

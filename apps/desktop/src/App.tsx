@@ -15,12 +15,16 @@ import { SettingsPage } from './pages/SettingsPage.js';
 import { ServicesPage } from './pages/ServicesPage.js';
 import { PerfPage } from './pages/PerfPage.js';
 import { HelpBox } from './components/HelpBox.js';
+import { AccessDenied } from './components/AccessDenied.js';
+import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
 type View = 'dashboard' | 'events' | 'computers' | 'services' | 'perf' | 'activity' | 'settings';
 
 export function App() {
+  const [access, setAccess] = useState<AccessCheck | null>(null);
+  const [accessChecked, setAccessChecked] = useState(false);
   const [view, setView] = useState<View>('dashboard');
   const [summary, setSummary] = useState<Summary | null>(null);
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -41,6 +45,12 @@ export function App() {
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
   const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'failing' | null>(null);
+
+  useEffect(() => {
+    api.accessCheck()
+      .then((r) => { setAccess(r); setAccessChecked(true); })
+      .catch(() => { setAccess({ ip: 'unknown', allowed: true }); setAccessChecked(true); });
+  }, []);
 
   useEffect(() => {
     api.version().then(setVersion).catch(() => {});
@@ -93,6 +103,9 @@ export function App() {
     const t = setInterval(refresh, REFRESH_MS);
     return () => clearInterval(t);
   }, [refresh]);
+
+  if (!accessChecked) return null;
+  if (access && !access.allowed) return <AccessDenied ip={access.ip} />;
 
   return (
     <div className="app">

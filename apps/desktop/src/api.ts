@@ -181,7 +181,13 @@ async function jpost<T>(path: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+export interface AccessCheck {
+  ip: string;
+  allowed: boolean;
+}
+
 export const api = {
+  accessCheck: () => jget<AccessCheck>('/access-check'),
   summary: () => jget<Summary>('/events/summary'),
   events: (q: { computer?: string; level?: 'critical' | 'error' | 'warning'; hours?: number; limit?: number } = {}) => {
     const params = new URLSearchParams();
