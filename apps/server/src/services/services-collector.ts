@@ -40,7 +40,7 @@ function isPerUserService(name: string): boolean {
 const CONCURRENCY = 5;
 let runInFlight = false;
 
-async function fetchProblems(name: string): Promise<RawService[]> {
+export async function fetchProblems(name: string): Promise<RawService[]> {
   const tcpOk = await tcpProbe(name, 135, 2000);
   if (!tcpOk) throw new Error('OFFLINE: TCP/135 unreachable');
 
@@ -140,7 +140,7 @@ function classifyAgainstPolicy(svc: RawService, policies: PolicyRow[]): { isComp
   return { isCompliant: null, policyId: null };
 }
 
-async function replaceProblems(computerId: number, services: RawService[]): Promise<void> {
+export async function replaceProblems(computerId: number, services: RawService[]): Promise<void> {
   const pool = await getPool();
   const policies = await loadPolicies();
   await pool.request().input('cid', computerId).query(`DELETE FROM service_problems WHERE computer_id = @cid`);

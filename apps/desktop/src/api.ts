@@ -204,6 +204,14 @@ export interface InactiveStats {
   totalDisabled: number;
 }
 
+export interface SingleRefreshResult {
+  computerId: number;
+  computerName: string;
+  ok: boolean;
+  durationMs: number;
+  steps: Array<{ step: string; ok: boolean; detail: string; durationMs: number }>;
+}
+
 export interface PcUserHistoryItem {
   id: number;
   user_name: string;
@@ -249,6 +257,7 @@ export const api = {
   inactiveStats: () => jget<InactiveStats>('/computers/inactive-stats'),
   userHistory: (computerId: number, days = 90) =>
     jget<{ items: PcUserHistoryItem[] }>(`/computers/${computerId}/user-history?days=${days}`),
+  refreshPc: (computerId: number) => jpost<SingleRefreshResult>(`/computers/${computerId}/refresh`),
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),

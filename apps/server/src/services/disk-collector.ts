@@ -41,7 +41,7 @@ interface PcScanResult {
 const CONCURRENCY = 5;
 let runInFlight = false;
 
-async function fetchPcScan(name: string): Promise<PcScanResult> {
+export async function fetchPcScan(name: string): Promise<PcScanResult> {
   // Pre-flight TCP probe — same as eventlog collector, fail-fast for offline PCs
   const tcpOk = await tcpProbe(name, 135, 2000);
   if (!tcpOk) throw new Error('OFFLINE: TCP/135 unreachable');
@@ -110,7 +110,7 @@ try {
   });
 }
 
-async function upsertDisk(computerId: number, d: RawDisk): Promise<void> {
+export async function upsertDisk(computerId: number, d: RawDisk): Promise<void> {
   const pool = await getPool();
   await pool.request()
     .input('cid', computerId)
@@ -127,7 +127,7 @@ async function upsertDisk(computerId: number, d: RawDisk): Promise<void> {
     `);
 }
 
-async function upsertPcInfo(computerId: number, info: PcInfo): Promise<void> {
+export async function upsertPcInfo(computerId: number, info: PcInfo): Promise<void> {
   const pool = await getPool();
   // IP is always overwritten (current state); current_user is only overwritten
   // when scan returns non-null so the last-seen user persists across "no one

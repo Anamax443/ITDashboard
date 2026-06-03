@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getPool } from '../db/pool.js';
 import { syncComputersFromAD, getSyncHistory, getLastSync } from '../services/ad-sync.js';
 import { getSetting } from '../services/settings.js';
+import { refreshSinglePc } from '../services/refresh-single-pc.js';
 
 export async function registerComputersRoutes(app: FastifyInstance) {
   app.get('/computers', async () => {
@@ -48,6 +49,22 @@ export async function registerComputersRoutes(app: FastifyInstance) {
       `);
     const row = r.recordset[0] ?? { enabledInactive: 0, disabledInactive: 0, totalEnabled: 0, totalDisabled: 0 };
     return { thresholdDays, ...row };
+  });
+
+  app.post('/computers/:id/refresh', async (req, reply) => {
+    const params = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    try {
+      const result = await refreshSinglePc(params.id);
+      if (!result) {
+        reply.code(409);
+        return { error: 'already in flight or computer not found' };
+      }
+      return result;
+    } catch (err) {
+      app.log.error({ err, computerId: params.id }, 'single-PC refresh failed');
+      reply.code(500);
+      return { error: String(err) };
+    }
   });
 
   app.get('/computers/:id/user-history', async (req, reply) => {

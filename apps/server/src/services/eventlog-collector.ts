@@ -65,7 +65,7 @@ let currentProgress: InFlightProgress | null = null;
  * Runs under the API service account (svc-itdashboard); the account needs
  * Event Log Readers membership on the target PC (typically granted via GPO).
  */
-async function collectFromPC(name: string, sinceUtc: Date, signal?: AbortSignal): Promise<RawEvent[]> {
+export async function collectFromPC(name: string, sinceUtc: Date, signal?: AbortSignal): Promise<RawEvent[]> {
   if (signal?.aborted) throw new Error('aborted');
   const sinceIso = sinceUtc.toISOString();
   // Pre-flight TCP probe to RPC endpoint mapper — distinguishes offline from RPC misconfigured.
@@ -125,7 +125,7 @@ try {
   });
 }
 
-async function insertEvents(computerId: number, events: RawEvent[]): Promise<number> {
+export async function insertEvents(computerId: number, events: RawEvent[]): Promise<number> {
   if (events.length === 0) return 0;
   const pool = await getPool();
   let added = 0;

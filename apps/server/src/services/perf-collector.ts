@@ -53,7 +53,7 @@ function parseBigIntOrNull(v: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-async function fetchPerfEvents(name: string, sinceUtc: Date): Promise<RawPerfEvent[]> {
+export async function fetchPerfEvents(name: string, sinceUtc: Date): Promise<RawPerfEvent[]> {
   const tcpOk = await tcpProbe(name, 135, 2000);
   if (!tcpOk) throw new Error('OFFLINE: TCP/135 unreachable');
 
@@ -116,7 +116,7 @@ try {
   });
 }
 
-async function insertPerfEvents(computerId: number, events: RawPerfEvent[]): Promise<number> {
+export async function insertPerfEvents(computerId: number, events: RawPerfEvent[]): Promise<number> {
   if (events.length === 0) return 0;
   const pool = await getPool();
   let added = 0;

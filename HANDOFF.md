@@ -55,6 +55,34 @@ The frontend gate does not depend on the OS firewall being active — it just re
 rule contents as the whitelist source — so the UI is still gated correctly even with
 the OS firewall disabled.
 
+## Single-PC refresh (NEW since 2026-06-03)
+
+Computers tab → ⚡ Actions modal gets a green "🔄 Refresh now" panel at
+the top. POST `/computers/:id/refresh` runs all four collectors against
+that one PC sequentially (disk+info, services, eventlog incremental,
+perf incremental) and returns per-step results. Useful when the
+operator is about to work on a specific machine and wants fresh data
+without spinning the whole fleet.
+
+In-flight guard per computer_id stops double-clicks; concurrent
+refreshes against different PCs are fine.
+
+Per-collector helpers (collectFromPC / insertEvents / fetchPcScan /
+upsertDisk / upsertPcInfo / fetchProblems / replaceProblems /
+fetchPerfEvents / insertPerfEvents) are now exported from their
+respective service files; orchestration lives in
+apps/server/src/services/refresh-single-pc.ts.
+
+## Admin-user wrapping for Launch actions (NEW since 2026-06-03)
+
+The protocol-handler launchers now detect `ITD_ADMIN_USER` user env
+variable. If set (e.g. `AXINETWORK\trnka_admin`), every Launch wraps
+the target tool in `runas /user:%ITD_ADMIN_USER% /netonly "..."` —
+Windows prompts for that account's password, then runs the tool with
+those credentials for network auth (so MMC sees `trnka_admin` against
+the remote PC). Leaving the variable unset keeps the legacy behavior
+(runs as currently logged-in operator).
+
 ## One-click "Launch" via URL protocol handlers (NEW since 2026-06-03)
 
 The browser cannot run native commands directly. For true 1-click

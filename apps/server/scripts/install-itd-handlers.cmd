@@ -54,6 +54,11 @@ echo  prompt is a second defense layer.
 echo.
 echo  All launchers reject hostnames that contain anything other
 echo  than letters, digits, dot, dash or underscore (max 63 chars).
+echo.
+echo  ADMIN ACCOUNT (optional): set ITD_ADMIN_USER user-env-var to
+echo  e.g. AXINETWORK\trnka_admin to have each Launch wrap the
+echo  command in `runas /netonly` so remote auth uses your admin
+echo  credentials. Leave unset to run as your current account.
 if "%WITH_PSEXEC%"=="1" (
   echo.
   echo  PsExec handler INSTALLED ^(opt-in via /with-psexec^).
@@ -87,7 +92,11 @@ goto :eof
 >>"%BASE%\%1.cmd" echo if "%%host%%"=="" exit /b 1
 >>"%BASE%\%1.cmd" echo if not "%%host:~63,1%%"=="" exit /b 1
 >>"%BASE%\%1.cmd" echo echo %%host%% ^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| exit /b 1
->>"%BASE%\%1.cmd" echo start "" mmc.exe %2 /computer="%%host%%"
+>>"%BASE%\%1.cmd" echo if defined ITD_ADMIN_USER ^(
+>>"%BASE%\%1.cmd" echo   start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "mmc.exe %2 /computer=%%host%%"
+>>"%BASE%\%1.cmd" echo ^) else ^(
+>>"%BASE%\%1.cmd" echo   start "" mmc.exe %2 /computer="%%host%%"
+>>"%BASE%\%1.cmd" echo ^)
 goto :eof
 
 :write_rdp_launcher
@@ -99,7 +108,11 @@ goto :eof
 >>"%BASE%\itd-rdp.cmd" echo if "%%host%%"=="" exit /b 1
 >>"%BASE%\itd-rdp.cmd" echo if not "%%host:~63,1%%"=="" exit /b 1
 >>"%BASE%\itd-rdp.cmd" echo echo %%host%% ^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| exit /b 1
->>"%BASE%\itd-rdp.cmd" echo start "" mstsc.exe /v:"%%host%%"
+>>"%BASE%\itd-rdp.cmd" echo if defined ITD_ADMIN_USER ^(
+>>"%BASE%\itd-rdp.cmd" echo   start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "mstsc.exe /v:%%host%%"
+>>"%BASE%\itd-rdp.cmd" echo ^) else ^(
+>>"%BASE%\itd-rdp.cmd" echo   start "" mstsc.exe /v:"%%host%%"
+>>"%BASE%\itd-rdp.cmd" echo ^)
 goto :eof
 
 :write_explorer_launcher
@@ -115,7 +128,11 @@ goto :eof
 >>"%BASE%\itd-explorer.cmd" echo if not "%%host:~63,1%%"=="" exit /b 1
 >>"%BASE%\itd-explorer.cmd" echo echo %%host%% ^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| exit /b 1
 >>"%BASE%\itd-explorer.cmd" echo echo %%letter%% ^| findstr /R /X "[a-zA-Z]" ^>nul ^|^| exit /b 1
->>"%BASE%\itd-explorer.cmd" echo start "" explorer.exe "\\%%host%%\%%letter%%$"
+>>"%BASE%\itd-explorer.cmd" echo if defined ITD_ADMIN_USER ^(
+>>"%BASE%\itd-explorer.cmd" echo   start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "explorer.exe \\%%host%%\%%letter%%$"
+>>"%BASE%\itd-explorer.cmd" echo ^) else ^(
+>>"%BASE%\itd-explorer.cmd" echo   start "" explorer.exe "\\%%host%%\%%letter%%$"
+>>"%BASE%\itd-explorer.cmd" echo ^)
 goto :eof
 
 :write_psexec_launcher
@@ -129,7 +146,11 @@ goto :eof
 >>"%BASE%\itd-psexec.cmd" echo if "%%host%%"=="" exit /b 1
 >>"%BASE%\itd-psexec.cmd" echo if not "%%host:~63,1%%"=="" exit /b 1
 >>"%BASE%\itd-psexec.cmd" echo echo %%host%% ^| findstr /R /X "[a-zA-Z0-9._-][a-zA-Z0-9._-]*" ^>nul ^|^| exit /b 1
->>"%BASE%\itd-psexec.cmd" echo start "" cmd /k psexec /accepteula "\\%%host%%" cmd.exe
+>>"%BASE%\itd-psexec.cmd" echo if defined ITD_ADMIN_USER ^(
+>>"%BASE%\itd-psexec.cmd" echo   start "" runas /user:"%%ITD_ADMIN_USER%%" /netonly "cmd /k psexec /accepteula \\%%host%% cmd.exe"
+>>"%BASE%\itd-psexec.cmd" echo ^) else ^(
+>>"%BASE%\itd-psexec.cmd" echo   start "" cmd /k psexec /accepteula "\\%%host%%" cmd.exe
+>>"%BASE%\itd-psexec.cmd" echo ^)
 goto :eof
 
 :register
