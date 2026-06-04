@@ -211,10 +211,10 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
         <div className="panel-actions filters">
           <input
             type="text"
-            placeholder="Search…"
+            placeholder="Search… (AND default, OR / -exclude / &quot;phrase&quot;)"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ width: 160 }}
+            style={{ width: 320 }}
           />
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}>
             <option value="">All status</option>
@@ -253,7 +253,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
             </span>
           )}
           <button className="refresh-btn" onClick={triggerDiskScan} disabled={diskScanState === 'scanning'} title="Scan disk space on all monitored PCs">
-            {diskScanState === 'scanning' ? '…' : '💾 Scan disks'}
+            {diskScanState === 'scanning' ? '…' : '🩺 Scan disks'}
           </button>
           <button className="refresh-btn" onClick={() => setShowHistory((s) => !s)}>
             {showHistory ? 'Hide history' : 'History'}

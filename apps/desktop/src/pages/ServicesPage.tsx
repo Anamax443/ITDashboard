@@ -98,7 +98,7 @@ export function ServicesPage() {
             placeholder="Search PC / service…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ width: 180 }}
+            style={{ width: 360 }}
           />
           <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }} title="Trigger-start services are designed to start only on specific events — usually not a real problem">
             <input type="checkbox" checked={hideTriggerStart} onChange={(e) => setHideTriggerStart(e.target.checked)} />

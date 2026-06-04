@@ -59,7 +59,7 @@ export function EventsTable(props: Props) {
             placeholder="Search msg/PC/ID…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ width: 160 }}
+            style={{ width: 320 }}
           />
           <select value={props.filterComputer} onChange={(e) => props.onChangeComputer(e.target.value)}>
             <option value="">All computers</option>

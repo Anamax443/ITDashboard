@@ -59,7 +59,7 @@ const dict = {
     'computers.help.intro': 'Plný inventář doménových PC s operátorskými ovládacími prvky. Aktualizováno AD syncem; ostatní sloupce z collectorů.',
     'computers.help.chips': 'Status chips v hlavičce jsou klikatelné filtry: active, monitored, unmonitored, failing (consecutive_failures > 0), disk critical/warning, inactive (Nd+), disabled, excluded.',
     'computers.help.monitor': 'Monitor checkbox řídí jestli collectory pollí daný PC. Perzistuje napříč AD syncs. Exclude = hard skip i z dashboard statistik. Klik na User otevře historii přihlášených.',
-    'computers.help.actions': 'Tlačítka: ↻ Sync from AD (znovu Get-ADComputer + MERGE), 💾 Scan disks (manuální disk scan), ✓ All / ✗ None (bulk toggle Monitor respektující filtr).',
+    'computers.help.actions': 'Tlačítka: ↻ Sync from AD (znovu Get-ADComputer + MERGE), 🩺 Scan disks (manuální disk scan), ✓ All / ✗ None (bulk toggle Monitor respektující filtr).',
 
     'services.help.intro': 'Detekuje Windows služby s StartMode = Automatic ale State ≠ Running napříč monitorovanými PC. Filtruje legitimní případy (Trigger / Delayed / per-user) a porovnává proti policy tabulce.',
     'services.help.views': '📋 By PC view = flat list problémů. 📊 By service view = agregát "tato služba je stopnutá na N PC". Klasifikace: OK (matchne policy, vyhovuje), Drift (matchne, nevyhovuje), Unclassified (žádný policy match).',
@@ -308,7 +308,7 @@ const dict = {
     'computers.help.intro': 'Full inventory of domain PCs with operator controls. Refreshed by AD sync; other columns come from the collectors.',
     'computers.help.chips': 'Status chips in the header are clickable filter pills: active, monitored, unmonitored, failing (consecutive_failures > 0), disk critical/warning, inactive (Nd+), disabled, excluded.',
     'computers.help.monitor': 'Monitor checkbox controls whether collectors poll this PC. Persists across AD syncs. Exclude = hard skip even from Dashboard stats. Click the User cell to open login history.',
-    'computers.help.actions': 'Buttons: ↻ Sync from AD (re-run Get-ADComputer + MERGE), 💾 Scan disks (manual disk scan), ✓ All / ✗ None (bulk Monitor toggle, respects current filter).',
+    'computers.help.actions': 'Buttons: ↻ Sync from AD (re-run Get-ADComputer + MERGE), 🩺 Scan disks (manual disk scan), ✓ All / ✗ None (bulk Monitor toggle, respects current filter).',
 
     'services.help.intro': 'Detects Windows services with StartMode = Automatic but State ≠ Running across all monitored PCs. Filters legitimate cases (Trigger / Delayed / per-user) and matches the rest against a policy table.',
     'services.help.views': '📋 By PC view = flat list of problems. 📊 By service view = aggregate "this service is stopped on N PCs". Classification: OK (matches policy, complies), Drift (matches, does not comply), Unclassified (no policy match).',

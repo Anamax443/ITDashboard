@@ -259,7 +259,7 @@ function ActivityHistory({ height, onSwitchToLive }: { height: number; onSwitchT
             placeholder="Search message…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ width: 200 }}
+            style={{ width: 400 }}
           />
           <button className="refresh-btn" onClick={load} disabled={loading}>{loading ? '…' : '↻ Refresh'}</button>
           <button className="refresh-btn" onClick={copy} disabled={items.length === 0}>{copied ? '✓ Copied' : '📋 Copy'}</button>
