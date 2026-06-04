@@ -936,6 +936,56 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <p><strong>Kam zmizelo URL:</strong> dál se zapisuje s plnou věrností do <code>%LOCALAPPDATA%\ITDashboard\launchers\last-itd-*.log</code>. File write neinterpretuje terminal escape sekvence, takže helpdesk diagnostika není dotčená. Chybová zpráva říká <em>"Full URL recorded in: ..."</em> s cestou k logu.</p>
 </div>
 
+<h2 id="filtering"><span data-lang="cs">Filtrování — vícenásobná kombinace</span><span data-lang="en">Filtering — combining multiple criteria</span></h2>
+
+<div data-lang="cs">
+  <p>Všechny taby (Události, Počítače, Služby, Výkon, Aktivita) podporují <strong>vícenásobné filtry kombinované AND</strong>. Každý filter input zužuje sadu řádků nezávisle — všechny současně aktivní filtry musí být splněny, aby se řádek zobrazil.</p>
+  <h3>Společné vzory napříč taby</h3>
+  <table>
+    <tr><th>Typ inputu</th><th>Chování</th><th>Vyprázdnění filtru</th></tr>
+    <tr><td>🔍 <strong>Search</strong> (volný text)</td><td>Substring match (case-insensitive) napříč více sloupci. V Událostech: message + PC + event ID. V Počítačích: hostname + FQDN + IP + uživatel.</td><td>Smaž text v poli (poslední znak = "x" v poli, nebo Ctrl+A → Delete).</td></tr>
+    <tr><td>📋 <strong>Single-select dropdown</strong></td><td>Drží jednu hodnotu (např. Computer, Provider, Level). "All …" = bez constraintu na ten sloupec.</td><td>Vrať dropdown na "All …" (první položku).</td></tr>
+    <tr><td>🏷 <strong>Status chips</strong> (Počítače)</td><td>Klikatelné toggle pily nahoře tabu. Aktivní chip = OR uvnitř jeho kategorie, AND s ostatními chipy. Např. <code>active</code> + <code>failing</code> = aktivní A failující.</td><td>Klikni znovu na aktivní chip pro deaktivaci.</td></tr>
+    <tr><td>⏱ <strong>Time range</strong></td><td>Preset dropdown (24h / 7d / 30d / 90d). Omezuje řádky podle <code>time_created</code>.</td><td>Vrať dropdown na nejširší rozsah, default per tab.</td></tr>
+    <tr><td>☑ <strong>Hide checkboxes</strong> (Služby)</td><td>Default ON pro Hide trigger-start a Hide per-user (skryjí legitimní případy). OFF = ukáže i ty.</td><td>Toggle checkbox.</td></tr>
+  </table>
+
+  <h3>Příklady kombinací</h3>
+  <ul>
+    <li><strong>Události</strong>: PC = TRNKAMW11N + Level = Error + Time = 24h + Search = "denied" → jen Errors z TRNKAMW11N za posledních 24 h obsahující slovo "denied" v message.</li>
+    <li><strong>Počítače</strong>: Search = "TRNKA" + chip "failing" → všechny PC s "TRNKA" v hostname/uživateli, které právě failují collector.</li>
+    <li><strong>Služby</strong>: Hide trigger-start OFF + Service name search = "Spooler" → vidíš Print Spooler stopnutý napříč fleetem včetně trigger-start případů, které by jinak byly skryté.</li>
+  </ul>
+
+  <p>📌 <strong>Žádný "Clear all" button</strong> aktuálně neexistuje. Vyprázdnění filtrů = projít každý input zvlášť a vrátit na default. Sprint 2 candidate: přidat globální "Vymazat filtry" tlačítko + URL persistence aktuálních filtrů pro share-link / refresh-survive.</p>
+
+  <p>📤 <strong>Export filtrovaných dat</strong>: Sprint 1.8 plánuje per-tab export PDF/HTML/TXT s viditelným banner-em "Filtrováno podle: …". Současně ne — pokud potřebuješ data ven, použij browser print (Ctrl+P) nebo screenshot.</p>
+</div>
+
+<div data-lang="en">
+  <p>All tabs (Events, Computers, Services, Perf, Activity) support <strong>multiple filters combined with AND</strong>. Each filter input narrows the row set independently — every currently active filter must match for a row to appear.</p>
+  <h3>Common patterns across tabs</h3>
+  <table>
+    <tr><th>Input type</th><th>Behavior</th><th>Clearing</th></tr>
+    <tr><td>🔍 <strong>Search</strong> (free text)</td><td>Substring match (case-insensitive) across multiple columns. Events: message + PC + event ID. Computers: hostname + FQDN + IP + user.</td><td>Clear the text field (Ctrl+A → Delete).</td></tr>
+    <tr><td>📋 <strong>Single-select dropdown</strong></td><td>Holds one value (e.g. Computer, Provider, Level). "All …" = no constraint on that column.</td><td>Reset the dropdown to "All …" (first entry).</td></tr>
+    <tr><td>🏷 <strong>Status chips</strong> (Computers)</td><td>Clickable toggle pills at the top of the tab. An active chip = OR within its category, AND across chips. E.g. <code>active</code> + <code>failing</code> = active AND failing.</td><td>Click the active chip again to deactivate.</td></tr>
+    <tr><td>⏱ <strong>Time range</strong></td><td>Preset dropdown (24h / 7d / 30d / 90d). Constrains rows by <code>time_created</code>.</td><td>Reset to the widest preset, default per tab.</td></tr>
+    <tr><td>☑ <strong>Hide checkboxes</strong> (Services)</td><td>Default ON for Hide trigger-start and Hide per-user (suppress legitimate cases). OFF = show them too.</td><td>Toggle checkbox.</td></tr>
+  </table>
+
+  <h3>Combination examples</h3>
+  <ul>
+    <li><strong>Events</strong>: PC = TRNKAMW11N + Level = Error + Time = 24h + Search = "denied" → only Errors from TRNKAMW11N in the last 24 h whose message contains "denied".</li>
+    <li><strong>Computers</strong>: Search = "TRNKA" + chip "failing" → all PCs whose hostname/user contains "TRNKA" and that are currently failing the collector.</li>
+    <li><strong>Services</strong>: Hide trigger-start OFF + Service name search = "Spooler" → see Print Spooler stopped across the fleet including trigger-start cases that would normally be hidden.</li>
+  </ul>
+
+  <p>📌 <strong>No "Clear all" button</strong> exists today. Clearing filters = walk each input and reset to default. Sprint 2 candidate: add a global "Clear filters" button + URL persistence of current filters for share-link / refresh-survive.</p>
+
+  <p>📤 <strong>Export of filtered data</strong>: Sprint 1.8 plans per-tab export to PDF/HTML/TXT with a visible "Filtered by: …" banner. Not yet — for now use browser print (Ctrl+P) or screenshot.</p>
+</div>
+
 <h2 id="security"><span data-lang="cs">Bezpečnostní model</span><span data-lang="en">Security model</span></h2>
 <div class="callout callout-info" data-lang="cs">
   <strong>CS shrnutí:</strong> ITDashboard je pasivní read-only nástroj pro interní doménu. Threat model = incidentální discovery non-IT uživatelem, ne adversarial access. Žádná API auth — kdo je v doméně a na whitelistu, je admin. Pokud potřebuješ skutečnou security boundary (BYOD, VPN dodavatelů, audit), jsou auth tokens / mTLS / TLS termination samostatná feature v backlog.
