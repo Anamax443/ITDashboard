@@ -46,6 +46,25 @@ export function createSession(input: { user: string; password: string; ip: strin
     id,
     user: input.user,
     password: input.password,
+    authMethod: 'password',
+    createdAt: now,
+    expiresAt: now + SESSION_HARD_MAX_MS,
+    lastActivityAt: now,
+    ip: input.ip,
+    userAgent: input.userAgent,
+  };
+  sessions.set(id, session);
+  return session;
+}
+
+export function createWindowsSession(input: { user: string; ip: string; userAgent: string }): Session {
+  const now = Date.now();
+  const id = newId(32);
+  const session: Session = {
+    id,
+    user: input.user,
+    password: null,
+    authMethod: 'windows',
     createdAt: now,
     expiresAt: now + SESSION_HARD_MAX_MS,
     lastActivityAt: now,
