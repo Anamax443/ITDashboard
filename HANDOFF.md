@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-04 (events dedup daily pass alongside retention)
+Last updated: 2026-06-04 (session close — Sprint 1.5/1.6 prep, Sprint 1.7 ExitCode + NIS2, Sprint 1.8 export + cross-nav + per-tier disk scope)
 
 ## Current Live State
 
@@ -117,6 +117,122 @@ Docs/UI sync for this fix completed:
   a CS/EN troubleshooting entry "URL line missing from fail screen".
 - `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show a one-line note in the
   Actions modal warning block.
+
+## Session 2026-06-04 — landed features summary
+
+Single big day. Below is the timeline of meaningful changes in order
+shipped. Each has its own commit + section further down in this
+HANDOFF; this block is the index.
+
+**Auth + governance:**
+- Sprint 1.5 — AD edit-group gate (LDAP_MATCHING_RULE_IN_CHAIN
+  transitive), `AD_LDAP_STUB=1` refused with `NODE_ENV=production`,
+  downloaded `.bat` files for PsExec + admin-share now wrap in
+  `set /p adminuser` + `runas /netonly` so a multi-tier-account
+  workstation never silently falls back to the basic-tier user.
+- Multi-DC LDAP failover via comma-separated `AD_LDAP_URL`.
+- Sprint 1.6 prep (CR archived + reakce + meta-review + 2nd reakce):
+  DC-side changes already executed (DNS A + 2 SPNs on
+  svc-itdashboard); MIKOS-side IIS install + reverse proxy + TLS
+  binding still pending separate CR. Server-side env vars
+  configured (`NODE_ENV`, `AD_LDAP_URL`, `AD_LDAP_DOMAIN`,
+  `AD_LDAP_BASE_DN`, `AD_EDIT_GROUP`); ldapMode reports "ldap".
+- gMSA for svc-itdashboard explicitly REJECTED by operator —
+  remains regular domain user account.
+- ITDashboard-Editors AD group populated with 8 members (4 admin +
+  4 pcadmin tier).
+
+**Retention pipeline:**
+- Events dedup daily pass via `sp_purge_duplicate_events` alongside
+  the existing purges. Settings: `events.dedup_enabled` (default 1),
+  `events.dedup_lookback_days` (default 90).
+- Settings UI surfaces the full retention block (events / activity /
+  pc_user_history retention days + run hour + dedup enabled +
+  dedup lookback).
+- Manual retention run button + structured run report (per-step
+  rows / duration / status). New routes `GET /api/retention/status`
+  + `POST /api/retention/run`.
+- Per-step checkboxes for the manual run — operator picks what to
+  delete; scheduled cron stays as before. UI clearly separates
+  "Manual run" from scheduled config.
+
+**Services tab (Sprint 1.7 — alert-fatigue oponentura outcome):**
+- Win32ExitCode + ServiceSpecificExitCode now captured by the
+  collector. Migration 026 adds `exit_code` + `service_specific_exit_code`
+  columns to `service_problems`.
+- Services tab gets an "Exit" sortable column + new "⚠ Only
+  ExitCode != 0" filter chip (default ON — primary "show only what
+  requires action" view).
+- Hide trigger-start / Hide delayed-start filters refined: now hide
+  ONLY graceful (exit=0). A trigger-start service that actually
+  crashed (exit != 0) always surfaces even with these hides on.
+- Header tile metrics: "⚠ N crashes" (bold red, primary metric) +
+  "N graceful" (dim, informational).
+- NIS2 / ISO 27001 monitoring policy section in dashboard.html
+  (CS+EN) — what is monitored, what is hidden by default + why,
+  ExitCode semantics, known blind spots (no crash-loop detection,
+  no state history, per-install whitelist, scan interval gap).
+
+**Per-tab table UX (Sprint 1.8):**
+- Export menu on every table tab (Události, Počítače, Služby,
+  Aktivita, Výkon) with PDF / HTML / CSV / TXT outputs. Filter
+  banner in the exported file when filters are active.
+- New per-page filter help: `events.help.filters` rewritten + new
+  `Filtrování — vícenásobná kombinace` section in dashboard.html
+  (CS+EN) explaining AND combination, clearing, examples.
+- Search inputs widened 2x across all tabs (160-200 → 320-400 px).
+- Floppy disk emoji ⚠ NEVER for scan — replaced with 🩺
+  (diagnostic) in computers.help.actions + Scan disks button +
+  dashboard.html. New memory rule
+  `feedback_icon_semantics.md` to prevent future regression.
+- Events tab: new Event ID filter input — single ("4098"),
+  inclusive range ("4000..8000" or "4000-8000"), or comma list
+  ("1001, 4098"). Invalid input → red border + filter inactive.
+- Cross-tab navigation: clicking a computer name in Events /
+  Services / Perf jumps to the Computers tab with the search field
+  pre-filled with that hostname (status chip filter cleared so the
+  PC always shows).
+
+**Disk evaluation refinements:**
+- Per-tier drive-letter scope: separate `disk.crit_drives` and
+  `disk.warn_drives` settings instead of one shared list. Negation
+  syntax (`<>C` or `!C`) so "everything except C" is concise.
+  Default both = "C" (system drive only). Typical multi-drive
+  recipe: critical="C", warning="<>C" (data / external = warning,
+  never critical). Legacy `disk.eval_drive_letters` still works
+  as the fallback for both.
+- DiskThresholds API restructured: DriveLetterScope discriminated
+  union (`all` / `include` / `exclude`), `evaluateDiskWithScope`
+  is the single source of truth used by both summarizeDisks and
+  ComputersPage worstDiskByComputer (removes a duplicate inline
+  threshold calculation).
+
+**Memory rules saved this session:**
+- `feedback_default_workflow_docs_push.md` — never ask about
+  updating docs/translations/HANDOFF + push to main; always do.
+- `project_itdashboard_svc_account.md` — gMSA rejected, stays
+  regular user account.
+- `feedback_icon_semantics.md` — floppy disk = SAVE, never scan;
+  use 🩺 for diagnostic operations.
+
+**Still in queue (next session):**
+- MIKOS-side CR: install IIS + URL Rewrite + ARR + Windows Auth
+  site + reverse proxy to Node :4000 + HTTPS binding (AD CS cert).
+- Node-side session-windows endpoint + AuthGate Windows-first flow
+  (session-store.ts groundwork already merged with `authMethod`
+  union + createWindowsSession; auth.ts COOKIE_OPTS wired with
+  `ITD_COOKIE_SECURE` env var to flip on TLS rollout).
+- AD Users tab (Sprint 2): cron `Get-ADUser` → MSSQL → searchable
+  list + click-through detail with reset / unlock / disable
+  actions via PS Remoting.
+- Services crash-loop detection (Sprint 2 candidate from
+  ExitCode reakce).
+- Central whitelist tools (GPO/CMDB import + audit log).
+- AND / OR / NOT / phrase syntax in Search inputs (operator
+  question raised, parser not yet shipped).
+- Dashboard.html in-page search (find-in-doc with highlight).
+- Per-PC drive-letter override (Sprint 2 candidate — global
+  setting works for now).
 
 ## Events table dedup (NEW 2026-06-04)
 
