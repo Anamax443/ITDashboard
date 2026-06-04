@@ -231,6 +231,8 @@ const dict = {
     'settings.field.warningPct': 'Warning (% volného)',
     'settings.field.criticalGb': 'Critical (GB volného)',
     'settings.field.warningGb': 'Warning (GB volného)',
+    'settings.field.evalDriveLetters': 'Vyhodnocované disky (písmena)',
+    'settings.field.evalDriveLettersHelp': 'Která písmena disků se zahrnují do vyhodnocení critical / warning. Default "C" (jen systémový disk). Comma-separated např. "C,D" nebo "C,D,E". Prázdné nebo "*" = vyhodnoť všechny disky (původní chování). Disky mimo seznam jsou v Disks sloupci stále vidět ale nemění status PC. Aplikuje se na obojí — critical i warning.',
 
     'settings.check.eventlog': 'Eventlog collector',
     'settings.check.disk': 'Disk scan',
@@ -491,6 +493,8 @@ const dict = {
     'settings.field.warningPct': 'Warning (% free)',
     'settings.field.criticalGb': 'Critical (GB free)',
     'settings.field.warningGb': 'Warning (GB free)',
+    'settings.field.evalDriveLetters': 'Evaluated drives (letters)',
+    'settings.field.evalDriveLettersHelp': 'Which drive letters participate in the critical / warning evaluation. Default "C" (system drive only). Comma-separated e.g. "C,D" or "C,D,E". Empty or "*" = evaluate all drives (legacy behavior). Drives outside the list still show in the Disks column but do not change the PC status. Applies to BOTH critical and warning.',
 
     'settings.check.eventlog': 'Eventlog collector',
     'settings.check.disk': 'Disk scan',

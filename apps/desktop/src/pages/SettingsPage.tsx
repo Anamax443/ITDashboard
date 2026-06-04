@@ -530,6 +530,19 @@ export function SettingsPage() {
               <NumberInput v={value('disk.warning_gb', '20')} onChange={(v) => set('disk.warning_gb', v)} suffix="GB" />
             </Field>
           </FieldGroup>
+          <Field label={t('settings.field.evalDriveLetters')}>
+            <input
+              type="text"
+              value={value('disk.eval_drive_letters', 'C')}
+              onChange={(e) => set('disk.eval_drive_letters', e.target.value)}
+              placeholder="C  |  C,D  |  C,D,E  |  * (vše)"
+              style={{ ...fieldStyle, minWidth: 240, fontFamily: 'Consolas, monospace' }}
+              title="Letters of drives evaluated for critical/warning status. Comma-separated. Empty or * = evaluate all drives."
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0' }}>
+            {t('settings.field.evalDriveLettersHelp')}
+          </p>
         </Section>
 
       </div>

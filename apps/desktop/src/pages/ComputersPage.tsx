@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { ComputerItem as CI, SyncResult, AdSyncRun, DiskItem } from '../api.js';
 type ComputerItem = CI;
-import { api, timeAgo, parseDiskThresholds } from '../api.js';
+import { api, timeAgo, parseDiskThresholds, diskInEvalScope } from '../api.js';
 import { DisksCell } from '../components/DiskBar.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { UserHistoryModal } from '../components/UserHistoryModal.js';
@@ -98,6 +98,11 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
   // Map computers → worst disk status
   const worstDiskByComputer = new Map<number, 'critical' | 'warning' | 'ok'>();
   for (const d of disks) {
+    // Honor the eval-drive-letters allowlist set in Nastavení → Disk space
+    // thresholdy. Drives outside the scope (e.g. external backup, USB,
+    // virtual / removable) do not influence the worst-disk status for the
+    // PC. They still appear in the Disks column for situational awareness.
+    if (!diskInEvalScope(d, thresholds)) continue;
     const s = (function () {
       const freePct = d.total_bytes > 0 ? (d.free_bytes / d.total_bytes) * 100 : 100;
       const freeGb = d.free_bytes / 1024 ** 3;

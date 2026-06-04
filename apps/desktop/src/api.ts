@@ -90,6 +90,29 @@ export interface DiskThresholds {
   criticalGb: number;
   warningGb: number;
   mode: 'pct' | 'gb' | 'either';
+  /**
+   * Letters of drives that participate in critical/warning evaluation. Empty
+   * set = evaluate ALL drives (legacy behavior). Default is just `C` per
+   * operator decision 2026-06-04 — most fleet damage came from external /
+   * removable / backup drives triggering critical when they were never
+   * meant to be monitored. The disks list in Computers still renders every
+   * drive for situational awareness; the status color / chip count only
+   * reflects the allowlist.
+   */
+  evalDriveLetters: Set<string>;
+}
+
+function parseDriveLetters(raw: string | undefined): Set<string> {
+  if (raw == null) return new Set(['C']);
+  const trimmed = raw.trim();
+  // Empty or wildcard = evaluate all drives
+  if (trimmed === '' || trimmed === '*') return new Set();
+  const letters = trimmed
+    .split(/[\s,;]+/)
+    .map((s) => s.trim().toUpperCase().replace(/:$/, '').slice(0, 1))
+    .filter((s) => /^[A-Z]$/.test(s));
+  if (letters.length === 0) return new Set(['C']); // garbage input → fall back to default
+  return new Set(letters);
 }
 
 export function parseDiskThresholds(settings: Record<string, string>): DiskThresholds {
@@ -99,7 +122,17 @@ export function parseDiskThresholds(settings: Record<string, string>): DiskThres
     criticalGb: Number(settings['disk.critical_gb'] ?? 5),
     warningGb: Number(settings['disk.warning_gb'] ?? 20),
     mode: (settings['disk.threshold_mode'] as 'pct' | 'gb' | 'either') ?? 'pct',
+    evalDriveLetters: parseDriveLetters(settings['disk.eval_drive_letters']),
   };
+}
+
+export function diskLetter(d: DiskItem): string {
+  return (d.drive_letter ?? '').toUpperCase().replace(/:$/, '').slice(0, 1);
+}
+
+export function diskInEvalScope(d: DiskItem, t: DiskThresholds): boolean {
+  if (t.evalDriveLetters.size === 0) return true; // empty set = evaluate all
+  return t.evalDriveLetters.has(diskLetter(d));
 }
 
 export interface DiskSummary {
@@ -115,6 +148,7 @@ export function summarizeDisks(disks: DiskItem[], t: DiskThresholds): DiskSummar
   const critPcs = new Set<number>();
   const warnPcs = new Set<number>();
   for (const d of disks) {
+    if (!diskInEvalScope(d, t)) continue; // honor the evalDriveLetters allowlist
     const s = evaluateDisk(d, t);
     if (s === 'critical') {
       criticalDrives++;
