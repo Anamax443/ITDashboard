@@ -19,6 +19,7 @@ export function ServicesPage() {
   const [hideDelayedStart, setHideDelayedStart] = useState(false);
   const [hidePerUser, setHidePerUser] = useState(true);
   const [hideCompliant, setHideCompliant] = useState(false);
+  const [onlyNonzeroExit, setOnlyNonzeroExit] = useState(false);
   const { sort, toggle } = useSort<ServiceProblem>({ col: 'computer', dir: 'asc' });
   const { sort: aggSort, toggle: aggToggle } = useSort<ServiceAggregate>({ col: 'pc_count', dir: 'desc' });
 
@@ -63,6 +64,7 @@ export function ServicesPage() {
     if (hideDelayedStart && s.delayed_start) return false;
     if (hidePerUser && s.per_user_start) return false;
     if (hideCompliant && s.is_compliant === true) return false;
+    if (onlyNonzeroExit && (s.exit_code === 0 || s.exit_code === null)) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -116,6 +118,10 @@ export function ServicesPage() {
             <input type="checkbox" checked={hideCompliant} onChange={(e) => setHideCompliant(e.target.checked)} />
             Hide compliant
           </label>
+          <label style={{ fontSize: 11, color: 'var(--critical)', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }} title="Show only services with a non-zero Win32 exit code (likely crashed, not a graceful trigger-start exit)">
+            <input type="checkbox" checked={onlyNonzeroExit} onChange={(e) => setOnlyNonzeroExit(e.target.checked)} />
+            ⚠ Only ExitCode != 0
+          </label>
           {scanning && (
             <span style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 600 }}>
               ● Scanning… {elapsed}s
@@ -164,6 +170,7 @@ export function ServicesPage() {
                 <SortHeader<ServiceProblem> col="service_name" label="Service" sort={sort} toggle={toggle} width={180} />
                 <SortHeader<ServiceProblem> col="display_name" label="Display name" sort={sort} toggle={toggle} />
                 <SortHeader<ServiceProblem> col="state" label="State" sort={sort} toggle={toggle} width={90} />
+                <SortHeader<ServiceProblem> col="exit_code" label="Exit" sort={sort} toggle={toggle} width={70} />
                 <th style={{ width: 110 }}>Start type</th>
                 <th style={{ width: 80 }}>Drift</th>
                 <SortHeader<ServiceProblem> col="collected_at" label="Last scan" sort={sort} toggle={toggle} width={100} />
@@ -180,6 +187,11 @@ export function ServicesPage() {
                       color: s.state === 'Stopped' ? 'var(--critical)' : 'var(--warning)',
                       fontSize: 11, fontWeight: 600,
                     }}>{s.state}</span>
+                  </td>
+                  <td style={{ fontSize: 11, fontFamily: 'Consolas, monospace' }} title={s.exit_code === 0 ? 'Graceful exit (Win32ExitCode = 0)' : s.exit_code === null ? 'No exit code reported' : `Win32 exit ${s.exit_code}${s.service_specific_exit_code != null ? ` / service-specific ${s.service_specific_exit_code}` : ''}`}>
+                    {s.exit_code == null ? <span style={{ color: 'var(--text-dim)' }}>—</span>
+                      : s.exit_code === 0 ? <span style={{ color: 'var(--text-dim)' }}>0</span>
+                      : <span style={{ color: 'var(--critical)', fontWeight: 600 }}>{s.exit_code}</span>}
                   </td>
                   <td style={{ fontSize: 10 }}>
                     {s.trigger_start && <span style={{ color: 'var(--accent)' }}>● Trigger</span>}

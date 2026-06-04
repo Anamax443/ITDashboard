@@ -52,6 +52,8 @@ export interface ServiceProblem {
   is_compliant: boolean | null;
   policy_id: number | null;
   collected_at: string;
+  exit_code: number | null;
+  service_specific_exit_code: number | null;
 }
 
 export interface ServiceAggregate {

@@ -608,9 +608,60 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <li><strong>By PC view (default)</strong> — flat list of all problems with computer / service / state / start type / drift</li>
   <li><strong>By service view</strong> — aggregated; shows <code># PCs / Drift / OK / Unclassified</code> per service name — useful for "this service is stopped on 87 PCs"</li>
   <li>Toggle <strong>📊 By service</strong> / <strong>📋 By PC</strong></li>
-  <li>Filters: Hide trigger-start (default ON), Hide delayed-start, Hide per-user (default ON), Hide compliant</li>
+  <li>Filters: Hide trigger-start (default ON), Hide delayed-start, Hide per-user (default ON), Hide compliant, ⚠ Only ExitCode != 0</li>
+  <li><strong>Exit column</strong> shows Win32 ExitCode of the service. 0 = graceful (typical for trigger-start services that completed their task and shut down). Non-zero = SCM-level failure (shown red).</li>
   <li><strong>🔧 Scan services</strong> button with live <code>Scanning… Ns</code> status + button text</li>
 </ul>
+
+<h3 id="services-policy-nis2"><span data-lang="cs">Services monitoring policy (NIS2 / ISO 27001 dokumentace)</span><span data-lang="en">Services monitoring policy (NIS2 / ISO 27001 documentation)</span></h3>
+<div data-lang="cs">
+  <p>Tato sekce dokumentuje normální chování služeb a slepá místa monitoringu pro audit účely (NIS2, ISO 27001 — operator/auditor se zeptá: <em>"Máte definováno, co je normální chování služeb?"</em>).</p>
+  <p><strong>Co se monitoruje:</strong> každý monitorovaný PC (StartMode='Auto' AND State&lt;&gt;'Running'). Sken probíhá per Periodic checks schedule (default každých 90 min v okně 06:00–18:00 po-ne) + manuální 🔧 Scan services.</p>
+  <p><strong>Co je default skryté</strong> (klasifikováno jako legitimní stav, ne alert):</p>
+  <ul>
+    <li><strong>Trigger-start služby</strong> (registry <code>TriggerInfo</code> subkey present) — startuje na specifický trigger (login, network change, ETW event), po dokončení úkolu se sama vypne (graceful, ExitCode=0). Příklady: Google Updater, MapsBroker, M-Files Assistant.</li>
+    <li><strong>Per-user services</strong> (service name matching <code>_[a-f0-9]{4,12}$</code> LUID suffix) — vázané na user session, legitimně stopped když není přihlášen uživatel. Příklady: CDPUserSvc, cbdhsvc, OneSyncSvc.</li>
+    <li><strong>Compliant</strong> (matchne <code>service_policy</code> pravidlo a vyhovuje mu).</li>
+  </ul>
+  <p><strong>ExitCode semantika:</strong></p>
+  <ul>
+    <li><code>0</code> = SCM-level graceful exit. U trigger-start typicky znamená "dokončil úlohu". U classic Auto-stopped může znamenat "SCM timeout / startup failure where the service code returned 0 anyway" — proto sám exit code není absolutní gate.</li>
+    <li><code>!= 0</code> = SCM zaznamenal failure. Když je k tomu <code>ServiceSpecificExitCode</code> != 0 (obvykle s Win32ExitCode=1066/ERROR_SERVICE_SPECIFIC_ERROR), služba sama hlásí interní chybový kód.</li>
+    <li>Filtr <strong>⚠ Only ExitCode != 0</strong> izoluje skutečné crashes — užitečné na nalezení trigger-start služeb co se rozbily.</li>
+  </ul>
+  <p><strong>Známé slepé skvrny</strong> (transparent disclosure):</p>
+  <ul>
+    <li><strong>Žádná crash-loop detection</strong> — pokud služba naskakuje a padá rychle za sebou (např. každých 30 s s exit 0), nezachytí se. Sledování frekvence state flipů = roadmap Sprint 2.</li>
+    <li><strong>Žádný state history</strong> — vidíme jen aktuální stav z posledního skenu. Nezaznamenáváme přechody mezi sken-cykly.</li>
+    <li><strong>Whitelist je per-instalace</strong>, ne centralizovaný (GPO/CMDB sync) — pro solo-operator workflow OK, multi-admin operations roadmap.</li>
+    <li><strong>Sken interval = ~90 min</strong> — výpadek služby kratší než interval (např. crash + auto-restart do 60 s) může proklouznout.</li>
+  </ul>
+  <p>Operator review této dokumentace minimálně 1× ročně + při change managementu monitorovacích pravidel.</p>
+</div>
+<div data-lang="en">
+  <p>This section documents normal service behavior and monitoring blind spots for audit purposes (NIS2, ISO 27001 — operator/auditor will ask: <em>"Do you have defined what is normal service behavior?"</em>).</p>
+  <p><strong>What is monitored:</strong> every monitored PC (StartMode='Auto' AND State&lt;&gt;'Running'). Scan runs on the Periodic checks schedule (default every 90 min in window 06:00–18:00 Mon–Sun) plus the manual 🔧 Scan services button.</p>
+  <p><strong>What is hidden by default</strong> (classified as legitimate state, not an alert):</p>
+  <ul>
+    <li><strong>Trigger-start services</strong> (registry <code>TriggerInfo</code> subkey present) — start on a specific trigger (login, network change, ETW event) and shut down on completion (graceful, ExitCode=0). Examples: Google Updater, MapsBroker, M-Files Assistant.</li>
+    <li><strong>Per-user services</strong> (service name matching <code>_[a-f0-9]{4,12}$</code> LUID suffix) — bound to a user session, legitimately stopped when no user is logged on. Examples: CDPUserSvc, cbdhsvc, OneSyncSvc.</li>
+    <li><strong>Compliant</strong> (matches a <code>service_policy</code> rule and complies with it).</li>
+  </ul>
+  <p><strong>ExitCode semantics:</strong></p>
+  <ul>
+    <li><code>0</code> = SCM-level graceful exit. For trigger-start typically means "completed the task". For classic Auto-stopped can mean "SCM timeout / startup failure where the service code returned 0 anyway" — so exit code alone is not an absolute gate.</li>
+    <li><code>!= 0</code> = SCM recorded a failure. If <code>ServiceSpecificExitCode</code> is also != 0 (usually paired with Win32ExitCode=1066/ERROR_SERVICE_SPECIFIC_ERROR), the service itself reports an internal error code.</li>
+    <li>The <strong>⚠ Only ExitCode != 0</strong> filter isolates real crashes — useful for finding trigger-start services that actually failed.</li>
+  </ul>
+  <p><strong>Known blind spots</strong> (transparent disclosure):</p>
+  <ul>
+    <li><strong>No crash-loop detection</strong> — if a service starts and crashes rapidly (e.g. every 30 s with exit 0), it is not caught. Tracking state-flip frequency is Sprint 2 roadmap.</li>
+    <li><strong>No state history</strong> — we only see the current state from the last scan. Transitions between scan cycles are not recorded.</li>
+    <li><strong>Whitelist is per-install</strong>, not centralized (GPO/CMDB sync) — OK for the solo-operator workflow, multi-admin operations is roadmap.</li>
+    <li><strong>Scan interval ~90 min</strong> — a service outage shorter than the interval (e.g. crash + auto-restart under 60 s) can slip through.</li>
+  </ul>
+  <p>Operator reviews this documentation at least once a year and whenever monitoring rules change.</p>
+</div>
 
 <h3>GPO export</h3>
 <p><strong>📤 GPO script</strong> button generates a PowerShell file (<code>itdashboard-service-policy.ps1</code>) that applies your current policy. Intended for:</p>

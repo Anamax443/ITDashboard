@@ -27,6 +27,8 @@ interface RawService {
   State: string;
   DelayedAutoStart: boolean;
   TriggerStart: boolean;
+  ExitCode: number | null;
+  ServiceSpecificExitCode: number | null;
 }
 
 // Per-user service instances have a LUID suffix that changes per user session,
@@ -79,6 +81,8 @@ try {
       State = $s.State
       DelayedAutoStart = $delayed
       TriggerStart = $trigger
+      ExitCode = $s.ExitCode
+      ServiceSpecificExitCode = $s.ServiceSpecificExitCode
     }
   }
   $result | ConvertTo-Json -Compress -Depth 3
@@ -157,9 +161,11 @@ export async function replaceProblems(computerId: number, services: RawService[]
       .input('pu', isPerUserService(s.Name) ? 1 : 0)
       .input('comp', cls.isCompliant == null ? null : (cls.isCompliant ? 1 : 0))
       .input('pid', cls.policyId)
+      .input('ec', s.ExitCode ?? null)
+      .input('sec', s.ServiceSpecificExitCode ?? null)
       .query(`
-        INSERT INTO service_problems (computer_id, service_name, display_name, start_mode, state, delayed_start, trigger_start, per_user_start, is_compliant, policy_id)
-        VALUES (@cid, @name, @dn, @sm, @st, @del, @trg, @pu, @comp, @pid);
+        INSERT INTO service_problems (computer_id, service_name, display_name, start_mode, state, delayed_start, trigger_start, per_user_start, is_compliant, policy_id, exit_code, service_specific_exit_code)
+        VALUES (@cid, @name, @dn, @sm, @st, @del, @trg, @pu, @comp, @pid, @ec, @sec);
       `);
   }
 }
