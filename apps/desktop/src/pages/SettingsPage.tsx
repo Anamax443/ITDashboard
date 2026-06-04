@@ -146,6 +146,112 @@ function NetworkAccessSection() {
   );
 }
 
+interface RetentionStep {
+  name: string;
+  ok: boolean;
+  rowsAffected: number;
+  durationMs: number;
+  detail: string;
+  error?: string;
+}
+
+interface RetentionReport {
+  triggerSource: 'manual' | 'scheduled';
+  startedAt: string;
+  finishedAt: string;
+  totalDurationMs: number;
+  steps: RetentionStep[];
+}
+
+function RetentionRunBlock() {
+  const { t } = useI18n();
+  const [running, setRunning] = useState(false);
+  const [report, setReport] = useState<RetentionReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [nextRunAt, setNextRunAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/retention/status').then(r => r.json()).then((j) => {
+      if (j?.ok) {
+        setReport(j.lastReport ?? null);
+        setNextRunAt(j.nextRunAt ?? null);
+        setRunning(Boolean(j.running));
+      }
+    }).catch(() => {});
+  }, []);
+
+  const run = async () => {
+    setRunning(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/retention/run', { method: 'POST' });
+      const j = await res.json();
+      if (j?.ok) setReport(j.report); else setError(String(j?.error ?? 'unknown'));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 14, padding: 12, background: 'rgba(0,0,0,0.18)', border: '1px solid var(--border)', borderRadius: 4 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button
+          className="refresh-btn"
+          onClick={run}
+          disabled={running}
+          style={{ background: running ? 'var(--text-dim)' : 'var(--accent)', color: 'white', border: 'none', padding: '6px 14px', fontSize: 12, fontWeight: 600 }}
+        >
+          {running ? t('settings.retention.running') : t('settings.retention.runNow')}
+        </button>
+        {nextRunAt && (
+          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+            {t('settings.retention.next')}: {new Date(nextRunAt).toLocaleString()}
+          </span>
+        )}
+        {error && <span style={{ color: 'var(--critical)', fontSize: 11 }}>⚠ {error}</span>}
+      </div>
+
+      {report && (
+        <div style={{ marginTop: 12, fontSize: 12 }}>
+          <div style={{ color: 'var(--text-dim)', marginBottom: 6 }}>
+            {t('settings.retention.lastRun', {
+              source: report.triggerSource,
+              when: new Date(report.startedAt).toLocaleString(),
+              dur: (report.totalDurationMs / 1000).toFixed(1),
+            })}
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr style={{ color: 'var(--text-dim)', textAlign: 'left' }}>
+                <th style={{ padding: '4px 6px' }}>{t('settings.retention.col.step')}</th>
+                <th style={{ padding: '4px 6px' }}>{t('settings.retention.col.detail')}</th>
+                <th style={{ padding: '4px 6px', textAlign: 'right' }}>{t('settings.retention.col.rows')}</th>
+                <th style={{ padding: '4px 6px', textAlign: 'right' }}>{t('settings.retention.col.duration')}</th>
+                <th style={{ padding: '4px 6px' }}>{t('settings.retention.col.status')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.steps.map((s) => (
+                <tr key={s.name} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '4px 6px', fontFamily: 'Consolas, monospace' }}>{s.name}</td>
+                  <td style={{ padding: '4px 6px', color: 'var(--text-dim)' }}>{s.detail}</td>
+                  <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{s.rowsAffected.toLocaleString()}</td>
+                  <td style={{ padding: '4px 6px', textAlign: 'right', color: 'var(--text-dim)' }}>{(s.durationMs / 1000).toFixed(2)}s</td>
+                  <td style={{ padding: '4px 6px', color: s.ok ? 'var(--ok)' : 'var(--critical)' }}>
+                    {s.ok ? '✓' : `✗ ${s.error ?? ''}`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPage() {
   const { t } = useI18n();
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -343,6 +449,7 @@ export function SettingsPage() {
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>
             {t('settings.field.eventRetentionHelp')}
           </p>
+          <RetentionRunBlock />
         </Section>
 
         <Section

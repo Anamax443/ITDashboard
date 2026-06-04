@@ -19,6 +19,32 @@ interface RetentionResult {
   error?: string;
 }
 
+export interface RetentionRunReport {
+  triggerSource: 'manual' | 'scheduled';
+  startedAt: string;
+  finishedAt: string;
+  totalDurationMs: number;
+  steps: Array<{
+    name: string;
+    ok: boolean;
+    rowsAffected: number;
+    durationMs: number;
+    detail: string;
+    error?: string;
+  }>;
+}
+
+let lastReport: RetentionRunReport | null = null;
+let running = false;
+
+export function getLastRetentionReport(): RetentionRunReport | null {
+  return lastReport;
+}
+
+export function isRetentionRunning(): boolean {
+  return running;
+}
+
 async function callProc(procName: string, inputs: Record<string, number>): Promise<RetentionResult> {
   const t0 = Date.now();
   try {
@@ -51,51 +77,65 @@ async function readNum(key: string, fallback: number): Promise<number> {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-export async function runRetentionOnce(triggerSource: 'manual' | 'scheduled' = 'manual'): Promise<void> {
+export async function runRetentionOnce(triggerSource: 'manual' | 'scheduled' = 'manual'): Promise<RetentionRunReport> {
+  if (running) {
+    throw new Error('Retention run already in progress');
+  }
+  running = true;
+  try {
+    return await runRetentionInner(triggerSource);
+  } finally {
+    running = false;
+  }
+}
+
+async function runRetentionInner(triggerSource: 'manual' | 'scheduled'): Promise<RetentionRunReport> {
+  const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
   const eventsDays = await readNum('events.retention_days', 90);
   const activityDays = await readNum('activity.retention_days', 30);
   const pcUserDays = await readNum('pcUserHistory.retention_days', 90);
   logActivity('info', 'retention', `Starting (${triggerSource}) — events>${eventsDays}d, activity>${activityDays}d, pc_user_history>${pcUserDays}d`);
 
+  const steps: RetentionRunReport['steps'] = [];
+
   const eventsRes = await callPurge('sp_purge_old_events', eventsDays);
-  if (eventsRes.ok) {
-    logActivity('success', 'retention', `events purge: ${eventsRes.rowsAffected} rows removed (${(eventsRes.durationMs/1000).toFixed(1)}s)`);
-  } else {
-    logActivity('error', 'retention', `events purge failed: ${eventsRes.error}`);
-  }
+  if (eventsRes.ok) logActivity('success', 'retention', `events purge: ${eventsRes.rowsAffected} rows removed (${(eventsRes.durationMs/1000).toFixed(1)}s)`);
+  else              logActivity('error',   'retention', `events purge failed: ${eventsRes.error}`);
+  steps.push({ name: 'events_purge', ok: eventsRes.ok, rowsAffected: eventsRes.rowsAffected, durationMs: eventsRes.durationMs, detail: `> ${eventsDays}d`, error: eventsRes.error });
 
   const activityRes = await callPurge('sp_purge_old_activity', activityDays);
-  if (activityRes.ok) {
-    logActivity('success', 'retention', `activity_log purge: ${activityRes.rowsAffected} rows removed (${(activityRes.durationMs/1000).toFixed(1)}s)`);
-  } else {
-    logActivity('error', 'retention', `activity_log purge failed: ${activityRes.error}`);
-  }
+  if (activityRes.ok) logActivity('success', 'retention', `activity_log purge: ${activityRes.rowsAffected} rows removed (${(activityRes.durationMs/1000).toFixed(1)}s)`);
+  else                logActivity('error',   'retention', `activity_log purge failed: ${activityRes.error}`);
+  steps.push({ name: 'activity_log_purge', ok: activityRes.ok, rowsAffected: activityRes.rowsAffected, durationMs: activityRes.durationMs, detail: `> ${activityDays}d`, error: activityRes.error });
 
   const pcUserRes = await callPurge('sp_purge_pc_user_history', pcUserDays);
-  if (pcUserRes.ok) {
-    logActivity('success', 'retention', `pc_user_history purge: ${pcUserRes.rowsAffected} rows removed (${(pcUserRes.durationMs/1000).toFixed(1)}s)`);
-  } else {
-    logActivity('error', 'retention', `pc_user_history purge failed: ${pcUserRes.error}`);
-  }
+  if (pcUserRes.ok) logActivity('success', 'retention', `pc_user_history purge: ${pcUserRes.rowsAffected} rows removed (${(pcUserRes.durationMs/1000).toFixed(1)}s)`);
+  else              logActivity('error',   'retention', `pc_user_history purge failed: ${pcUserRes.error}`);
+  steps.push({ name: 'pc_user_history_purge', ok: pcUserRes.ok, rowsAffected: pcUserRes.rowsAffected, durationMs: pcUserRes.durationMs, detail: `> ${pcUserDays}d`, error: pcUserRes.error });
 
-  // Event-table duplicate cleanup. The collector uses a time-based
-  // watermark with inclusive StartTime, so events landing in the overlap
-  // window between two runs get inserted twice. sp_purge_duplicate_events
-  // keeps the first (lowest id) row of each duplicate group and deletes
-  // the rest. Lookback defaults to the same window as events.retention_days
-  // so the dedup pass covers everything not yet purged.
   const dedupEnabled = (await getSetting('events.dedup_enabled').catch(() => '1')) === '1';
   if (dedupEnabled) {
     const dedupLookback = await readNum('events.dedup_lookback_days', eventsDays);
     const dedupRes = await callProc('sp_purge_duplicate_events', { lookback_days: dedupLookback });
-    if (dedupRes.ok) {
-      logActivity('success', 'retention', `events dedup: ${dedupRes.rowsAffected} duplicate rows removed within ${dedupLookback}d window (${(dedupRes.durationMs/1000).toFixed(1)}s)`);
-    } else {
-      logActivity('error', 'retention', `events dedup failed: ${dedupRes.error}`);
-    }
+    if (dedupRes.ok) logActivity('success', 'retention', `events dedup: ${dedupRes.rowsAffected} duplicate rows removed within ${dedupLookback}d window (${(dedupRes.durationMs/1000).toFixed(1)}s)`);
+    else             logActivity('error',   'retention', `events dedup failed: ${dedupRes.error}`);
+    steps.push({ name: 'events_dedup', ok: dedupRes.ok, rowsAffected: dedupRes.rowsAffected, durationMs: dedupRes.durationMs, detail: `lookback ${dedupLookback}d`, error: dedupRes.error });
   } else {
     logActivity('info', 'retention', 'events dedup skipped (events.dedup_enabled=0)');
+    steps.push({ name: 'events_dedup', ok: true, rowsAffected: 0, durationMs: 0, detail: 'skipped (disabled in settings)' });
   }
+
+  const finishedAtMs = Date.now();
+  const report: RetentionRunReport = {
+    triggerSource,
+    startedAt,
+    finishedAt: new Date(finishedAtMs).toISOString(),
+    totalDurationMs: finishedAtMs - startedAtMs,
+    steps,
+  };
+  lastReport = report;
+  return report;
 }
 
 let timer: NodeJS.Timeout | null = null;
