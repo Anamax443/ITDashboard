@@ -3,6 +3,7 @@ import type { ServiceProblem, ServiceAggregate } from '../api.js';
 import { api, timeAgo } from '../api.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 import { HelpBox } from '../components/HelpBox.js';
+import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { useI18n } from '../i18n.js';
 
 export function ServicesPage() {
@@ -91,6 +92,29 @@ export function ServicesPage() {
   const crashCount = items.filter((s) => s.exit_code !== null && s.exit_code !== 0).length;
   const gracefulCount = items.filter((s) => s.exit_code === 0).length;
 
+  const exportFilterParts: string[] = [];
+  if (search) exportFilterParts.push(`search="${search}"`);
+  if (hideTriggerStart) exportFilterParts.push('hide-trigger-graceful');
+  if (hideDelayedStart) exportFilterParts.push('hide-delayed-graceful');
+  if (hidePerUser) exportFilterParts.push('hide-per-user');
+  if (hideCompliant) exportFilterParts.push('hide-compliant');
+  if (onlyNonzeroExit) exportFilterParts.push('only-exitcode-nonzero');
+  const exportFilterSummary = exportFilterParts.join(' AND ');
+  const exportColumns: ExportColumn<ServiceProblem>[] = [
+    { key: 'computer', label: 'Computer', get: (r) => r.computer },
+    { key: 'service_name', label: 'Service', get: (r) => r.service_name },
+    { key: 'display_name', label: 'Display name', get: (r) => r.display_name ?? '' },
+    { key: 'state', label: 'State', get: (r) => r.state },
+    { key: 'start_mode', label: 'Start mode', get: (r) => r.start_mode },
+    { key: 'exit_code', label: 'Exit code', get: (r) => r.exit_code ?? '' },
+    { key: 'service_specific_exit_code', label: 'ServiceSpecific exit', get: (r) => r.service_specific_exit_code ?? '' },
+    { key: 'trigger_start', label: 'Trigger', get: (r) => r.trigger_start ? 'yes' : '' },
+    { key: 'delayed_start', label: 'Delayed', get: (r) => r.delayed_start ? 'yes' : '' },
+    { key: 'per_user_start', label: 'PerUser', get: (r) => r.per_user_start ? 'yes' : '' },
+    { key: 'is_compliant', label: 'Compliance', get: (r) => r.is_compliant === true ? 'OK' : r.is_compliant === false ? 'Drift' : '?' },
+    { key: 'collected_at', label: 'Last scan', get: (r) => r.collected_at },
+  ];
+
   return (
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1' }}>
       <div style={{ padding: 12 }}>
@@ -156,6 +180,7 @@ export function ServicesPage() {
           >
             📤 GPO script
           </a>
+          <ExportMenu rows={sorted} columns={exportColumns} title="ITDashboard — Služby" filterSummary={exportFilterSummary} filenameBase="services" />
           <button className="refresh-btn" onClick={() => setView(view === 'by-pc' ? 'by-service' : 'by-pc')}>
             {view === 'by-pc' ? '📊 By service' : '📋 By PC'}
           </button>

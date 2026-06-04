@@ -6,6 +6,7 @@ import { DisksCell } from '../components/DiskBar.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { UserHistoryModal } from '../components/UserHistoryModal.js';
 import { PcActionsButton } from '../components/PcActions.js';
+import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { useI18n } from '../i18n.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
@@ -139,6 +140,26 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
   const sorted = useSortedItems(filtered, sort);
   const enabled = items.filter((c) => c.enabled);
   const disabled = items.filter((c) => !c.enabled);
+
+  // Export filter summary + columns
+  const filterParts: string[] = [];
+  if (search) filterParts.push(`search="${search}"`);
+  if (statusFilter) filterParts.push(`status=${statusFilter}`);
+  const filterSummary = filterParts.join(' AND ');
+  const exportColumns: ExportColumn<ComputerItem>[] = [
+    { key: 'name', label: 'Name', get: (r) => r.name },
+    { key: 'fqdn', label: 'FQDN', get: (r) => r.fqdn ?? '' },
+    { key: 'ip_address', label: 'IP', get: (r) => r.ip_address ?? '' },
+    { key: 'os_version', label: 'OS', get: (r) => r.os_version ?? '' },
+    { key: 'current_user', label: 'User', get: (r) => r.current_user ?? '' },
+    { key: 'enabled', label: 'Enabled', get: (r) => r.enabled ? 'yes' : 'no' },
+    { key: 'monitor_enabled', label: 'Monitor', get: (r) => r.monitor_enabled ? 'yes' : 'no' },
+    { key: 'last_status', label: 'Status', get: (r) => r.last_status ?? '' },
+    { key: 'last_seen', label: 'Last seen', get: (r) => r.last_seen ?? '' },
+    { key: 'consecutive_failures', label: 'Fails', get: (r) => r.consecutive_failures ?? 0 },
+    { key: 'last_collected_at', label: 'Last collected', get: (r) => r.last_collected_at ?? '' },
+    { key: 'ou_path', label: 'OU', get: (r) => r.ou_path ?? '' },
+  ];
   const monitored = items.filter((c) => c.enabled && !c.excluded && c.monitor_enabled).length;
   const unmonitored = items.filter((c) => c.enabled && !c.excluded && !c.monitor_enabled).length;
   const failing = items.filter((c) => c.enabled && !c.excluded && (c.consecutive_failures ?? 0) > 0).length;
@@ -262,6 +283,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
           <button className="refresh-btn" onClick={runSync} disabled={syncing} style={{ minWidth: 130 }}>
             {syncing ? 'Syncing…' : '↻ Sync from AD'}
           </button>
+          <ExportMenu rows={sorted} columns={exportColumns} title="ITDashboard — Počítače" filterSummary={filterSummary} filenameBase="computers" />
         </div>
       </div>
       {showHistory && (

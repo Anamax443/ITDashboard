@@ -1012,7 +1012,7 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
 
   <p>📌 <strong>Žádný "Clear all" button</strong> aktuálně neexistuje. Vyprázdnění filtrů = projít každý input zvlášť a vrátit na default. Sprint 2 candidate: přidat globální "Vymazat filtry" tlačítko + URL persistence aktuálních filtrů pro share-link / refresh-survive.</p>
 
-  <p>📤 <strong>Export filtrovaných dat</strong>: Sprint 1.8 plánuje per-tab export PDF/HTML/TXT s viditelným banner-em "Filtrováno podle: …". Současně ne — pokud potřebuješ data ven, použij browser print (Ctrl+P) nebo screenshot.</p>
+  <p>📤 <strong>Export filtrovaných dat (LIVE 2026-06-04):</strong> každý tab s tabulkou má v hlavičce tlačítko <code>📤 Export (N)</code> kde N = počet aktuálně zobrazených řádků. Dropdown nabízí <strong>PDF / Tisk</strong> (nové okno, browser print dialog umožní Save as PDF), <strong>HTML</strong> (samostatný styled soubor s filtr banner-em), <strong>CSV</strong> (Excel-friendly s BOM pro diacritiku), <strong>TXT</strong> (tab-separated). Pokud jsou aktivní filtry, exportovaný soubor má červený banner "⚠ Filtrováno: …" s vypsanými parametry — pro audit trail je jasné že to NENÍ kompletní snapshot.</p>
 </div>
 
 <div data-lang="en">
@@ -1036,7 +1036,7 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
 
   <p>📌 <strong>No "Clear all" button</strong> exists today. Clearing filters = walk each input and reset to default. Sprint 2 candidate: add a global "Clear filters" button + URL persistence of current filters for share-link / refresh-survive.</p>
 
-  <p>📤 <strong>Export of filtered data</strong>: Sprint 1.8 plans per-tab export to PDF/HTML/TXT with a visible "Filtered by: …" banner. Not yet — for now use browser print (Ctrl+P) or screenshot.</p>
+  <p>📤 <strong>Export of filtered data (LIVE 2026-06-04):</strong> every tab with a table has an <code>📤 Export (N)</code> button in the header where N is the number of currently visible rows. Dropdown offers <strong>PDF / Print</strong> (new window, browser Save as PDF), <strong>HTML</strong> (standalone styled file with filter banner), <strong>CSV</strong> (Excel-friendly with BOM for diacritics), <strong>TXT</strong> (tab-separated). When filters are active, the exported file carries a red "⚠ Filtered: …" banner with the parameters listed — for audit trail clarity that it is NOT a complete snapshot.</p>
 </div>
 
 <h2 id="security"><span data-lang="cs">Bezpečnostní model</span><span data-lang="en">Security model</span></h2>

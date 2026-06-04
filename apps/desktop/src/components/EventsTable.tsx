@@ -3,6 +3,7 @@ import type { EventItem, ComputerItem } from '../api.js';
 import { levelName, levelLabel } from '../api.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 import { HelpBox } from './HelpBox.js';
+import { ExportMenu, type ExportColumn } from './ExportMenu.js';
 import { useI18n } from '../i18n.js';
 
 interface Props {
@@ -41,6 +42,25 @@ export function EventsTable(props: Props) {
   });
 
   const sorted = useSortedItems(filtered, sort);
+
+  // Filter summary for export banner — list only non-default filters
+  const filterParts: string[] = [];
+  if (search) filterParts.push(`search="${search}"`);
+  if (props.filterComputer) filterParts.push(`PC=${props.filterComputer}`);
+  if (filterProvider) filterParts.push(`source=${filterProvider}`);
+  if (props.filterLevel) filterParts.push(`level=${props.filterLevel}`);
+  if (props.filterHours !== 24) filterParts.push(`window=${props.filterHours}h`);
+  const filterSummary = filterParts.join(' AND ');
+
+  const exportColumns: ExportColumn<EventItem>[] = [
+    { key: 'time_created', label: 'Time', get: (r) => r.time_created },
+    { key: 'computer', label: 'Computer', get: (r) => r.computer },
+    { key: 'level', label: 'Level', get: (r) => levelName(r.level) },
+    { key: 'event_id', label: 'Event ID', get: (r) => r.event_id },
+    { key: 'provider_name', label: 'Source', get: (r) => r.provider_name ?? '' },
+    { key: 'log_name', label: 'Log', get: (r) => r.log_name },
+    { key: 'message', label: 'Message', get: (r) => (r.message ?? '').replace(/\s+/g, ' ').trim() },
+  ];
 
   return (
     <div className="panel events-panel">
@@ -82,6 +102,7 @@ export function EventsTable(props: Props) {
             <option value={720}>30d</option>
           </select>
           <button className="refresh-btn" onClick={props.onRefresh}>↻</button>
+          <ExportMenu rows={sorted} columns={exportColumns} title="ITDashboard — Události" filterSummary={filterSummary} filenameBase="events" />
         </div>
       </div>
       <div className="panel-body">

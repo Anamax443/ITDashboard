@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { api, timeAgo } from '../api.js';
 import type { PerfCategory, PerfCulprit, PerfEventItem, PerfSummary, PerfTopPc } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
+import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { useI18n } from '../i18n.js';
 
 const CATEGORIES: { value: '' | PerfCategory; label: string }[] = [
@@ -99,6 +100,26 @@ export function PerfPage() {
             {scanning ? 'Scanning…' : '▶ Run perf scan'}
           </button>
           <button className="refresh-btn" onClick={refresh}>↻ Refresh</button>
+          <ExportMenu
+            rows={items}
+            columns={[
+              { key: 'time_created', label: 'Time', get: (r: PerfEventItem) => r.time_created },
+              { key: 'computer', label: 'Computer', get: (r: PerfEventItem) => r.computer },
+              { key: 'category', label: 'Category', get: (r: PerfEventItem) => r.category },
+              { key: 'event_id', label: 'Event ID', get: (r: PerfEventItem) => r.event_id },
+              { key: 'culprit_name', label: 'Culprit', get: (r: PerfEventItem) => r.culprit_name ?? '' },
+              { key: 'culprit_friendly', label: 'Culprit friendly', get: (r: PerfEventItem) => r.culprit_friendly ?? '' },
+              { key: 'total_time_ms', label: 'Total time (ms)', get: (r: PerfEventItem) => r.total_time_ms ?? '' },
+              { key: 'degradation_ms', label: 'Degradation (ms)', get: (r: PerfEventItem) => r.degradation_ms ?? '' },
+            ] as ExportColumn<PerfEventItem>[]}
+            title="ITDashboard — Výkon"
+            filterSummary={[
+              days !== 7 ? `window=${days}d` : '',
+              category ? `category=${category}` : '',
+              computer ? `computer="${computer}"` : '',
+            ].filter(Boolean).join(' AND ')}
+            filenameBase="perf"
+          />
         </div>
       </div>
       <div className="panel-body" style={{ padding: 16 }}>

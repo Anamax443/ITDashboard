@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ActivityLogEntry, ActivityHistoryItem } from '../api.js';
 import { api } from '../api.js';
 import { HelpBox } from './HelpBox.js';
+import { ExportMenu, type ExportColumn } from './ExportMenu.js';
 import { useI18n } from '../i18n.js';
 
 const LEVEL_COLORS: Record<ActivityLogEntry['level'], string> = {
@@ -263,6 +264,23 @@ function ActivityHistory({ height, onSwitchToLive }: { height: number; onSwitchT
           />
           <button className="refresh-btn" onClick={load} disabled={loading}>{loading ? '…' : '↻ Refresh'}</button>
           <button className="refresh-btn" onClick={copy} disabled={items.length === 0}>{copied ? '✓ Copied' : '📋 Copy'}</button>
+          <ExportMenu
+            rows={items}
+            columns={[
+              { key: 'ts', label: 'Time', get: (r: ActivityHistoryItem) => new Date(r.ts).toISOString() },
+              { key: 'level', label: 'Level', get: (r: ActivityHistoryItem) => r.level },
+              { key: 'source', label: 'Source', get: (r: ActivityHistoryItem) => r.source },
+              { key: 'message', label: 'Message', get: (r: ActivityHistoryItem) => r.message },
+            ] as ExportColumn<ActivityHistoryItem>[]}
+            title="ITDashboard — Aktivita"
+            filterSummary={[
+              hours !== 24 ? `window=${hours}h` : '',
+              level ? `level=${level}` : '',
+              source ? `source=${source}` : '',
+              search ? `search="${search}"` : '',
+            ].filter(Boolean).join(' AND ')}
+            filenameBase="activity"
+          />
         </div>
       </div>
       <div className="panel-body activity-log" style={{ height, fontFamily: 'Consolas, "Courier New", monospace', fontSize: 11, lineHeight: '16px' }}>
