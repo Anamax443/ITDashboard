@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-03 (Auth Gate Sprint 1 — page-load credentials, session-scoped, server-mediated token mode for launchers)
+Last updated: 2026-06-04 (Sprint 1.5 — AD edit-group gate, stub off in production, downloaded .bat files force admin credential prompt)
 
 ## Current Live State
 
@@ -117,6 +117,108 @@ Docs/UI sync for this fix completed:
   a CS/EN troubleshooting entry "URL line missing from fail screen".
 - `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show a one-line note in the
   Actions modal warning block.
+
+## Sprint 1.5 — edit-tier hardening (NEW 2026-06-04)
+
+Refinement of Sprint 1 after design discussion with operator about the
+read-tier / edit-tier split:
+
+**Tier model in operator's environment:**
+- Read tier (dashboard view, list, search, filter, "Aktualizovat teď"
+  refresh-single-PC) = whitelist IP, no auth, runs under svc-itdashboard.
+- Edit tier (Launch buttons opening MMC / Services / Event Viewer /
+  Task Scheduler / RDP / PsExec / PowerShell Remote / admin shares
+  on remote PC) = requires personal AD admin attribution.
+
+Operator runs Windows with a multi-tier identity model: basic-tier
+user (own PC only), admin-tier-PC (client stations), admin-tier-server
+(servers), admin-tier-DC (DCs). Sprint 1 forced auth at the dashboard
+modal (correct). But three gaps remained:
+
+### 1. AD edit-group gate (`AD_EDIT_GROUP`)
+
+Without group membership check, ANY domain user that knows their own
+password could LDAP-bind successfully and unlock the edit tier. Even a
+janitor with a domain account would pass. Fixed in
+`apps/server/src/auth/ldap.ts:checkEditGroupMembership` using AD's
+`LDAP_MATCHING_RULE_IN_CHAIN` OID `1.2.840.113556.1.4.1941` for
+transitive group resolution (nested group memberships honored).
+
+New env vars on server:
+- `AD_EDIT_GROUP` (distinguishedName, e.g.
+  `CN=ITDashboard-Editors,OU=Groups,DC=AXINETWORK,DC=LOC`)
+- `AD_LDAP_BASE_DN` (search root, e.g. `DC=AXINETWORK,DC=LOC`)
+
+Behavior matrix:
+- Production + `AD_EDIT_GROUP` set → require group membership.
+- Production + `AD_EDIT_GROUP` unset → deny by default (operator
+  must explicitly configure the gate; cannot accidentally ship open).
+- Development + `AD_EDIT_GROUP` unset → allow (iteration without
+  group infrastructure).
+- Successful bind that's not in the group returns
+  `not_in_edit_group` reason, surfaced in modal as a localized
+  message asking the user to contact an admin.
+
+### 2. Stub-mode off in production (`AD_LDAP_STUB`)
+
+`AD_LDAP_STUB=1` accepts any non-empty credentials and is for
+first-deploy local testing only. Module-init guard in
+`apps/server/src/auth/ldap.ts` throws at boot if
+`NODE_ENV=production && AD_LDAP_STUB=1`. A forgotten env var cannot
+silently open the edit tier in production.
+
+### 3. Downloaded files force admin credential prompt
+
+`.rdp` (already had `prompt for credentials:i:1`), `.bat` for PsExec
+and admin-share open both rewritten in
+`apps/desktop/src/components/PcActions.tsx` to:
+- `set /p adminuser=Admin account (DOMAIN\\user or user@domain): `
+- `runas /netonly /user:"%adminuser%" "<tool> <args>"`
+
+Operator who double-clicks a downloaded .bat now ALWAYS sees a CMD
+prompt for the admin identity, then a Windows credential dialog for
+the password — no silent fallback to current Windows session creds
+(which would be the basic-tier user that lacks remote admin and
+silently fails Access Denied without explanation).
+
+`Kopírovat příkaz` / `Kopírovat UNC` / `Kopírovat hostname` stay
+read-tier (they just put a string on the clipboard; operator chooses
+when and how to use it).
+
+### Files touched
+
+- MOD: `apps/server/src/auth/ldap.ts` — production-stub guard +
+  `checkEditGroupMembership` + new env vars `AD_LDAP_BASE_DN`,
+  `AD_EDIT_GROUP`. New `not_in_edit_group` reason in `LdapBindResult`.
+- MOD: `apps/desktop/src/components/AuthGate.tsx` — handle the new
+  reason in the modal.
+- MOD: `apps/desktop/src/components/PcActions.tsx` — `psexecBat` and
+  `shareBat` wrap tool invocation in `set /p adminuser` + `runas
+  /netonly`.
+- MOD: `apps/desktop/src/i18n.tsx` — CS+EN `auth.notInEditGroup`.
+- Docs: HANDOFF / README / ARCHITECTURE / dashboard.html (CS+EN).
+
+### Deployment steps
+
+On the server (MIKOS, NSSM environment for `ITDashboardAPI`), in
+addition to the Sprint 1 env vars:
+
+```
+AD_LDAP_BASE_DN = DC=AXINETWORK,DC=LOC
+AD_EDIT_GROUP   = CN=ITDashboard-Editors,OU=Groups,DC=AXINETWORK,DC=LOC
+NODE_ENV        = production
+```
+
+Plus create the `ITDashboard-Editors` AD group (or pick an existing
+group) and add the IT specialists who should have edit tier access.
+
+After deploy, the modal will reject:
+- Anyone whose creds don't bind (invalid_credentials)
+- Anyone valid who isn't a member of the edit group
+  (not_in_edit_group)
+
+Operator + designated admins go through; unrelated domain users
+cannot escalate via the dashboard.
 
 ## Auth Gate Sprint 1 — page-load credentials + token mode (NEW since 2026-06-03)
 

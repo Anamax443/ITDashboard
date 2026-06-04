@@ -86,10 +86,18 @@ function rdpFileContent(host: string): string {
 }
 
 function psexecBat(host: string): string {
+  // Force admin credential prompt: never silently fall back to the operator's
+  // current Windows session creds (which on a multi-tier-account workstation
+  // would typically be the basic-tier user without admin rights on the target).
+  // Operator must explicitly enter the appropriate admin identity for the
+  // target tier (adminPC / admin server / admin DC).
   return [
     '@echo off',
     `title PsExec cmd on ${host}`,
-    `psexec \\\\${host} cmd.exe`,
+    'setlocal EnableExtensions',
+    'set /p adminuser=Admin account (DOMAIN\\user or user@domain): ',
+    'if not defined adminuser (echo No admin account entered. & pause & exit /b 1)',
+    `runas /netonly /user:"%adminuser%" "psexec \\\\${host} cmd.exe"`,
     'pause',
     '',
   ].join('\r\n');
@@ -97,9 +105,16 @@ function psexecBat(host: string): string {
 
 function shareBat(host: string, drive: string): string {
   const letter = drive.replace(/:$/, '');
+  // Same principle as psexecBat: force admin credential prompt, no silent
+  // fallback to current Windows session (basic-tier user) which would be
+  // denied on remote admin shares.
   return [
     '@echo off',
-    `start "" explorer.exe \\\\${host}\\${letter}$`,
+    `title Open share \\\\${host}\\${letter}$`,
+    'setlocal EnableExtensions',
+    'set /p adminuser=Admin account (DOMAIN\\user or user@domain): ',
+    'if not defined adminuser (echo No admin account entered. & pause & exit /b 1)',
+    `runas /netonly /user:"%adminuser%" "explorer.exe \\\\${host}\\${letter}$"`,
     '',
   ].join('\r\n');
 }

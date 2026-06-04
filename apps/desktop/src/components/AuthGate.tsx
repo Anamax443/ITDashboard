@@ -78,7 +78,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       const j = await res.json();
       if (!j.ok) {
-        setError(j.error === 'invalid_credentials' ? t('auth.invalidCredentials') : t('auth.error', { detail: String(j.detail ?? j.error ?? '') }));
+        let msg: string;
+        if (j.error === 'invalid_credentials') msg = t('auth.invalidCredentials');
+        else if (j.error === 'not_in_edit_group') msg = t('auth.notInEditGroup', { detail: String(j.detail ?? '') });
+        else msg = t('auth.error', { detail: String(j.detail ?? j.error ?? '') });
+        setError(msg);
         setSubmitting(false);
         return;
       }
