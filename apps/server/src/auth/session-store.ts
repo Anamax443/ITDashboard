@@ -3,7 +3,13 @@ import { randomBytes } from 'node:crypto';
 export type Session = {
   id: string;
   user: string;
-  password: string;
+  // `password` is set only for password-tier sessions (LDAP bind via the
+  // dashboard modal). Windows-auth sessions (identity established by IIS
+  // Windows Authentication and forwarded via X-Forwarded-User header) have
+  // password=null — the server has never seen the password, and launches
+  // must obtain credentials at runtime via the launcher ask-mode prompt.
+  password: string | null;
+  authMethod: 'password' | 'windows';
   createdAt: number;
   expiresAt: number;
   lastActivityAt: number;
