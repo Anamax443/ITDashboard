@@ -233,6 +233,9 @@ const dict = {
     'settings.field.warningGb': 'Warning (GB volného)',
     'settings.field.evalDriveLetters': 'Vyhodnocované disky (písmena)',
     'settings.field.evalDriveLettersHelp': 'Která písmena disků se zahrnují do vyhodnocení critical / warning. Default "C" (jen systémový disk). Comma-separated např. "C,D" nebo "C,D,E". Prázdné nebo "*" = vyhodnoť všechny disky (původní chování). Disky mimo seznam jsou v Disks sloupci stále vidět ale nemění status PC. Aplikuje se na obojí — critical i warning.',
+    'settings.field.critDrives': 'Critical disky',
+    'settings.field.warnDrives': 'Warning disky',
+    'settings.field.driveSyntaxHelp': 'Per-tier scope: které disky kontrolovat pro critical, které pro warning. Syntax: "C" = jen C · "C,D" = list · "<>C" nebo "!C" = vše kromě C · "<>C,D" = vše kromě C a D · "*" nebo prázdné = všechny. Default obojí "C" (jen systém). Typická konfigurace pro multi-drive PC: Critical = "C" (systém), Warning = "<>C" (datové/externí — chyba ale ne systémová). Disky mimo obojí scope se v Disks sloupci stále zobrazují ale nemění status PC.',
 
     'settings.check.eventlog': 'Eventlog collector',
     'settings.check.disk': 'Disk scan',
@@ -495,6 +498,9 @@ const dict = {
     'settings.field.warningGb': 'Warning (GB free)',
     'settings.field.evalDriveLetters': 'Evaluated drives (letters)',
     'settings.field.evalDriveLettersHelp': 'Which drive letters participate in the critical / warning evaluation. Default "C" (system drive only). Comma-separated e.g. "C,D" or "C,D,E". Empty or "*" = evaluate all drives (legacy behavior). Drives outside the list still show in the Disks column but do not change the PC status. Applies to BOTH critical and warning.',
+    'settings.field.critDrives': 'Critical drives',
+    'settings.field.warnDrives': 'Warning drives',
+    'settings.field.driveSyntaxHelp': 'Per-tier scope: which drives are checked for critical, which for warning. Syntax: "C" = only C · "C,D" = list · "<>C" or "!C" = anything except C · "<>C,D" = anything except C and D · "*" or empty = all drives. Default for both = "C" (system only). Typical multi-drive setup: Critical = "C" (system), Warning = "<>C" (data / external — a problem but not a system emergency). Drives outside both scopes still appear in the Disks column but do not change the PC status.',
 
     'settings.check.eventlog': 'Eventlog collector',
     'settings.check.disk': 'Disk scan',

@@ -84,45 +84,73 @@ export interface DiskItem {
 
 export type DiskStatus = 'critical' | 'warning' | 'ok';
 
+/**
+ * Drive-letter scope for one tier (critical or warning).
+ *  - all       — every drive participates
+ *  - include   — only drives in `letters` participate
+ *  - exclude   — every drive EXCEPT those in `letters` participates
+ *
+ * Syntax accepted by parseDriveScope:
+ *  ""  or "*"      → all
+ *  "C"             → include C
+ *  "C, D, E"       → include C, D, E
+ *  "!C"  or "<>C"  → exclude C (= every other drive)
+ *  "<>C,D"         → exclude C and D
+ * Negation prefix applies to the WHOLE expression — the prefix is allowed
+ * at the start of the string only. Mixing per-item include/exclude in one
+ * expression is not supported (intentional — keeps semantics obvious).
+ */
+export type DriveLetterScope =
+  | { kind: 'all' }
+  | { kind: 'include'; letters: Set<string> }
+  | { kind: 'exclude'; letters: Set<string> };
+
 export interface DiskThresholds {
   criticalPct: number;
   warningPct: number;
   criticalGb: number;
   warningGb: number;
   mode: 'pct' | 'gb' | 'either';
-  /**
-   * Letters of drives that participate in critical/warning evaluation. Empty
-   * set = evaluate ALL drives (legacy behavior). Default is just `C` per
-   * operator decision 2026-06-04 — most fleet damage came from external /
-   * removable / backup drives triggering critical when they were never
-   * meant to be monitored. The disks list in Computers still renders every
-   * drive for situational awareness; the status color / chip count only
-   * reflects the allowlist.
-   */
-  evalDriveLetters: Set<string>;
+  /** Which drives are evaluated against critical thresholds. Default include C. */
+  critScope: DriveLetterScope;
+  /** Which drives are evaluated against warning thresholds. Default include C. */
+  warnScope: DriveLetterScope;
 }
 
-function parseDriveLetters(raw: string | undefined): Set<string> {
-  if (raw == null) return new Set(['C']);
-  const trimmed = raw.trim();
-  // Empty or wildcard = evaluate all drives
-  if (trimmed === '' || trimmed === '*') return new Set();
+function parseDriveScope(raw: string | undefined, fallback: DriveLetterScope): DriveLetterScope {
+  if (raw == null) return fallback;
+  let trimmed = raw.trim();
+  if (trimmed === '' || trimmed === '*') return { kind: 'all' };
+  let exclude = false;
+  if (trimmed.startsWith('<>')) {
+    exclude = true;
+    trimmed = trimmed.slice(2).trim();
+  } else if (trimmed.startsWith('!')) {
+    exclude = true;
+    trimmed = trimmed.slice(1).trim();
+  }
   const letters = trimmed
     .split(/[\s,;]+/)
     .map((s) => s.trim().toUpperCase().replace(/:$/, '').slice(0, 1))
     .filter((s) => /^[A-Z]$/.test(s));
-  if (letters.length === 0) return new Set(['C']); // garbage input → fall back to default
-  return new Set(letters);
+  if (letters.length === 0) return fallback;
+  return exclude
+    ? { kind: 'exclude', letters: new Set(letters) }
+    : { kind: 'include', letters: new Set(letters) };
 }
 
 export function parseDiskThresholds(settings: Record<string, string>): DiskThresholds {
+  // Legacy single-tier setting still acts as default for both tiers when
+  // the new per-tier settings are absent. New install default is "C".
+  const legacy = parseDriveScope(settings['disk.eval_drive_letters'], { kind: 'include', letters: new Set(['C']) });
   return {
     criticalPct: Number(settings['disk.critical_pct'] ?? 5),
     warningPct: Number(settings['disk.warning_pct'] ?? 15),
     criticalGb: Number(settings['disk.critical_gb'] ?? 5),
     warningGb: Number(settings['disk.warning_gb'] ?? 20),
     mode: (settings['disk.threshold_mode'] as 'pct' | 'gb' | 'either') ?? 'pct',
-    evalDriveLetters: parseDriveLetters(settings['disk.eval_drive_letters']),
+    critScope: parseDriveScope(settings['disk.crit_drives'], legacy),
+    warnScope: parseDriveScope(settings['disk.warn_drives'], legacy),
   };
 }
 
@@ -130,9 +158,27 @@ export function diskLetter(d: DiskItem): string {
   return (d.drive_letter ?? '').toUpperCase().replace(/:$/, '').slice(0, 1);
 }
 
-export function diskInEvalScope(d: DiskItem, t: DiskThresholds): boolean {
-  if (t.evalDriveLetters.size === 0) return true; // empty set = evaluate all
-  return t.evalDriveLetters.has(diskLetter(d));
+export function diskInScope(d: DiskItem, scope: DriveLetterScope): boolean {
+  const L = diskLetter(d);
+  if (scope.kind === 'all') return true;
+  if (scope.kind === 'include') return scope.letters.has(L);
+  return !scope.letters.has(L); // exclude
+}
+
+/** Per-disk status that respects per-tier scope. critScope wins over warnScope. */
+export function evaluateDiskWithScope(d: DiskItem, t: DiskThresholds): DiskStatus {
+  if (d.total_bytes <= 0) return 'ok';
+  const freePct = (d.free_bytes / d.total_bytes) * 100;
+  const freeGb = d.free_bytes / 1024 ** 3;
+  const pctCrit = freePct < t.criticalPct;
+  const pctWarn = freePct < t.warningPct;
+  const gbCrit = freeGb < t.criticalGb;
+  const gbWarn = freeGb < t.warningGb;
+  const isCritThr = t.mode === 'pct' ? pctCrit : t.mode === 'gb' ? gbCrit : (pctCrit || gbCrit);
+  const isWarnThr = t.mode === 'pct' ? pctWarn : t.mode === 'gb' ? gbWarn : (pctWarn || gbWarn);
+  if (isCritThr && diskInScope(d, t.critScope)) return 'critical';
+  if (isWarnThr && diskInScope(d, t.warnScope)) return 'warning';
+  return 'ok';
 }
 
 export interface DiskSummary {
@@ -148,8 +194,7 @@ export function summarizeDisks(disks: DiskItem[], t: DiskThresholds): DiskSummar
   const critPcs = new Set<number>();
   const warnPcs = new Set<number>();
   for (const d of disks) {
-    if (!diskInEvalScope(d, t)) continue; // honor the evalDriveLetters allowlist
-    const s = evaluateDisk(d, t);
+    const s = evaluateDiskWithScope(d, t);
     if (s === 'critical') {
       criticalDrives++;
       critPcs.add(d.computer_id);

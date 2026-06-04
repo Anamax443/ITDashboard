@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { ComputerItem as CI, SyncResult, AdSyncRun, DiskItem } from '../api.js';
 type ComputerItem = CI;
-import { api, timeAgo, parseDiskThresholds, diskInEvalScope } from '../api.js';
+import { api, timeAgo, parseDiskThresholds, evaluateDiskWithScope } from '../api.js';
 import { DisksCell } from '../components/DiskBar.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { UserHistoryModal } from '../components/UserHistoryModal.js';
@@ -98,23 +98,12 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
   // Map computers → worst disk status
   const worstDiskByComputer = new Map<number, 'critical' | 'warning' | 'ok'>();
   for (const d of disks) {
-    // Honor the eval-drive-letters allowlist set in Nastavení → Disk space
-    // thresholdy. Drives outside the scope (e.g. external backup, USB,
-    // virtual / removable) do not influence the worst-disk status for the
-    // PC. They still appear in the Disks column for situational awareness.
-    if (!diskInEvalScope(d, thresholds)) continue;
-    const s = (function () {
-      const freePct = d.total_bytes > 0 ? (d.free_bytes / d.total_bytes) * 100 : 100;
-      const freeGb = d.free_bytes / 1024 ** 3;
-      const t = thresholds;
-      const pctCrit = freePct < t.criticalPct, pctWarn = freePct < t.warningPct;
-      const gbCrit = freeGb < t.criticalGb, gbWarn = freeGb < t.warningGb;
-      if (t.mode === 'pct') return pctCrit ? 'critical' : pctWarn ? 'warning' : 'ok';
-      if (t.mode === 'gb') return gbCrit ? 'critical' : gbWarn ? 'warning' : 'ok';
-      if (pctCrit || gbCrit) return 'critical';
-      if (pctWarn || gbWarn) return 'warning';
-      return 'ok';
-    })() as 'critical' | 'warning' | 'ok';
+    // Per-tier drive-letter scope: a drive is checked for critical thresholds
+    // only if in critScope, and checked for warning thresholds only if in
+    // warnScope. Typical setup: critScope = "C" (system), warnScope = "<>C"
+    // (everything else). Drives outside BOTH scopes are inert for the PC
+    // status (they still appear in the Disks column for situational awareness).
+    const s = evaluateDiskWithScope(d, thresholds);
     const cur = worstDiskByComputer.get(d.computer_id);
     const rank = { critical: 3, warning: 2, ok: 1 };
     if (!cur || rank[s] > rank[cur]) worstDiskByComputer.set(d.computer_id, s);
