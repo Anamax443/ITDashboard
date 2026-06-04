@@ -19,13 +19,13 @@ interface RetentionResult {
   error?: string;
 }
 
-async function callPurge(procName: string, retentionDays: number): Promise<RetentionResult> {
+async function callProc(procName: string, inputs: Record<string, number>): Promise<RetentionResult> {
   const t0 = Date.now();
   try {
     const pool = await getPool();
-    const r = await pool.request()
-      .input('retention_days', retentionDays)
-      .execute(procName);
+    const req = pool.request();
+    for (const [k, v] of Object.entries(inputs)) req.input(k, v);
+    const r = await req.execute(procName);
     return {
       ok: true,
       rowsAffected: r.rowsAffected.reduce((a, b) => a + b, 0),
@@ -39,6 +39,10 @@ async function callPurge(procName: string, retentionDays: number): Promise<Reten
       error: String(err).split('\n')[0]?.slice(0, 300) ?? 'unknown',
     };
   }
+}
+
+async function callPurge(procName: string, retentionDays: number): Promise<RetentionResult> {
+  return callProc(procName, { retention_days: retentionDays });
 }
 
 async function readNum(key: string, fallback: number): Promise<number> {
@@ -72,6 +76,25 @@ export async function runRetentionOnce(triggerSource: 'manual' | 'scheduled' = '
     logActivity('success', 'retention', `pc_user_history purge: ${pcUserRes.rowsAffected} rows removed (${(pcUserRes.durationMs/1000).toFixed(1)}s)`);
   } else {
     logActivity('error', 'retention', `pc_user_history purge failed: ${pcUserRes.error}`);
+  }
+
+  // Event-table duplicate cleanup. The collector uses a time-based
+  // watermark with inclusive StartTime, so events landing in the overlap
+  // window between two runs get inserted twice. sp_purge_duplicate_events
+  // keeps the first (lowest id) row of each duplicate group and deletes
+  // the rest. Lookback defaults to the same window as events.retention_days
+  // so the dedup pass covers everything not yet purged.
+  const dedupEnabled = (await getSetting('events.dedup_enabled').catch(() => '1')) === '1';
+  if (dedupEnabled) {
+    const dedupLookback = await readNum('events.dedup_lookback_days', eventsDays);
+    const dedupRes = await callProc('sp_purge_duplicate_events', { lookback_days: dedupLookback });
+    if (dedupRes.ok) {
+      logActivity('success', 'retention', `events dedup: ${dedupRes.rowsAffected} duplicate rows removed within ${dedupLookback}d window (${(dedupRes.durationMs/1000).toFixed(1)}s)`);
+    } else {
+      logActivity('error', 'retention', `events dedup failed: ${dedupRes.error}`);
+    }
+  } else {
+    logActivity('info', 'retention', 'events dedup skipped (events.dedup_enabled=0)');
   }
 }
 

@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-04 (Sprint 1.5 + multi-DC failover for LDAP bind)
+Last updated: 2026-06-04 (events dedup daily pass alongside retention)
 
 ## Current Live State
 
@@ -117,6 +117,57 @@ Docs/UI sync for this fix completed:
   a CS/EN troubleshooting entry "URL line missing from fail screen".
 - `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show a one-line note in the
   Actions modal warning block.
+
+## Events table dedup (NEW 2026-06-04)
+
+Operator observed Brother BrLog firing ~1 event/sec on PLUSKALPW10NTB,
+visible as wall of "FindPushAwareAppName: Invalid Arg" in Recent events.
+Beyond the noisy-driver problem itself (separate question), pointed out
+the collector design has a duplicate-insertion bug on the watermark
+boundary:
+
+- Collector cron uses `last_collected_at` time watermark (run start time)
+- `Get-WinEvent -FilterHashtable @{StartTime=$sinceIso}` is inclusive (>=)
+- Events landing in the overlap window between two runs are inserted
+  TWICE — once in the run that ends at T, once in the run that starts
+  at T (same StartTime cutoff)
+- `events` table PK is (identity id, time_created), there is NO UNIQUE
+  constraint on the natural key, so DB accepts duplicates silently
+- For a noisy 1-event/sec driver, ~300 duplicate rows per 20-min cycle
+
+Operator's preferred mitigation: **dedup cleanup pass** (not insert-time
+UNIQUE INDEX). Reasoning: ship the cleanup in the same daily retention
+pipeline (already runs at 02:00 server time, already proven path), no
+INSERT-path change, no migration risk on existing table.
+
+Implementation:
+- Migration 025_event_dedup.sql adds `sp_purge_duplicate_events
+  @lookback_days INT = 90`. CTE with `ROW_NUMBER() OVER (PARTITION BY
+  computer_id, log_name, event_id, time_created, provider_name ORDER BY
+  id ASC)`. Deletes rows with rn > 1, keeps lowest id.
+- Settings: `events.dedup_enabled` (default '1'), `events.dedup_lookback_days`
+  (default '90' = same as `events.retention_days` so dedup covers
+  everything not yet purged).
+- `retention-runner.ts` adds a `callProc` generic helper (existing
+  `callPurge` is now a thin wrapper) so we can pass `@lookback_days`
+  instead of `@retention_days`. Dedup call lands after the three purge
+  calls (events, activity_log, pc_user_history).
+- Operator can flip `events.dedup_enabled = '0'` via settings UI or
+  direct DB if they ever want to skip the pass.
+
+Audit trail: `retention` source in `activity_log` gets a new entry per
+day like:
+  events dedup: 14523 duplicate rows removed within 90d window (8.4s)
+
+The fix does NOT address insert-time prevention. If duplicate inserts
+become a hot-path performance problem (unlikely at current scale), a
+follow-up could add `CREATE UNIQUE INDEX ... WITH (IGNORE_DUP_KEY=ON)`
+on the natural key as defense in depth.
+
+The noisy Brother BrLog driver itself is a separate concern — operator
+could either fix it on PLUSKALPW10NTB (drivers/Brother knowledge) or add
+a per-PC eventlog source exclusion in the collector (not done here,
+Sprint 2 candidate).
 
 ## Multi-DC LDAP failover (NEW 2026-06-04)
 
