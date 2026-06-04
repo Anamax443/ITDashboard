@@ -300,6 +300,52 @@ export function SettingsPage() {
         </Section>
 
         <Section
+          title={t('settings.section.eventRetention')}
+          description={t('settings.section.eventRetentionDesc')}
+        >
+          <FieldGroup>
+            <Field label={t('settings.field.eventsRetentionDays')}>
+              <NumberInput
+                v={value('events.retention_days', '90')}
+                onChange={(v) => set('events.retention_days', v)}
+                suffix={t('settings.unit.days')}
+              />
+            </Field>
+            <Field label={t('settings.field.activityRetentionDays')}>
+              <NumberInput
+                v={value('activity.retention_days', '30')}
+                onChange={(v) => set('activity.retention_days', v)}
+                suffix={t('settings.unit.days')}
+              />
+            </Field>
+            <Field label={t('settings.field.retentionRunHour')}>
+              <NumberInput
+                v={value('retention.run_at_hour', '2')}
+                onChange={(v) => set('retention.run_at_hour', v)}
+                suffix={t('settings.unit.hour24')}
+              />
+            </Field>
+          </FieldGroup>
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.eventsDedupEnabled')}
+              checked={value('events.dedup_enabled', '1') === '1'}
+              onChange={(checked) => set('events.dedup_enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.eventsDedupLookback')}>
+              <NumberInput
+                v={value('events.dedup_lookback_days', '90')}
+                onChange={(v) => set('events.dedup_lookback_days', v)}
+                suffix={t('settings.unit.days')}
+              />
+            </Field>
+          </FieldGroup>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>
+            {t('settings.field.eventRetentionHelp')}
+          </p>
+        </Section>
+
+        <Section
           title={t('settings.section.adsync')}
           description={t('settings.section.adsyncDesc')}
         >
