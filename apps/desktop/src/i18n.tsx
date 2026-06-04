@@ -53,7 +53,7 @@ const dict = {
     'help.tabTitle': 'Co tato záložka ukazuje',
 
     'events.help.intro': 'Plně zobrazená tabulka surových událostí ze System a Application logu napříč všemi monitorovanými PC. Stahuje eventlog collector přes RPC.',
-    'events.help.filters': 'Filtry (kombinují se AND — všechny musí současně sedět): 🔍 Search prohledává message + PC + event ID jako substring (case-insensitive). 🖥 Počítač = single-select dropdown (default "All computers"). 🏷 Provider = source komponenta (např. "Brother BrLog"). ⚠ Úroveň = Critical / Error / Warning. ⏱ Časový rozsah = posledních N hodin. Vyprazdnění filtru = vrať dropdown na default / smaž search. Klik na sloupec řadí. Klik na řádek otevře detail eventu s plnou message a raw XML.',
+    'events.help.filters': 'Filtry (kombinují se AND — všechny musí současně sedět): 🔍 Search prohledává message + PC + event ID jako substring (case-insensitive). 🖥 Počítač = single-select dropdown (default "All computers"). 🏷 Provider = source komponenta (např. "Brother BrLog"). 🔢 Event ID input — single (4098), inclusive range (4000..8000 nebo 4000-8000), nebo comma list (1001,4098,7031). Invalid input = filter ignorován (červený border). ⚠ Úroveň = Critical / Error / Warning. ⏱ Časový rozsah = posledních N hodin. Vyprazdnění filtru = vrať dropdown na default / smaž search. Klik na sloupec řadí. Klik na řádek otevře detail eventu s plnou message a raw XML.',
     'events.help.noise': 'Application log obsahuje hodně šumu (Office crashes, WMI). Pro signál spíš sleduj Critical úroveň, nebo agregát "Top event IDs" v Dashboardu.',
 
     'computers.help.intro': 'Plný inventář doménových PC s operátorskými ovládacími prvky. Aktualizováno AD syncem; ostatní sloupce z collectorů.',
@@ -313,7 +313,7 @@ const dict = {
     'help.tabTitle': 'What this tab shows',
 
     'events.help.intro': 'Full-width raw events table from System and Application logs across every monitored PC. Fed by the eventlog collector over RPC.',
-    'events.help.filters': 'Filters (combined with AND — all must match at once): 🔍 Search matches message + PC + event ID as substring (case-insensitive). 🖥 Computer = single-select dropdown (default "All computers"). 🏷 Provider = source component (e.g. "Brother BrLog"). ⚠ Level = Critical / Error / Warning. ⏱ Time range = last N hours. Clear a filter = reset dropdown to default / clear search. Click a column to sort. Click a row for the detail view with the full message and raw XML.',
+    'events.help.filters': 'Filters (combined with AND — all must match at once): 🔍 Search matches message + PC + event ID as substring (case-insensitive). 🖥 Computer = single-select dropdown (default "All computers"). 🏷 Provider = source component (e.g. "Brother BrLog"). 🔢 Event ID input — single (4098), inclusive range (4000..8000 or 4000-8000), or comma list (1001,4098,7031). Invalid input = filter ignored (red border). ⚠ Level = Critical / Error / Warning. ⏱ Time range = last N hours. Clear a filter = reset dropdown to default / clear search. Click a column to sort. Click a row for the detail view with the full message and raw XML.',
     'events.help.noise': 'Application log carries a lot of noise (Office crashes, WMI). For signal stick to Critical, or check the "Top event IDs" aggregate on the Dashboard.',
 
     'computers.help.intro': 'Full inventory of domain PCs with operator controls. Refreshed by AD sync; other columns come from the collectors.',

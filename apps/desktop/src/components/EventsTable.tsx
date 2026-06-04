@@ -26,9 +26,44 @@ export function EventsTable(props: Props) {
 
   const providers = Array.from(new Set(props.events.map((e) => e.provider_name).filter((p): p is string => !!p))).sort();
   const [filterProvider, setFilterProvider] = useState('');
+  const [eventIdFilter, setEventIdFilter] = useState('');
+
+  // Parse the Event ID filter:
+  // - single:  "4098"
+  // - range:   "4000..8000" or "4000-8000" (inclusive)
+  // - list:    "1001, 4098, 7031" — comma-separated mix of single and range
+  const eventIdPredicate = React.useMemo((): ((id: number) => boolean) | null => {
+    const trimmed = eventIdFilter.trim();
+    if (!trimmed) return null;
+    const parts = trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+    const preds: ((id: number) => boolean)[] = [];
+    for (const p of parts) {
+      const range = p.match(/^(\d+)\s*(?:\.\.|-)\s*(\d+)$/);
+      if (range && range[1] && range[2]) {
+        const lo = parseInt(range[1], 10);
+        const hi = parseInt(range[2], 10);
+        const a = Math.min(lo, hi);
+        const b = Math.max(lo, hi);
+        preds.push((id) => id >= a && id <= b);
+        continue;
+      }
+      const exact = p.match(/^\d+$/);
+      if (exact) {
+        const v = parseInt(p, 10);
+        preds.push((id) => id === v);
+        continue;
+      }
+      // Invalid token → treat the whole filter as inactive (no match would surprise the operator)
+      return null;
+    }
+    if (preds.length === 0) return null;
+    return (id) => preds.some((fn) => fn(id));
+  }, [eventIdFilter]);
+  const eventIdFilterInvalid = eventIdFilter.trim() !== '' && eventIdPredicate === null;
 
   const filtered = props.events.filter((e) => {
     if (filterProvider && e.provider_name !== filterProvider) return false;
+    if (eventIdPredicate && !eventIdPredicate(e.event_id)) return false;
     if (search) {
       const q = search.toLowerCase();
       if (
@@ -50,6 +85,7 @@ export function EventsTable(props: Props) {
   if (filterProvider) filterParts.push(`source=${filterProvider}`);
   if (props.filterLevel) filterParts.push(`level=${props.filterLevel}`);
   if (props.filterHours !== 24) filterParts.push(`window=${props.filterHours}h`);
+  if (eventIdPredicate && eventIdFilter.trim()) filterParts.push(`eventId=${eventIdFilter.trim()}`);
   const filterSummary = filterParts.join(' AND ');
 
   const exportColumns: ExportColumn<EventItem>[] = [
@@ -89,6 +125,18 @@ export function EventsTable(props: Props) {
             <option value="">All sources</option>
             {providers.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
+          <input
+            type="text"
+            placeholder="Event ID (e.g. 4098 or 4000..8000 or 1001,4098)"
+            value={eventIdFilter}
+            onChange={(e) => setEventIdFilter(e.target.value)}
+            style={{
+              width: 240,
+              borderColor: eventIdFilterInvalid ? 'var(--critical)' : undefined,
+              borderWidth: eventIdFilterInvalid ? 2 : undefined,
+            }}
+            title="Single (4098), inclusive range (4000..8000 or 4000-8000), or comma list (1001,4098,7031). Invalid input → filter ignored."
+          />
           <select value={props.filterLevel} onChange={(e) => props.onChangeLevel(e.target.value as Props['filterLevel'])}>
             <option value="">All levels</option>
             <option value="critical">Critical</option>
