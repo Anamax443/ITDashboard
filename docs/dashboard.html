@@ -237,6 +237,7 @@ service restarts on new dist/, in-memory state cleared</div>
 </div>
 
 <h2 id="components"><span data-lang="cs">Komponenty</span><span data-lang="en">Components</span></h2>
+<div data-lang="en">
 <h3>Server (<code>apps/server</code>)</h3>
 <ul>
   <li>Fastify + TypeScript HTTP API on port <code>4000</code></li>
@@ -253,6 +254,7 @@ service restarts on new dist/, in-memory state cleared</div>
   <li>Auto-refresh dashboard every 30s; collector status polled every 2s during in-flight runs; activity log polled every 2s</li>
   <li>7 navigation tabs: Dashboard, Events, Computers, Services, Perf, Activity, Settings (+ external Docs link)</li>
 </ul>
+</div>
 <div data-lang="cs" class="callout callout-info">
 <strong>Server (<code>apps/server</code>)</strong>: Fastify + TypeScript HTTP API na portu 4000; MSSQL přes <code>msnodesqlv8</code> driver (Windows-native, SSPI Integrated Auth); background tasks (periodic checks scheduler, retention purge); PowerShell child procesy pro AD/eventlog/disk reads; Node-side TCP probe na 135 (fail-fast pro offline); in-memory ring buffer 500 entries pro activity log.<br><br>
 <strong>Desktop klient (<code>apps/desktop</code>)</strong>: Electron + React + Vite + TypeScript; čistý consumer API; auto-refresh 30s; 7 navigačních tabů.
@@ -525,6 +527,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>TCP probe timeout</td><td>2000ms</td><td>hardcoded</td></tr>
 </table>
 
+<div data-lang="en">
 <h3>How it reaches each PC</h3>
 <ol>
   <li>Node-side TCP probe to <code>${name}:135</code> with 2s timeout. If fails → <code>OFFLINE</code> status, skip PS spawn entirely.</li>
@@ -549,6 +552,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>See log of every collector step</td><td>Activity tab</td></tr>
   <tr><td>Filter to monitored PCs only</td><td>Computers tab → uncheck Monitor on PCs you don't want to poll</td></tr>
 </table>
+</div>
 
 <h2 id="disk"><span data-lang="cs">Disk space collector</span><span data-lang="en">Disk space collector</span></h2>
 <p>
@@ -566,6 +570,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>Pre-flight TCP probe</td><td>2s on port 135</td><td>same as eventlog collector</td></tr>
 </table>
 
+<div data-lang="en">
 <h3>Transport</h3>
 <p>Uses <strong><code>New-CimSession -SessionOption (-Protocol Dcom)</code></strong> explicitly. The default Get-CimInstance transport is WinRM (port 5985), which is rarely enabled fleet-wide. DCOM uses the same RPC stack as Get-WinEvent → consistent reachability semantics across both collectors.</p>
 
@@ -576,6 +581,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <li><strong>GB free only</strong> — flag if free bytes below threshold</li>
   <li><strong>Either (most strict)</strong> — flag if either threshold tripped (recommended for mixed fleet — small workstations want %, large servers want GB)</li>
 </ul>
+</div>
 
 <h2 id="services"><span data-lang="cs">Services collector + policy</span><span data-lang="en">Services collector + policy</span></h2>
 <p>
@@ -594,6 +600,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>Per-user detection</td><td>Service name matches <code>_[a-f0-9]{4,12}$</code> (LUID suffix)</td></tr>
 </table>
 
+<div data-lang="en">
 <h3>Service policy + drift</h3>
 <p><code>service_policy</code> table holds rules: <code>pattern</code> (glob with <code>*</code>), <code>expected_start_mode</code>, <code>expected_state</code>, <code>priority</code> (lower wins), <code>reason</code>. Seeded with sensible defaults (Google updaters → Manual, CCAgent → Auto+Running, TrustedInstaller → Manual, etc).</p>
 <p>After every scan, each problem is classified:</p>
@@ -612,6 +619,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <li><strong>Exit column</strong> shows Win32 ExitCode of the service. 0 = graceful (typical for trigger-start services that completed their task and shut down). Non-zero = SCM-level failure (shown red).</li>
   <li><strong>🔧 Scan services</strong> button with live <code>Scanning… Ns</code> status + button text</li>
 </ul>
+</div>
 
 <h3 id="services-policy-nis2"><span data-lang="cs">Services monitoring policy (NIS2 / ISO 27001 dokumentace)</span><span data-lang="en">Services monitoring policy (NIS2 / ISO 27001 documentation)</span></h3>
 <div data-lang="cs">
@@ -665,6 +673,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <p>Operator reviews this documentation at least once a year and whenever monitoring rules change.</p>
 </div>
 
+<div data-lang="en">
 <h3>GPO export</h3>
 <p><strong>📤 GPO script</strong> button generates a PowerShell file (<code>itdashboard-service-policy.ps1</code>) that applies your current policy. Intended for:</p>
 <ul>
@@ -672,6 +681,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <li><strong>Ad-hoc run</strong> — PsExec / RDP to a single PC as admin, run the script</li>
 </ul>
 <p>Script iterates each policy pattern and calls <code>Set-Service -StartupType</code> for every matching local service. Idempotent and safe to re-run.</p>
+</div>
 
 <h2 id="perf"><span data-lang="cs">Perf events (Diagnostics-Performance)</span><span data-lang="en">Perf events (Diagnostics-Performance)</span></h2>
 <p>
@@ -696,6 +706,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>Dedupe</td><td>UNIQUE <code>(computer_id, time_created, event_id)</code> in <code>perf_events</code></td></tr>
 </table>
 
+<div data-lang="en">
 <h3>Event ID ranges</h3>
 <ul>
   <li><strong>100&ndash;199 boot</strong> &mdash; 100 overall boot, 101 app-caused delay, 102 driver delay, 103 service delay, 108/109 slow boot caused by service/device, 110 slow logon caused by user profile, 150 degradation detected</li>
@@ -721,6 +732,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
 
 <h3>Why not continuous CPU history?</h3>
 <p>Windows does not natively retain a continuous CPU usage curve. Performance Monitor Data Collector Sets are off by default; SRUM stores per-process daily aggregates but isn't WMI-accessible. The Diagnostics-Performance channel was chosen because it is on by default, gives named-culprit attribution per incident, and reuses the existing RPC path with zero agent install. The tradeoff: you see Windows' opinion of which events were "slow" &mdash; the threshold is not configurable &mdash; and you don't see sustained workday usage, only diagnosed degradations.</p>
+</div>
 
 <div class="callout callout-info" data-lang="en">
 This is the <strong>observer-not-executor</strong> pattern applied to telemetry: ITDashboard never installs an agent, never enables polling on the target, and never holds the target's truth &mdash; it only reads what Windows itself decided to record, on its own schedule.
