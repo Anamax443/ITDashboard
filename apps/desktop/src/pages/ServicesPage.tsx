@@ -19,7 +19,7 @@ export function ServicesPage() {
   const [hideDelayedStart, setHideDelayedStart] = useState(false);
   const [hidePerUser, setHidePerUser] = useState(true);
   const [hideCompliant, setHideCompliant] = useState(false);
-  const [onlyNonzeroExit, setOnlyNonzeroExit] = useState(false);
+  const [onlyNonzeroExit, setOnlyNonzeroExit] = useState(true);
   const { sort, toggle } = useSort<ServiceProblem>({ col: 'computer', dir: 'asc' });
   const { sort: aggSort, toggle: aggToggle } = useSort<ServiceAggregate>({ col: 'pc_count', dir: 'desc' });
 
@@ -60,11 +60,17 @@ export function ServicesPage() {
   }, [scanning, scanStartedAt]);
 
   const filtered = items.filter((s) => {
-    if (hideTriggerStart && s.trigger_start) return false;
-    if (hideDelayedStart && s.delayed_start) return false;
+    // Hide trigger-start ONLY when the service exited gracefully (exit_code = 0).
+    // A trigger-start service that crashed (exit_code != 0) is a real failure
+    // and must always surface regardless of this filter.
+    if (hideTriggerStart && s.trigger_start && s.exit_code === 0) return false;
+    if (hideDelayedStart && s.delayed_start && s.exit_code === 0) return false;
     if (hidePerUser && s.per_user_start) return false;
     if (hideCompliant && s.is_compliant === true) return false;
-    if (onlyNonzeroExit && (s.exit_code === 0 || s.exit_code === null)) return false;
+    // Only ExitCode != 0: hide rows with exit_code = 0 (graceful). Keep null
+    // (no data yet from current Sprint 1.7 backfill) visible so operator can
+    // see them until the next scan populates the column.
+    if (onlyNonzeroExit && s.exit_code === 0) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
@@ -82,6 +88,8 @@ export function ServicesPage() {
   const driftCount = items.filter((s) => s.is_compliant === false).length;
   const compliantNoise = items.filter((s) => s.is_compliant === true).length;
   const unclassified = items.filter((s) => s.is_compliant === null).length;
+  const crashCount = items.filter((s) => s.exit_code !== null && s.exit_code !== 0).length;
+  const gracefulCount = items.filter((s) => s.exit_code === 0).length;
 
   return (
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1' }}>
@@ -93,7 +101,7 @@ export function ServicesPage() {
         </HelpBox>
       </div>
       <div className="panel-header">
-        <h2>Stopped auto-services ({items.length} total · <span style={{ color: 'var(--critical)' }}>{driftCount} drift</span> · <span style={{ color: 'var(--ok)' }}>{compliantNoise} OK</span> · <span style={{ color: 'var(--text-dim)' }}>{unclassified} unclassified</span> · {affectedPcs} PCs · {sorted.length} shown)</h2>
+        <h2>Stopped auto-services ({items.length} total · <span style={{ color: 'var(--critical)', fontWeight: 700 }}>⚠ {crashCount} crashes</span> · <span style={{ color: 'var(--text-dim)' }}>{gracefulCount} graceful</span> · <span style={{ color: 'var(--critical)' }}>{driftCount} drift</span> · <span style={{ color: 'var(--ok)' }}>{compliantNoise} OK</span> · <span style={{ color: 'var(--text-dim)' }}>{unclassified} unclassified</span> · {affectedPcs} PCs · {sorted.length} shown)</h2>
         <div className="panel-actions filters">
           <input
             type="text"

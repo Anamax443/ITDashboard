@@ -619,9 +619,10 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <p><strong>Co se monitoruje:</strong> každý monitorovaný PC (StartMode='Auto' AND State&lt;&gt;'Running'). Sken probíhá per Periodic checks schedule (default každých 90 min v okně 06:00–18:00 po-ne) + manuální 🔧 Scan services.</p>
   <p><strong>Co je default skryté</strong> (klasifikováno jako legitimní stav, ne alert):</p>
   <ul>
-    <li><strong>Trigger-start služby</strong> (registry <code>TriggerInfo</code> subkey present) — startuje na specifický trigger (login, network change, ETW event), po dokončení úkolu se sama vypne (graceful, ExitCode=0). Příklady: Google Updater, MapsBroker, M-Files Assistant.</li>
+    <li><strong>Graceful exits</strong> (ExitCode = 0) — filtr ⚠ Only ExitCode != 0 je default ON. Skryje řádky kde Win32 ExitCode = 0 (službu se SCM povedlo zastavit bez chyby). To je primární signál "stojí proč by NEMĚLA".</li>
+    <li><strong>Trigger-start s graceful exit</strong> (registry <code>TriggerInfo</code> subkey + exit=0) — service designed jako event-driven (login, network change, ETW), po dokončení úkolu se vypnula čistě. Filtr "Hide trigger-start" je default ON ale skryje JEN trigger-start s exit=0. <strong>Trigger-start co spadl (exit != 0) se VŽDY ukáže</strong> — to je reálný failure.</li>
     <li><strong>Per-user services</strong> (service name matching <code>_[a-f0-9]{4,12}$</code> LUID suffix) — vázané na user session, legitimně stopped když není přihlášen uživatel. Příklady: CDPUserSvc, cbdhsvc, OneSyncSvc.</li>
-    <li><strong>Compliant</strong> (matchne <code>service_policy</code> pravidlo a vyhovuje mu).</li>
+    <li><strong>Compliant</strong> (matchne <code>service_policy</code> pravidlo a vyhovuje mu) — default OFF, lze zapnout filtrem "Hide compliant".</li>
   </ul>
   <p><strong>ExitCode semantika:</strong></p>
   <ul>
@@ -643,9 +644,10 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <p><strong>What is monitored:</strong> every monitored PC (StartMode='Auto' AND State&lt;&gt;'Running'). Scan runs on the Periodic checks schedule (default every 90 min in window 06:00–18:00 Mon–Sun) plus the manual 🔧 Scan services button.</p>
   <p><strong>What is hidden by default</strong> (classified as legitimate state, not an alert):</p>
   <ul>
-    <li><strong>Trigger-start services</strong> (registry <code>TriggerInfo</code> subkey present) — start on a specific trigger (login, network change, ETW event) and shut down on completion (graceful, ExitCode=0). Examples: Google Updater, MapsBroker, M-Files Assistant.</li>
+    <li><strong>Graceful exits</strong> (ExitCode = 0) — the ⚠ Only ExitCode != 0 filter is default ON. Hides rows where Win32 ExitCode = 0 (SCM cleanly stopped the service). This is the primary "stopped that shouldn't be" signal.</li>
+    <li><strong>Trigger-start with graceful exit</strong> (registry <code>TriggerInfo</code> subkey + exit=0) — services designed as event-driven (login, network change, ETW), shut down cleanly after completing their task. The "Hide trigger-start" filter is default ON but only hides trigger-start with exit=0. <strong>A trigger-start that crashed (exit != 0) ALWAYS surfaces</strong> — that is a real failure.</li>
     <li><strong>Per-user services</strong> (service name matching <code>_[a-f0-9]{4,12}$</code> LUID suffix) — bound to a user session, legitimately stopped when no user is logged on. Examples: CDPUserSvc, cbdhsvc, OneSyncSvc.</li>
-    <li><strong>Compliant</strong> (matches a <code>service_policy</code> rule and complies with it).</li>
+    <li><strong>Compliant</strong> (matches a <code>service_policy</code> rule and complies with it) — default OFF, toggleable via "Hide compliant".</li>
   </ul>
   <p><strong>ExitCode semantics:</strong></p>
   <ul>
