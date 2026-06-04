@@ -5,9 +5,18 @@ import { ldapBind, ldapConfigured, ldapMode } from '../auth/ldap.js';
 import { logActivity } from '../services/activity-log.js';
 
 const COOKIE_NAME = 'itd-session';
+// `secure` flag is environment-driven via ITD_COOKIE_SECURE so the
+// flip can be staged with the IIS+TLS rollout (MIKOS-side CR). Until
+// TLS reverse proxy is up, the dashboard runs on plain HTTP and a
+// secure cookie would never be sent back by the browser. Operator
+// sets ITD_COOKIE_SECURE=1 simultaneously with the IIS deploy.
+// Per oponentura 2026-06-04 (CR DC Windows Auth review) commitment 2:
+// production deployment MUST set ITD_COOKIE_SECURE=1 once IIS+TLS is
+// in front.
 const COOKIE_OPTS = {
   httpOnly: true as const,
   sameSite: 'strict' as const,
+  secure: process.env.ITD_COOKIE_SECURE === '1',
   path: '/',
   maxAge: 8 * 60 * 60,
 };
