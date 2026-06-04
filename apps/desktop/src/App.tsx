@@ -225,9 +225,9 @@ export function App() {
             inactiveStats={inactiveStats}
             onClickServices={() => setView('services')}
             onClickPerf={() => setView('perf')}
-            onClickCritical={() => { setFilterLevel('critical'); setFilterHours(24); setView('events'); }}
-            onClickError={() => { setFilterLevel('error'); setFilterHours(24); setView('events'); }}
-            onClickWarning={() => { setFilterLevel('warning'); setFilterHours(24); setView('events'); }}
+            onClickCritical={() => { setFilterLevel('critical'); setFilterHours((summary?.window_days ?? 1) * 24); setView('events'); }}
+            onClickError={() => { setFilterLevel('error'); setFilterHours((summary?.window_days ?? 1) * 24); setView('events'); }}
+            onClickWarning={() => { setFilterLevel('warning'); setFilterHours((summary?.window_days ?? 1) * 24); setView('events'); }}
             onClickComputers={() => setView('computers')}
             onClickDiskCritical={() => { setComputersPreFilter('disk-critical'); setView('computers'); }}
             onClickDiskWarning={() => { setComputersPreFilter('disk-warning'); setView('computers'); }}

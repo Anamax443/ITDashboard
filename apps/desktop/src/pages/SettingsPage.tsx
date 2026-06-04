@@ -446,6 +446,13 @@ export function SettingsPage() {
           description={t('settings.section.eventRetentionDesc')}
         >
           <FieldGroup>
+            <Field label={t('settings.field.eventsSummaryWindow')}>
+              <NumberInput
+                v={value('events.summary_window_days', '1')}
+                onChange={(v) => set('events.summary_window_days', v)}
+                suffix={t('settings.unit.days')}
+              />
+            </Field>
             <Field label={t('settings.field.eventsRetentionDays')}>
               <NumberInput
                 v={value('events.retention_days', '90')}
@@ -482,6 +489,9 @@ export function SettingsPage() {
               />
             </Field>
           </FieldGroup>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>
+            {t('settings.field.eventsSummaryWindowHelp')}
+          </p>
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>
             {t('settings.field.eventRetentionHelp')}
           </p>

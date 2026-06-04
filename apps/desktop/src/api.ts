@@ -4,6 +4,7 @@ export interface Summary {
   critical_24h: number;
   error_24h: number;
   warning_24h: number;
+  window_days: number;
 }
 
 export interface EventItem {

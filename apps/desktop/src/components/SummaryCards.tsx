@@ -27,6 +27,8 @@ export function SummaryCards({
   onClickDiskCritical, onClickDiskWarning, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
 }: Props) {
   const { t } = useI18n();
+  const windowDays = summary?.window_days ?? 1;
+  const windowLabel = windowDays === 1 ? '24h' : `${windowDays}d`;
   // Service problems: count real (not trigger/delayed/per-user)
   const realServiceProblems = serviceProblems.filter((s) => !s.trigger_start && !s.delayed_start && !s.per_user_start);
   const servicesPcsAffected = new Set(realServiceProblems.map((s) => s.computer_id)).size;
@@ -47,11 +49,11 @@ export function SummaryCards({
     ].filter(Boolean).join(' · ') || 'RPC fail / offline';
   return (
     <div className="cards" style={{ gridTemplateColumns: 'repeat(10, 1fr)' }}>
-      <Card label={t('cards.critical')} value={summary?.critical_24h ?? '—'} kind="critical"
+      <Card label={`${t('cards.critical')} (${windowLabel})`} value={summary?.critical_24h ?? '—'} kind="critical"
         onClick={summary && summary.critical_24h > 0 ? onClickCritical : undefined} />
-      <Card label={t('cards.errors')} value={summary?.error_24h ?? '—'} kind="error"
+      <Card label={`${t('cards.errors')} (${windowLabel})`} value={summary?.error_24h ?? '—'} kind="error"
         onClick={summary && summary.error_24h > 0 ? onClickError : undefined} />
-      <Card label={t('cards.warnings')} value={summary?.warning_24h ?? '—'} kind="warning"
+      <Card label={`${t('cards.warnings')} (${windowLabel})`} value={summary?.warning_24h ?? '—'} kind="warning"
         onClick={summary && summary.warning_24h > 0 ? onClickWarning : undefined} />
       <Card
         label={t('cards.unreachable')}

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../db/pool.js';
+import { getSetting } from '../services/settings.js';
 
 const ListQuery = z.object({
   computer: z.string().optional(),
@@ -36,15 +37,21 @@ export async function registerEventsRoutes(app: FastifyInstance) {
 
   app.get('/events/summary', async () => {
     const pool = await getPool();
-    const r = await pool.request().query(`
-      SELECT
-        SUM(CASE WHEN level = 1 THEN 1 ELSE 0 END) AS critical_24h,
-        SUM(CASE WHEN level = 2 THEN 1 ELSE 0 END) AS error_24h,
-        SUM(CASE WHEN level = 3 THEN 1 ELSE 0 END) AS warning_24h
-      FROM events
-      WHERE time_created >= DATEADD(HOUR, -24, SYSUTCDATETIME())
-    `);
-    return r.recordset[0] ?? { critical_24h: 0, error_24h: 0, warning_24h: 0 };
+    const raw = await getSetting('events.summary_window_days', '1');
+    const parsed = Number(raw);
+    const windowDays = Number.isFinite(parsed) && parsed >= 1 && parsed <= 90 ? Math.floor(parsed) : 1;
+    const r = await pool.request()
+      .input('days', windowDays)
+      .query(`
+        SELECT
+          SUM(CASE WHEN level = 1 THEN 1 ELSE 0 END) AS critical_24h,
+          SUM(CASE WHEN level = 2 THEN 1 ELSE 0 END) AS error_24h,
+          SUM(CASE WHEN level = 3 THEN 1 ELSE 0 END) AS warning_24h
+        FROM events
+        WHERE time_created >= DATEADD(DAY, -@days, SYSUTCDATETIME())
+      `);
+    const row = r.recordset[0] ?? { critical_24h: 0, error_24h: 0, warning_24h: 0 };
+    return { ...row, window_days: windowDays };
   });
 
   app.get('/events/top-ids', async (req) => {
