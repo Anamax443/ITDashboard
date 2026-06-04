@@ -10,7 +10,7 @@ import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { useI18n } from '../i18n.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
-export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed, inactiveThresholdDays }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | 'failing' | 'inactive' | null; onFilterConsumed?: () => void; inactiveThresholdDays?: number }) {
+export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed, inactiveThresholdDays, initialSearch, onSearchPrefillConsumed }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | 'failing' | 'inactive' | null; onFilterConsumed?: () => void; inactiveThresholdDays?: number; initialSearch?: string | null; onSearchPrefillConsumed?: () => void }) {
   const { t } = useI18n();
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
@@ -36,6 +36,16 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
       onFilterConsumed?.();
     }
   }, [initialFilter, onFilterConsumed]);
+
+  useEffect(() => {
+    if (initialSearch) {
+      setSearch(initialSearch);
+      // Clear status pre-filter when jumping by name from another tab —
+      // operator wants to see THIS PC regardless of its disk/inactive state.
+      setStatusFilter('');
+      onSearchPrefillConsumed?.();
+    }
+  }, [initialSearch, onSearchPrefillConsumed]);
 
   const thresholds = parseDiskThresholds(diskSettings);
   const disksByComputer = new Map<number, DiskItem[]>();

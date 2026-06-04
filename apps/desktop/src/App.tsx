@@ -49,6 +49,14 @@ export function App() {
   const [inactiveStats, setInactiveStats] = useState<InactiveStats | null>(null);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
   const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'failing' | 'inactive' | null>(null);
+  const [computersSearchPrefill, setComputersSearchPrefill] = useState<string | null>(null);
+
+  // Cross-tab jump: any tab that renders a computer name calls this to
+  // switch to Computers and pre-fill the search box with that hostname.
+  const jumpToComputer = useCallback((name: string) => {
+    setComputersSearchPrefill(name);
+    setView('computers');
+  }, []);
 
   useEffect(() => {
     api.accessCheck()
@@ -241,25 +249,26 @@ export function App() {
             onChangeLevel={setFilterLevel}
             onChangeHours={setFilterHours}
             onRefresh={refresh}
+            onJumpToComputer={jumpToComputer}
           />
         </div>
       )}
 
       {view === 'computers' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <ComputersPage items={computers} onRefreshLocal={refreshComputers} initialFilter={computersPreFilter} onFilterConsumed={() => setComputersPreFilter(null)} inactiveThresholdDays={inactiveStats?.thresholdDays} />
+          <ComputersPage items={computers} onRefreshLocal={refreshComputers} initialFilter={computersPreFilter} onFilterConsumed={() => setComputersPreFilter(null)} inactiveThresholdDays={inactiveStats?.thresholdDays} initialSearch={computersSearchPrefill} onSearchPrefillConsumed={() => setComputersSearchPrefill(null)} />
         </div>
       )}
 
       {view === 'services' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <ServicesPage />
+          <ServicesPage onJumpToComputer={jumpToComputer} />
         </div>
       )}
 
       {view === 'perf' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <PerfPage />
+          <PerfPage onJumpToComputer={jumpToComputer} />
         </div>
       )}
 

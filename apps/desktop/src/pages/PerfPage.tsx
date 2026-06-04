@@ -21,7 +21,7 @@ function formatMs(ms: number | null): string {
   return `${(ms / 60_000).toFixed(1)} min`;
 }
 
-export function PerfPage() {
+export function PerfPage({ onJumpToComputer }: { onJumpToComputer?: (name: string) => void } = {}) {
   const { t } = useI18n();
   const [summary, setSummary] = useState<PerfSummary | null>(null);
   const [items, setItems] = useState<PerfEventItem[]>([]);
@@ -219,7 +219,11 @@ export function PerfPage() {
             {items.map((it) => (
               <tr key={it.id}>
                 <td title={it.time_created}>{timeAgo(it.time_created)}</td>
-                <td>{it.computer}</td>
+                <td>
+                  {onJumpToComputer ? (
+                    <a href="#" onClick={(e) => { e.preventDefault(); onJumpToComputer(it.computer); }} style={{ color: 'var(--accent)', textDecoration: 'none' }} title={`Otevřít ${it.computer} v záložce Počítače`}>{it.computer}</a>
+                  ) : it.computer}
+                </td>
                 <td>{it.category}</td>
                 <td>{it.event_id}</td>
                 <td style={{ textAlign: 'right' }}>{formatMs(it.total_time_ms)}</td>

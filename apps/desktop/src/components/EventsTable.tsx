@@ -16,6 +16,7 @@ interface Props {
   onChangeLevel: (v: '' | 'critical' | 'error' | 'warning') => void;
   onChangeHours: (v: number) => void;
   onRefresh: () => void;
+  onJumpToComputer?: (name: string) => void;
 }
 
 export function EventsTable(props: Props) {
@@ -175,7 +176,16 @@ export function EventsTable(props: Props) {
                 return (
                   <tr key={e.id} onClick={() => setSelected(e)} style={{ cursor: 'pointer' }}>
                     <td>{new Date(e.time_created).toLocaleString('cs-CZ')}</td>
-                    <td>{e.computer}</td>
+                    <td>
+                      {props.onJumpToComputer ? (
+                        <a
+                          href="#"
+                          onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); props.onJumpToComputer?.(e.computer); }}
+                          style={{ color: 'var(--accent)', textDecoration: 'none' }}
+                          title={`Otevřít ${e.computer} v záložce Počítače`}
+                        >{e.computer}</a>
+                      ) : e.computer}
+                    </td>
                     <td><span className={`level-pill ${lvl}`}>{levelLabel(e.level)}</span></td>
                     <td>{e.event_id}</td>
                     <td style={{ color: 'var(--text-dim)' }}>{e.provider_name ?? '—'}</td>

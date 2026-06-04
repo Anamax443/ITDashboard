@@ -6,7 +6,7 @@ import { HelpBox } from '../components/HelpBox.js';
 import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { useI18n } from '../i18n.js';
 
-export function ServicesPage() {
+export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: string) => void } = {}) {
   const { t } = useI18n();
   const [view, setView] = useState<'by-pc' | 'by-service'>('by-pc');
   const [items, setItems] = useState<ServiceProblem[]>([]);
@@ -212,7 +212,11 @@ export function ServicesPage() {
             <tbody>
               {sorted.map((s) => (
                 <tr key={s.id}>
-                  <td style={{ fontWeight: 600 }}>{s.computer}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    {onJumpToComputer ? (
+                      <a href="#" onClick={(e) => { e.preventDefault(); onJumpToComputer(s.computer); }} style={{ color: 'var(--accent)', textDecoration: 'none' }} title={`Otevřít ${s.computer} v záložce Počítače`}>{s.computer}</a>
+                    ) : s.computer}
+                  </td>
                   <td style={{ fontFamily: 'Consolas, monospace', fontSize: 11 }}>{s.service_name}</td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{s.display_name ?? '—'}</td>
                   <td>
