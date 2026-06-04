@@ -15,7 +15,7 @@ Tři follow-up varování přijímáme jako **závazné požadavky** pro další
 
 ## 3 varování → závazné commitments
 
-### 1. Účet `svc-itdashboard` — princip minimálních oprávnění + gMSA preference
+### 1. Účet `svc-itdashboard` — princip minimálních oprávnění (gMSA explicitně NE)
 
 **Stav dnes (2026-06-04):** `svc-itdashboard` je klasický doménový uživatelský účet, vytvořený jako dedikovaný service account pouze pro ITDashboard. Není Domain Admin ani Enterprise Admin. Má jen permission pro:
 - Logon as a service na B-S-W-MIKOS (10.8.2.213)
@@ -25,7 +25,7 @@ Tři follow-up varování přijímáme jako **závazné požadavky** pro další
 
 **Audit ke kontrole:** přidám do `docs/AD-permissions-svc-itdashboard.md` výpis aktuálních membership + delegated rights. Ke schválení samostatně před production rollout Sprint 1.6.
 
-**gMSA migrace:** uznáno jako lepší pattern (auto-managed password, žádný operator-known password, nemožnost interactive logon). Přesun na gMSA = samostatný change request a code change (NSSM podporuje gMSA pres `nssm set <svc> ObjectName <gMSA$>` ale vyžaduje testing). Plán: posunout do Sprint 2 backlog jako **TASK-AUTH-002 (gMSA migration)**, ne shippnout Sprint 1.6.
+**gMSA migrace: ZAMÍTNUTO operatoru 2026-06-04.** Operator explicitně rozhodl ponechat `svc-itdashboard` jako klasický doménový uživatelský účet — gMSA nebude. Důvod: dodržení minimálních oprávnění + dedikace na jednu službu je z pohledu operatora dostatečná mitigace; benefit gMSA (auto-managed password, žádný operator-known password) je v tomto kontextu menší než operační complexity testování / rollout. Žádný `TASK-AUTH-002` se neotvírá. Pokud by se v budoucnu situace změnila (např. compliance audit požaduje), bude se otevírat nový CR.
 
 ### 2. HTTPS/TLS = kritická podmínka, ne nice-to-have
 
