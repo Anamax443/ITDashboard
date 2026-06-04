@@ -71,9 +71,11 @@ export function CollectorStatus() {
     try {
       const result = await api.collectorRunAll();
       const parts = [
+        result.adsync ? `AD +${result.adsync.inserted}/~${result.adsync.updated}/-${result.adsync.removed} of ${result.adsync.fetched}` : 'AD skipped',
         result.eventlog ? `events +${result.eventlog.eventsAdded}` : 'events skipped',
         result.disk ? `disks ${result.disk.drives} drives` : 'disks skipped',
         result.services ? `services ${result.services.problems} problems` : 'services skipped',
+        result.perf ? `perf ${result.perf.pcs} PCs` : 'perf skipped',
       ];
       setLastAllSummary(`${parts.join(' · ')} · ${(result.durationMs / 1000).toFixed(1)}s`);
       await fetchStatus();

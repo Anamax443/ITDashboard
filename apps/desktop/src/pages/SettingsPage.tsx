@@ -6,11 +6,11 @@ import { useI18n } from '../i18n.js';
 import type { TKey } from '../i18n.js';
 
 const PERIODIC_CHECKS: { key: string; tkey: TKey }[] = [
+  { key: 'checks.run_adsync', tkey: 'settings.check.adsync' },
   { key: 'checks.run_eventlog', tkey: 'settings.check.eventlog' },
   { key: 'checks.run_disk', tkey: 'settings.check.disk' },
   { key: 'checks.run_services', tkey: 'settings.check.services' },
   { key: 'checks.run_perf', tkey: 'settings.check.perf' },
-  { key: 'checks.run_adsync', tkey: 'settings.check.adsync' },
 ];
 
 const SCHEDULE_DAYS: { value: number; tkey: TKey }[] = [
