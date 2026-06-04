@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-04 (Sprint 1.5 — AD edit-group gate, stub off in production, downloaded .bat files force admin credential prompt)
+Last updated: 2026-06-04 (Sprint 1.5 + multi-DC failover for LDAP bind)
 
 ## Current Live State
 
@@ -117,6 +117,33 @@ Docs/UI sync for this fix completed:
   a CS/EN troubleshooting entry "URL line missing from fail screen".
 - `apps/desktop/src/i18n.tsx` + `PcActions.tsx` show a one-line note in the
   Actions modal warning block.
+
+## Multi-DC LDAP failover (NEW 2026-06-04)
+
+Operator's environment has 3 domain controllers. `ldapts` does not do
+AD's SRV-record DC discovery, so we need to list DCs explicitly.
+
+`AD_LDAP_URL` env var now accepts a comma-separated list of LDAP URLs
+(one entry per DC). The bind loop tries them in order; on a connection
+or timeout error it tries the next one. On a definitive auth response
+(invalid_credentials, not_in_edit_group, or success) it stops
+immediately — no point retrying a wrong password against another DC.
+
+Example:
+```
+AD_LDAP_URL = ldap://10.8.2.254:389,ldap://10.8.2.X:389,ldap://10.8.2.Y:389
+```
+
+Or with FQDNs (allows DC name to flip IP without re-deploying):
+```
+AD_LDAP_URL = ldap://AD1.axinetwork.loc:389,ldap://AD2.axinetwork.loc:389,ldap://AD3.axinetwork.loc:389
+```
+
+Single-DC config (`AD_LDAP_URL = ldap://10.8.2.254:389`) still works
+unchanged.
+
+Audit log records which DC was hit per session (already part of the
+session_created entry in activity_log).
 
 ## Sprint 1.5 — edit-tier hardening (NEW 2026-06-04)
 

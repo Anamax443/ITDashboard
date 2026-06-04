@@ -1,6 +1,11 @@
 import { Client } from 'ldapts';
 
-const LDAP_URL = process.env.AD_LDAP_URL ?? '';
+// AD_LDAP_URL accepts a single URL or comma-separated list (one entry per
+// DC) for failover. ldapts does not do AD's SRV-record DC discovery, so
+// list each DC explicitly. On a connection error we try the next one; on
+// invalid credentials we stop immediately (no point retrying with the
+// same wrong password against another DC).
+const LDAP_URLS = (process.env.AD_LDAP_URL ?? '').split(',').map(s => s.trim()).filter(Boolean);
 const LDAP_DOMAIN = process.env.AD_LDAP_DOMAIN ?? 'AXINETWORK.LOC';
 const LDAP_BASE_DN = process.env.AD_LDAP_BASE_DN ?? '';
 const LDAP_TIMEOUT_MS = Number(process.env.AD_LDAP_TIMEOUT_MS ?? 5000);
@@ -49,18 +54,15 @@ async function checkEditGroupMembership(client: Client, canonicalUser: string): 
   }
 }
 
-export async function ldapBind(user: string, password: string): Promise<LdapBindResult> {
-  if (!user || !password) return { ok: false, reason: 'invalid_credentials' };
+function isConnectionError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes('econnrefused') || lower.includes('enotfound')
+    || lower.includes('econnreset') || lower.includes('ehostunreach')
+    || lower.includes('etimedout') || lower.includes('socket') && lower.includes('closed');
+}
 
-  if (!LDAP_URL) {
-    if (ALLOW_STUB) {
-      return { ok: true, canonicalUser: normalizeUser(user) };
-    }
-    return { ok: false, reason: 'misconfigured', detail: 'AD_LDAP_URL not set (set AD_LDAP_STUB=1 to allow stub validation for testing only; not permitted with NODE_ENV=production)' };
-  }
-
-  const canonical = normalizeUser(user);
-  const client = new Client({ url: LDAP_URL, timeout: LDAP_TIMEOUT_MS, connectTimeout: LDAP_TIMEOUT_MS });
+async function tryBindAgainst(url: string, canonical: string, password: string): Promise<LdapBindResult> {
+  const client = new Client({ url, timeout: LDAP_TIMEOUT_MS, connectTimeout: LDAP_TIMEOUT_MS });
   try {
     await client.bind(canonical, password);
     const inGroup = await checkEditGroupMembership(client, canonical);
@@ -77,24 +79,58 @@ export async function ldapBind(user: string, password: string): Promise<LdapBind
     if (lower.includes('invalid credentials') || lower.includes('49')) {
       return { ok: false, reason: 'invalid_credentials' };
     }
-    if (lower.includes('econnrefused') || lower.includes('enotfound') || lower.includes('econnreset')) {
-      return { ok: false, reason: 'ldap_unreachable', detail: message };
+    if (isConnectionError(message)) {
+      return { ok: false, reason: 'ldap_unreachable', detail: `${url}: ${message}` };
     }
-    if (lower.includes('timeout')) return { ok: false, reason: 'timeout', detail: message };
-    return { ok: false, reason: 'unknown', detail: message };
+    if (lower.includes('timeout')) return { ok: false, reason: 'timeout', detail: `${url}: ${message}` };
+    return { ok: false, reason: 'unknown', detail: `${url}: ${message}` };
   } finally {
     try { await client.unbind(); } catch { /* noop */ }
   }
 }
 
+export async function ldapBind(user: string, password: string): Promise<LdapBindResult> {
+  if (!user || !password) return { ok: false, reason: 'invalid_credentials' };
+
+  if (LDAP_URLS.length === 0) {
+    if (ALLOW_STUB) {
+      return { ok: true, canonicalUser: normalizeUser(user) };
+    }
+    return { ok: false, reason: 'misconfigured', detail: 'AD_LDAP_URL not set (set AD_LDAP_STUB=1 to allow stub validation for testing only; not permitted with NODE_ENV=production)' };
+  }
+
+  const canonical = normalizeUser(user);
+  const failures: string[] = [];
+
+  // Try each configured DC in order. Stop on definitive auth answers
+  // (invalid_credentials, not_in_edit_group, ok). Continue on connection
+  // / timeout errors — try the next DC in the list.
+  for (const url of LDAP_URLS) {
+    const r = await tryBindAgainst(url, canonical, password);
+    if (r.ok) return r;
+    if (r.reason === 'invalid_credentials' || r.reason === 'not_in_edit_group') return r;
+    failures.push(`${url}: ${r.reason}${r.detail ? ` (${r.detail})` : ''}`);
+  }
+
+  return {
+    ok: false,
+    reason: 'ldap_unreachable',
+    detail: `All ${LDAP_URLS.length} configured DCs failed: ${failures.join('; ')}`,
+  };
+}
+
 export function ldapConfigured(): boolean {
-  return Boolean(LDAP_URL) || ALLOW_STUB;
+  return LDAP_URLS.length > 0 || ALLOW_STUB;
 }
 
 export function ldapMode(): 'ldap' | 'stub' | 'disabled' {
-  if (LDAP_URL) return 'ldap';
+  if (LDAP_URLS.length > 0) return 'ldap';
   if (ALLOW_STUB) return 'stub';
   return 'disabled';
+}
+
+export function ldapDcCount(): number {
+  return LDAP_URLS.length;
 }
 
 export function editGroupConfigured(): boolean {
