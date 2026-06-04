@@ -212,7 +212,9 @@ function RetentionRunBlock() {
   };
 
   return (
-    <div style={{ marginTop: 14, padding: 12, background: 'rgba(0,0,0,0.18)', border: '1px solid var(--border)', borderRadius: 4 }}>
+    <div style={{ marginTop: 18, padding: 14, background: 'rgba(59, 130, 246, 0.06)', border: '1px solid var(--accent)', borderRadius: 4 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{t('settings.retention.manualHeader')}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 14, lineHeight: 1.5 }}>{t('settings.retention.manualHint')}</div>
       <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{t('settings.retention.pickSteps')}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
         {ALL_STEPS.map((name) => (
