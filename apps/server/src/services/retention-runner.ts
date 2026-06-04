@@ -77,19 +77,29 @@ async function readNum(key: string, fallback: number): Promise<number> {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-export async function runRetentionOnce(triggerSource: 'manual' | 'scheduled' = 'manual'): Promise<RetentionRunReport> {
+export type RetentionStepName = 'events_purge' | 'activity_log_purge' | 'pc_user_history_purge' | 'events_dedup';
+
+export async function runRetentionOnce(
+  triggerSource: 'manual' | 'scheduled' = 'manual',
+  stepsFilter?: RetentionStepName[],
+): Promise<RetentionRunReport> {
   if (running) {
     throw new Error('Retention run already in progress');
   }
   running = true;
   try {
-    return await runRetentionInner(triggerSource);
+    return await runRetentionInner(triggerSource, stepsFilter);
   } finally {
     running = false;
   }
 }
 
-async function runRetentionInner(triggerSource: 'manual' | 'scheduled'): Promise<RetentionRunReport> {
+async function runRetentionInner(
+  triggerSource: 'manual' | 'scheduled',
+  stepsFilter?: RetentionStepName[],
+): Promise<RetentionRunReport> {
+  const shouldRun = (name: RetentionStepName): boolean =>
+    !stepsFilter || stepsFilter.includes(name);
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
   const eventsDays = await readNum('events.retention_days', 90);
@@ -99,31 +109,41 @@ async function runRetentionInner(triggerSource: 'manual' | 'scheduled'): Promise
 
   const steps: RetentionRunReport['steps'] = [];
 
-  const eventsRes = await callPurge('sp_purge_old_events', eventsDays);
-  if (eventsRes.ok) logActivity('success', 'retention', `events purge: ${eventsRes.rowsAffected} rows removed (${(eventsRes.durationMs/1000).toFixed(1)}s)`);
-  else              logActivity('error',   'retention', `events purge failed: ${eventsRes.error}`);
-  steps.push({ name: 'events_purge', ok: eventsRes.ok, rowsAffected: eventsRes.rowsAffected, durationMs: eventsRes.durationMs, detail: `> ${eventsDays}d`, error: eventsRes.error });
+  if (shouldRun('events_purge')) {
+    const eventsRes = await callPurge('sp_purge_old_events', eventsDays);
+    if (eventsRes.ok) logActivity('success', 'retention', `events purge: ${eventsRes.rowsAffected} rows removed (${(eventsRes.durationMs/1000).toFixed(1)}s)`);
+    else              logActivity('error',   'retention', `events purge failed: ${eventsRes.error}`);
+    steps.push({ name: 'events_purge', ok: eventsRes.ok, rowsAffected: eventsRes.rowsAffected, durationMs: eventsRes.durationMs, detail: `> ${eventsDays}d`, error: eventsRes.error });
+  }
 
-  const activityRes = await callPurge('sp_purge_old_activity', activityDays);
-  if (activityRes.ok) logActivity('success', 'retention', `activity_log purge: ${activityRes.rowsAffected} rows removed (${(activityRes.durationMs/1000).toFixed(1)}s)`);
-  else                logActivity('error',   'retention', `activity_log purge failed: ${activityRes.error}`);
-  steps.push({ name: 'activity_log_purge', ok: activityRes.ok, rowsAffected: activityRes.rowsAffected, durationMs: activityRes.durationMs, detail: `> ${activityDays}d`, error: activityRes.error });
+  if (shouldRun('activity_log_purge')) {
+    const activityRes = await callPurge('sp_purge_old_activity', activityDays);
+    if (activityRes.ok) logActivity('success', 'retention', `activity_log purge: ${activityRes.rowsAffected} rows removed (${(activityRes.durationMs/1000).toFixed(1)}s)`);
+    else                logActivity('error',   'retention', `activity_log purge failed: ${activityRes.error}`);
+    steps.push({ name: 'activity_log_purge', ok: activityRes.ok, rowsAffected: activityRes.rowsAffected, durationMs: activityRes.durationMs, detail: `> ${activityDays}d`, error: activityRes.error });
+  }
 
-  const pcUserRes = await callPurge('sp_purge_pc_user_history', pcUserDays);
-  if (pcUserRes.ok) logActivity('success', 'retention', `pc_user_history purge: ${pcUserRes.rowsAffected} rows removed (${(pcUserRes.durationMs/1000).toFixed(1)}s)`);
-  else              logActivity('error',   'retention', `pc_user_history purge failed: ${pcUserRes.error}`);
-  steps.push({ name: 'pc_user_history_purge', ok: pcUserRes.ok, rowsAffected: pcUserRes.rowsAffected, durationMs: pcUserRes.durationMs, detail: `> ${pcUserDays}d`, error: pcUserRes.error });
+  if (shouldRun('pc_user_history_purge')) {
+    const pcUserRes = await callPurge('sp_purge_pc_user_history', pcUserDays);
+    if (pcUserRes.ok) logActivity('success', 'retention', `pc_user_history purge: ${pcUserRes.rowsAffected} rows removed (${(pcUserRes.durationMs/1000).toFixed(1)}s)`);
+    else              logActivity('error',   'retention', `pc_user_history purge failed: ${pcUserRes.error}`);
+    steps.push({ name: 'pc_user_history_purge', ok: pcUserRes.ok, rowsAffected: pcUserRes.rowsAffected, durationMs: pcUserRes.durationMs, detail: `> ${pcUserDays}d`, error: pcUserRes.error });
+  }
 
-  const dedupEnabled = (await getSetting('events.dedup_enabled').catch(() => '1')) === '1';
-  if (dedupEnabled) {
-    const dedupLookback = await readNum('events.dedup_lookback_days', eventsDays);
-    const dedupRes = await callProc('sp_purge_duplicate_events', { lookback_days: dedupLookback });
-    if (dedupRes.ok) logActivity('success', 'retention', `events dedup: ${dedupRes.rowsAffected} duplicate rows removed within ${dedupLookback}d window (${(dedupRes.durationMs/1000).toFixed(1)}s)`);
-    else             logActivity('error',   'retention', `events dedup failed: ${dedupRes.error}`);
-    steps.push({ name: 'events_dedup', ok: dedupRes.ok, rowsAffected: dedupRes.rowsAffected, durationMs: dedupRes.durationMs, detail: `lookback ${dedupLookback}d`, error: dedupRes.error });
-  } else {
-    logActivity('info', 'retention', 'events dedup skipped (events.dedup_enabled=0)');
-    steps.push({ name: 'events_dedup', ok: true, rowsAffected: 0, durationMs: 0, detail: 'skipped (disabled in settings)' });
+  if (shouldRun('events_dedup')) {
+    const dedupEnabled = (await getSetting('events.dedup_enabled').catch(() => '1')) === '1';
+    if (dedupEnabled || stepsFilter) {
+      // Manual run with explicit step selection bypasses the dedup_enabled
+      // setting — operator explicitly asked to run this step, honor that.
+      const dedupLookback = await readNum('events.dedup_lookback_days', eventsDays);
+      const dedupRes = await callProc('sp_purge_duplicate_events', { lookback_days: dedupLookback });
+      if (dedupRes.ok) logActivity('success', 'retention', `events dedup: ${dedupRes.rowsAffected} duplicate rows removed within ${dedupLookback}d window (${(dedupRes.durationMs/1000).toFixed(1)}s)`);
+      else             logActivity('error',   'retention', `events dedup failed: ${dedupRes.error}`);
+      steps.push({ name: 'events_dedup', ok: dedupRes.ok, rowsAffected: dedupRes.rowsAffected, durationMs: dedupRes.durationMs, detail: `lookback ${dedupLookback}d`, error: dedupRes.error });
+    } else {
+      logActivity('info', 'retention', 'events dedup skipped (events.dedup_enabled=0)');
+      steps.push({ name: 'events_dedup', ok: true, rowsAffected: 0, durationMs: 0, detail: 'skipped (disabled in settings)' });
+    }
   }
 
   const finishedAtMs = Date.now();

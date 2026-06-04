@@ -163,12 +163,16 @@ interface RetentionReport {
   steps: RetentionStep[];
 }
 
+type RetentionStepName = 'events_purge' | 'activity_log_purge' | 'pc_user_history_purge' | 'events_dedup';
+const ALL_STEPS: RetentionStepName[] = ['events_purge', 'activity_log_purge', 'pc_user_history_purge', 'events_dedup'];
+
 function RetentionRunBlock() {
   const { t } = useI18n();
   const [running, setRunning] = useState(false);
   const [report, setReport] = useState<RetentionReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [nextRunAt, setNextRunAt] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<RetentionStepName>>(() => new Set(ALL_STEPS));
 
   useEffect(() => {
     fetch('/api/retention/status').then(r => r.json()).then((j) => {
@@ -180,11 +184,24 @@ function RetentionRunBlock() {
     }).catch(() => {});
   }, []);
 
+  const toggle = (name: RetentionStepName) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
+
   const run = async () => {
+    if (selected.size === 0) return;
     setRunning(true);
     setError(null);
     try {
-      const res = await fetch('/api/retention/run', { method: 'POST' });
+      const res = await fetch('/api/retention/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steps: Array.from(selected) }),
+      });
       const j = await res.json();
       if (j?.ok) setReport(j.report); else setError(String(j?.error ?? 'unknown'));
     } catch (e) {
@@ -196,14 +213,31 @@ function RetentionRunBlock() {
 
   return (
     <div style={{ marginTop: 14, padding: 12, background: 'rgba(0,0,0,0.18)', border: '1px solid var(--border)', borderRadius: 4 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{t('settings.retention.pickSteps')}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+        {ALL_STEPS.map((name) => (
+          <label key={name} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={selected.has(name)}
+              onChange={() => toggle(name)}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              <span style={{ fontWeight: 600 }}>{t(`settings.retention.step.${name}.label` as const)}</span>
+              <span style={{ color: 'var(--text-dim)', marginLeft: 6 }}>— {t(`settings.retention.step.${name}.desc` as const)}</span>
+            </span>
+          </label>
+        ))}
+      </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <button
           className="refresh-btn"
           onClick={run}
-          disabled={running}
-          style={{ background: running ? 'var(--text-dim)' : 'var(--accent)', color: 'white', border: 'none', padding: '6px 14px', fontSize: 12, fontWeight: 600 }}
+          disabled={running || selected.size === 0}
+          style={{ background: (running || selected.size === 0) ? 'var(--text-dim)' : 'var(--accent)', color: 'white', border: 'none', padding: '6px 14px', fontSize: 12, fontWeight: 600 }}
         >
-          {running ? t('settings.retention.running') : t('settings.retention.runNow')}
+          {running ? t('settings.retention.running') : t('settings.retention.runSelected', { n: selected.size })}
         </button>
         {nextRunAt && (
           <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
