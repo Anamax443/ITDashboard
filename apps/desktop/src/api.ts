@@ -1,4 +1,11 @@
-export const API_BASE = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ?? 'http://10.8.2.213:4000';
+// API base resolution, in priority order:
+//  1. VITE_API_BASE (baked at build time) — REQUIRED for the Electron client,
+//     whose renderer loads from packaged files and has no same-origin server.
+//  2. Empty string → relative URLs. When the SPA is served by the Fastify API
+//     itself (the browser deployment, see apps/server/src/routes/frontend.ts),
+//     fetch('/events/summary') hits the same origin = the API. This keeps the
+//     repo portable: a new deployment needs no code change, just env/access.
+export const API_BASE = (import.meta as { env?: { VITE_API_BASE?: string } }).env?.VITE_API_BASE ?? '';
 
 export interface Summary {
   critical_24h: number;
