@@ -125,7 +125,14 @@ export function PcActionsButton({ name, fqdn, ipAddress, disks, computerId, onRe
   const [toast, setToast] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshResult, setRefreshResult] = useState<{ ok: boolean; durationMs: number; steps: { step: string; ok: boolean; detail: string }[] } | null>(null);
-  const onClose = () => setOpen(false);
+  const onClose = () => {
+    // If a manual single-PC refresh ran in this modal, re-sync the main Computers
+    // list on close so the freshly collected data (status, last seen, disks, …)
+    // is visible immediately without waiting for the next background poll.
+    if (refreshResult && onRefreshed) onRefreshed();
+    setRefreshResult(null);
+    setOpen(false);
+  };
 
   const flash = (msg: string) => {
     setToast(msg);

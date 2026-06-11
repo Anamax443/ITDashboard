@@ -338,7 +338,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                 <SortHeader<ComputerItem> col="ip_address" label="IP" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="current_user" label="User" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="last_seen" label="Last seen" sort={sort} toggle={toggle} />
-                <SortHeader<ComputerItem> col="enabled" label="Status" sort={sort} toggle={toggle} />
+                <SortHeader<ComputerItem> col="last_status" label="Status" sort={sort} toggle={toggle} />
                 <th style={{ width: 160 }}>Disks</th>
                 <th style={{ width: 120 }}>Last collected</th>
                 <th>Last error</th>
