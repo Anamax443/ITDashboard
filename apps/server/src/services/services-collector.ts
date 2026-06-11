@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { Socket } from 'node:net';
 import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
+import { evaluateAndSendServiceAlerts } from './alerts.js';
 
 function tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -231,6 +232,15 @@ export async function runServicesScanOnce(): Promise<{ pcs: number; ok: number; 
 
     const durationMs = Date.now() - t0;
     logActivity('success', 'services', `Service scan done: ${ok} OK / ${fail} fail / ${totalProblems} problems (${(durationMs/1000).toFixed(1)}s)`);
+
+    // Fire critical-service email alerts off fresh data. Self-contained (checks
+    // the master enable flag + debounce/throttle internally) and never throws.
+    try {
+      await evaluateAndSendServiceAlerts();
+    } catch (err) {
+      logActivity('error', 'alerts', `Service alert evaluation failed: ${String(err).split('\n')[0]}`);
+    }
+
     return { pcs: targets.length, ok, fail, problems: totalProblems, durationMs };
   } finally {
     runInFlight = false;
