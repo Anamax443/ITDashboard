@@ -10,7 +10,7 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     const pool = await getPool();
     const r = await pool.request().query(`
       SELECT id, name, fqdn, os_version, last_seen, enabled, monitor_enabled, excluded,
-             disk_email_monitor,
+             disk_email_monitor, disk_email_drives,
              last_collected_at, last_error, consecutive_failures, ou_path, distinguished_name,
              last_status, [current_user], current_user_seen_at, ip_address, pc_info_collected_at
       FROM computers
@@ -132,15 +132,32 @@ export async function registerComputersRoutes(app: FastifyInstance) {
 
   app.patch('/computers/:id/disk-email-monitor', async (req, reply) => {
     const params = z.object({ id: z.coerce.number().int() }).parse(req.params);
-    const body = z.object({ enabled: z.boolean() }).parse(req.body);
+    // Both fields optional — update whichever the client sends. `drives` is the
+    // per-PC drive-letter scope (e.g. 'C,F'); empty string means "all drives".
+    const body = z.object({
+      enabled: z.boolean().optional(),
+      // Allow only letters, separators and the scope operators (<> ! * :).
+      drives: z.string().max(64).regex(/^[A-Za-z0-9,;\s<>!*:]*$/).optional(),
+    }).parse(req.body);
+    if (body.enabled === undefined && body.drives === undefined) {
+      reply.code(400);
+      return { error: 'nothing to update' };
+    }
     const pool = await getPool();
-    const r = await pool.request()
-      .input('id', params.id)
-      .input('m', body.enabled ? 1 : 0)
-      .query(`
-        UPDATE computers SET disk_email_monitor = @m WHERE id = @id;
-        SELECT id, name, disk_email_monitor FROM computers WHERE id = @id;
-      `);
+    const request = pool.request().input('id', params.id);
+    const sets: string[] = [];
+    if (body.enabled !== undefined) {
+      request.input('m', body.enabled ? 1 : 0);
+      sets.push('disk_email_monitor = @m');
+    }
+    if (body.drives !== undefined) {
+      request.input('drv', body.drives.trim());
+      sets.push('disk_email_drives = @drv');
+    }
+    const r = await request.query(`
+      UPDATE computers SET ${sets.join(', ')} WHERE id = @id;
+      SELECT id, name, disk_email_monitor, disk_email_drives FROM computers WHERE id = @id;
+    `);
     const row = r.recordset[0];
     if (!row) {
       reply.code(404);

@@ -194,14 +194,6 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     }
   };
 
-  const toggleDiskEmailMonitor = async (c: ComputerItem) => {
-    try {
-      await api.setDiskEmailMonitor(c.id, !c.disk_email_monitor);
-      onRefreshLocal();
-    } catch (err) {
-      setError(String(err));
-    }
-  };
 
   const bulkSetMonitor = async (monitor: boolean) => {
     // Apply to ALL currently visible (filtered) rows — incl. disabled,
@@ -335,7 +327,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                 <th style={{ width: 24 }}></th>
                 <th style={{ width: 70, textAlign: 'center' }} title="Collect events from this PC">Monitor</th>
                 <th style={{ width: 70, textAlign: 'center' }} title="Permanently exclude from all stats and views">Exclude</th>
-                <th style={{ width: 56, textAlign: 'center' }} title={t('computers.diskEmail.title')}>📧 Disk</th>
+                <th style={{ width: 112, textAlign: 'center' }} title={t('computers.diskEmail.title')}>📧 Disk</th>
                 <SortHeader<ComputerItem> col="name" label="Name" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="ou_path" label="OU path" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="fqdn" label="FQDN" sort={sort} toggle={toggle} />
@@ -375,13 +367,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                     />
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={!!c.disk_email_monitor}
-                      onChange={() => toggleDiskEmailMonitor(c)}
-                      title={t('computers.diskEmail.toggle')}
-                      style={{ cursor: 'pointer' }}
-                    />
+                    <DiskEmailCell c={c} onSaved={onRefreshLocal} onError={setError} />
                   </td>
                   <td style={{ fontWeight: 600 }}>
                     <span
@@ -456,5 +442,71 @@ function StatusChip({ label, count, active, color, onClick }: { label: string; c
     >
       {count} {label}
     </button>
+  );
+}
+
+// Per-PC disk email monitoring: a checkbox (enable) plus a drive-letter field.
+// Empty letters = all in-scope drives; "C" or "C,F" = only those. Letters save
+// on blur / Enter and are disabled until the PC is enabled.
+function DiskEmailCell({ c, onSaved, onError }: { c: ComputerItem; onSaved: () => void; onError: (e: string) => void }) {
+  const { t } = useI18n();
+  const [drives, setDrives] = useState(c.disk_email_drives ?? '');
+  useEffect(() => { setDrives(c.disk_email_drives ?? ''); }, [c.disk_email_drives]);
+
+  const on = !!c.disk_email_monitor;
+
+  const toggleEnabled = async () => {
+    try {
+      await api.setDiskEmailMonitor(c.id, { enabled: !on });
+      onSaved();
+    } catch (err) {
+      onError(String(err));
+    }
+  };
+
+  const saveDrives = async () => {
+    const next = drives.trim();
+    if (next === (c.disk_email_drives ?? '').trim()) return;
+    try {
+      await api.setDiskEmailMonitor(c.id, { drives: next });
+      onSaved();
+    } catch (err) {
+      onError(String(err));
+      setDrives(c.disk_email_drives ?? '');
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+      <input
+        type="checkbox"
+        checked={on}
+        onChange={toggleEnabled}
+        title={t('computers.diskEmail.toggle')}
+        style={{ cursor: 'pointer' }}
+      />
+      <input
+        type="text"
+        value={drives}
+        disabled={!on}
+        onChange={(e) => setDrives(e.target.value)}
+        onBlur={saveDrives}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        placeholder={t('computers.diskEmail.allPlaceholder')}
+        title={t('computers.diskEmail.lettersTitle')}
+        style={{
+          width: 52,
+          padding: '2px 4px',
+          fontSize: 11,
+          fontFamily: 'Consolas, monospace',
+          textAlign: 'center',
+          background: on ? 'var(--surface)' : 'transparent',
+          color: on ? 'var(--text)' : 'var(--text-dim)',
+          border: '1px solid var(--border)',
+          borderRadius: 3,
+          opacity: on ? 1 : 0.4,
+        }}
+      />
+    </div>
   );
 }

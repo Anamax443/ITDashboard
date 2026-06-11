@@ -67,14 +67,18 @@ interface DiskRow {
   volume_label: string | null;
   total_bytes: number;
   free_bytes: number;
+  disk_email_drives: string | null;
 }
 
 // Evaluate the disks of all disk_email_monitor PCs against the CRITICAL
-// threshold + critical drive-letter scope (same rules as the dashboard).
+// threshold. Drive scope is per-PC: if the PC has explicit letters in
+// disk_email_drives (e.g. 'C,F') only those count; otherwise fall back to the
+// global critical drive-letter scope (same rules as the dashboard).
 async function loadMonitoredCriticalDisks(settings: SettingsMap): Promise<MonitoredCriticalDisk[]> {
   const pool = await getPool();
   const r = await pool.request().query<DiskRow>(`
-    SELECT c.name AS computer, d.drive_letter, d.volume_label, d.total_bytes, d.free_bytes
+    SELECT c.name AS computer, d.drive_letter, d.volume_label, d.total_bytes, d.free_bytes,
+           c.disk_email_drives
     FROM disks d
     JOIN computers c ON c.id = d.computer_id
     WHERE c.enabled = 1 AND c.disk_email_monitor = 1
@@ -86,6 +90,15 @@ async function loadMonitoredCriticalDisks(settings: SettingsMap): Promise<Monito
   const mode = (settings['disk.threshold_mode'] as 'pct' | 'gb' | 'either') ?? 'pct';
   const legacy = parseDriveScope(settings['disk.eval_drive_letters'], { kind: 'include', letters: new Set(['C']) });
   const critScope = parseDriveScope(settings['disk.crit_drives'], legacy);
+  // Cache per-PC scope parses (same disk_email_drives string repeats per drive row).
+  const scopeCache = new Map<string, DriveScope>();
+  const scopeFor = (raw: string | null): DriveScope => {
+    const key = (raw ?? '').trim();
+    if (key === '') return critScope;
+    let cached = scopeCache.get(key);
+    if (!cached) { cached = parseDriveScope(key, critScope); scopeCache.set(key, cached); }
+    return cached;
+  };
 
   const out: MonitoredCriticalDisk[] = [];
   for (const d of r.recordset) {
@@ -95,7 +108,7 @@ async function loadMonitoredCriticalDisks(settings: SettingsMap): Promise<Monito
     const pctCrit = freePct < critPct;
     const gbCrit = freeGb < critGb;
     const isCrit = mode === 'pct' ? pctCrit : mode === 'gb' ? gbCrit : (pctCrit || gbCrit);
-    if (isCrit && inScope(driveLetterOf(d.drive_letter), critScope)) {
+    if (isCrit && inScope(driveLetterOf(d.drive_letter), scopeFor(d.disk_email_drives))) {
       out.push({
         computer: d.computer,
         driveLetter: d.drive_letter,

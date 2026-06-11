@@ -125,7 +125,7 @@ export interface DiskThresholds {
   warnScope: DriveLetterScope;
 }
 
-function parseDriveScope(raw: string | undefined, fallback: DriveLetterScope): DriveLetterScope {
+export function parseDriveScope(raw: string | undefined, fallback: DriveLetterScope): DriveLetterScope {
   if (raw == null) return fallback;
   let trimmed = raw.trim();
   if (trimmed === '' || trimmed === '*') return { kind: 'all' };
@@ -206,17 +206,25 @@ export function summarizeMonitoredDisks(
   computers: ComputerItem[],
   t: DiskThresholds,
 ): { monitoredPcs: number; criticalPcs: number; criticalDrives: number } {
-  const monitoredIds = new Set(computers.filter((c) => c.disk_email_monitor).map((c) => c.id));
+  // Per-PC drive scope: explicit letters in disk_email_drives if set, else the
+  // global critical scope. Mirrors services/alerts.ts on the server.
+  const scopeByPc = new Map<number, DriveLetterScope>();
+  for (const c of computers) {
+    if (!c.disk_email_monitor) continue;
+    const letters = (c.disk_email_drives ?? '').trim();
+    scopeByPc.set(c.id, letters ? parseDriveScope(letters, t.critScope) : t.critScope);
+  }
   let criticalDrives = 0;
   const critPcs = new Set<number>();
   for (const d of disks) {
-    if (!monitoredIds.has(d.computer_id)) continue;
-    if (evaluateDiskWithScope(d, t) === 'critical') {
+    const scope = scopeByPc.get(d.computer_id);
+    if (!scope) continue;
+    if (evaluateDisk(d, t) === 'critical' && diskInScope(d, scope)) {
       criticalDrives++;
       critPcs.add(d.computer_id);
     }
   }
-  return { monitoredPcs: monitoredIds.size, criticalPcs: critPcs.size, criticalDrives };
+  return { monitoredPcs: scopeByPc.size, criticalPcs: critPcs.size, criticalDrives };
 }
 
 export function summarizeDisks(disks: DiskItem[], t: DiskThresholds): DiskSummary {
@@ -262,6 +270,8 @@ export interface ComputerItem {
   enabled: boolean;
   monitor_enabled: boolean;
   disk_email_monitor?: boolean;
+  /** Per-PC drive-letter scope for disk email alerts (e.g. "C,F"). Empty = all drives. */
+  disk_email_drives?: string;
   excluded: boolean;
   last_collected_at?: string | null;
   last_error?: string | null;
@@ -403,14 +413,14 @@ export const api = {
     if (!r.ok) throw new Error(`PATCH /computers/${id}/monitor → ${r.status}`);
     return r.json() as Promise<{ id: number; name: string; monitor_enabled: boolean }>;
   },
-  setDiskEmailMonitor: async (id: number, enabled: boolean) => {
+  setDiskEmailMonitor: async (id: number, patch: { enabled?: boolean; drives?: string }) => {
     const r = await fetch(`${API_BASE}/computers/${id}/disk-email-monitor`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify(patch),
     });
     if (!r.ok) throw new Error(`PATCH /computers/${id}/disk-email-monitor → ${r.status}`);
-    return r.json() as Promise<{ id: number; name: string; disk_email_monitor: boolean }>;
+    return r.json() as Promise<{ id: number; name: string; disk_email_monitor: boolean; disk_email_drives: string }>;
   },
   sendDiskAlertTest: async () => {
     const r = await fetch(`${API_BASE}/alerts/disk/test`, { method: 'POST' });
