@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ITDashboard — Project Status</title>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a2129; --border: #2a333d; --fg: #e6edf3;
+    --muted: #8b97a4; --accent: #4ea1ff; --ok: #3fb950; --warn: #d29922; --crit: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.6 "Segoe UI", system-ui, sans-serif; padding: 2rem 1rem;
+  }
+  main { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 1.7rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1.2rem; margin: 2rem 0 .75rem; border-bottom: 1px solid var(--border); padding-bottom: .3rem; }
+  .sub { color: var(--muted); margin: 0 0 1.5rem; }
+  .badge {
+    display: inline-block; padding: .15rem .6rem; border-radius: 999px;
+    font-size: .8rem; font-weight: 600; vertical-align: middle;
+  }
+  .badge.live { background: rgba(63,185,80,.15); color: var(--ok); border: 1px solid var(--ok); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .75rem; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: .9rem 1rem; }
+  .card .k { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+  .card .v { font-size: 1.05rem; font-weight: 600; margin-top: .2rem; word-break: break-word; }
+  table { width: 100%; border-collapse: collapse; margin: .5rem 0 1rem; }
+  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .85rem; }
+  code { background: #11161c; border: 1px solid var(--border); border-radius: 4px; padding: .05rem .35rem; font-size: .9em; }
+  ul { margin: .4rem 0 1rem; padding-left: 1.2rem; }
+  li { margin: .25rem 0; }
+  .note { background: rgba(78,161,255,.08); border-left: 3px solid var(--accent); padding: .75rem 1rem; border-radius: 0 6px 6px 0; margin: 1rem 0; }
+  a { color: var(--accent); }
+  footer { color: var(--muted); font-size: .85rem; margin-top: 2.5rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+  .pill { font-size: .75rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>ITDashboard <span class="badge live">LIVE</span></h1>
+  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-11</span></p>
+
+  <h2>Stav nasazení</h2>
+  <div class="grid">
+    <div class="card"><div class="k">Stav</div><div class="v" style="color:var(--ok)">V provozu od 2026-06-01</div></div>
+    <div class="card"><div class="k">Pokrytí</div><div class="v">~225 doménových PC</div></div>
+    <div class="card"><div class="k">Deploy</div><div class="v">Push → GitHub Actions (auto)</div></div>
+    <div class="card"><div class="k">Pipeline</div><div class="v" style="color:var(--ok)">Zelená</div></div>
+  </div>
+
+  <h2>Referenční nasazení</h2>
+  <p class="sub">Konkrétní hodnoty tohoto nasazení. <strong>Nejsou napevno v kódu</strong> — zdrojový strom neobsahuje žádné IP, hostname ani doménu. Pro jiné prostředí se mění jen <code>apps/server/.env</code> (+ GitHub Actions Variables).</p>
+  <table>
+    <tr><th>Komponenta</th><th>Hodnota</th><th>Běží jako</th></tr>
+    <tr><td>API + collectory + script runner</td><td>API host <code>10.8.2.213</code> (B-S-W-MIKOS)</td><td>Windows Service <code>ITDashboardAPI</code> (NSSM) pod <code>AXINETWORK\svc-itdashboard</code></td></tr>
+    <tr><td>SQL Server</td><td><code>10.8.2.225</code> (B-S-W-SQL-04, default instance)</td><td>DB <code>ITDashboard</code>, Integrated (Trusted) Auth</td></tr>
+    <tr><td>GitHub Actions runner</td><td>API host <code>10.8.2.213</code></td><td>self-hosted, stejný service account</td></tr>
+    <tr><td>Desktop klient</td><td>Per IT-operátor PC</td><td>Electron (build s <code>VITE_API_BASE</code>) nebo browser (relativní URL)</td></tr>
+  </table>
+
+  <h2>Funkční rozsah</h2>
+  <ul>
+    <li><strong>Eventlog napříč flotilou</strong> — Warning/Error/Critical z každého PC do centrální DB; filtrování, vyhledávání, časové grafy, žebříček „noisy" PC.</li>
+    <li><strong>AD-synchronizovaný inventář</strong> — OS, poslední přihlášení, OU cesta, operátorem řízený monitor toggle (perzistuje napříč syncs).</li>
+    <li><strong>Monitoring disků</strong> — periodický DCOM sken, konfigurovatelné prahy (% / GB), per-tier scope písmen disků.</li>
+    <li><strong>Services collector + policy</strong> — Auto + neběžící služby, klasifikace drift vs. policy tabulka, ExitCode capture, GPO PS export.</li>
+    <li><strong>Performance events</strong> — pomalý boot/shutdown/standby/resume z Diagnostics-Performance kanálu s pojmenovanými culprity.</li>
+    <li><strong>Klasifikace dostupnosti</strong> — každý běh: online / offline / rpc_unavailable / access_denied.</li>
+    <li><strong>Activity log</strong> — terminálový live view (filtr, pauza, copy) + perzistentní historie.</li>
+    <li><strong>Per-PC Actions</strong> — vzdálené admin zkratky (MMC, services, eventvwr, RDP, admin shares) přes hardenované <code>itd-*</code> URL handlery.</li>
+    <li><strong>Settings</strong> — frekvence, časové okno, zapnuté checky, prahy — aplikováno živě bez restartu služby.</li>
+  </ul>
+
+  <h2>Konfigurace a přenositelnost</h2>
+  <div class="note">
+    Veškeré hodnoty specifické pro prostředí (SQL host, AD/LDAP endpointy, doména, porty) jsou <strong>konfigurace, ne kód</strong>. Předání projektu = změna přístupů, ne zásah do kódu.
+  </div>
+  <table>
+    <tr><th>Vrstva</th><th>Kde se konfiguruje</th></tr>
+    <tr><td>Runtime server</td><td><code>apps/server/.env</code> — jediný zdroj pravdy, šablona <code>.env.example</code>. Operator-owned, deploy ho nepřepisuje.</td></tr>
+    <tr><td>Auto-deploy (migrace)</td><td>GitHub Actions repository <em>Variables</em>: <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>.</td></tr>
+    <tr><td>Browser klient</td><td>Bez konfigurace — servíruje ho API, používá relativní URL.</td></tr>
+    <tr><td>Electron klient</td><td><code>VITE_API_BASE</code> zapečené při buildu.</td></tr>
+    <tr><td>Protocol-handler installer</td><td>API base injektuje server při stažení (dle <code>Host</code> hlavičky) — nic ručně needitovat.</td></tr>
+  </table>
+  <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>.</p>
+
+  <h2>Poslední změna — externalizace konfigurace (2026-06-11)</h2>
+  <ul>
+    <li>Browser klient přešel na relativní API URL (konec napevno zadané IP v buildu).</li>
+    <li>Installer: server přepisuje <code>ITD_API_BASE</code> podle hostu stažení.</li>
+    <li>LDAP login bez napevno zadané domény <code>AXINETWORK.LOC</code>.</li>
+    <li><code>.env.example</code> přepsán jako přesný, kompletní config povrch (trusted-only SQL, GitHub Actions Variables).</li>
+    <li>Dokumentace sladěna: README, ARCHITECTURE, dashboard.html, SETUP-SERVER, HANDOFF.</li>
+  </ul>
+
+  <h2>Stack</h2>
+  <ul>
+    <li><strong>Server</strong> — Node.js 20 + Fastify + TypeScript, Windows Service přes NSSM.</li>
+    <li><strong>DB</strong> — MSSQL, Integrated Auth přes <code>msnodesqlv8</code> (ne tedious — selhává „untrusted domain").</li>
+    <li><strong>Klient</strong> — Electron + React + Vite + TypeScript.</li>
+    <li><strong>Sběr dat</strong> — agentless přes RPC/MS-EVEN6 (Get-WinEvent) + DCOM (Get-CimInstance), TCP/135 pre-flight probe.</li>
+  </ul>
+
+  <footer>
+    Související dokumentace:
+    <a href="dashboard.html">dashboard.html</a> ·
+    <a href="ARCHITECTURE.md">ARCHITECTURE.md</a> ·
+    <a href="SETUP-SERVER.md">SETUP-SERVER.md</a> ·
+    <a href="../HANDOFF.md">HANDOFF.md</a> ·
+    <a href="../README.md">README.md</a><br>
+    Generováno jako statický status snapshot — 2026-06-11.
+  </footer>
+</main>
+</body>
+</html>

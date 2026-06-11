@@ -6,11 +6,28 @@ Po dokončení už nikdy nemusíš na server ručně — každý `git push` do `
 
 **Real-world setup proběhl 2026-06-01.** Tento dokument reflektuje skutečnost, ne ideál.
 
+## Reference deployment values
+
+Projekt je portable — žádné IP, hostname ani doménová jména nejsou v kódu. Veškeré site-specific hodnoty žijí v configu. Níže jsou **referenční hodnoty aktuálního nasazení** (AXINETWORK). Pokud stavíš projekt v jiném prostředí, **nahraď je svými vlastními** — celý runbook níže používá tyto referenční hodnoty inline, abys je mohl copy-pastovat, ale v novém prostředí je musíš vyměnit.
+
+| Parameter | Reference value | Where used |
+|-----------|-----------------|------------|
+| API/runtime host | `10.8.2.213` (`B-S-W-MIKOS`) | RDP target, firewall, runner name, deploy workflow |
+| SQL host | `10.8.2.225` (`B-S-W-SQL-04`, **default instance** — NE pojmenovaná `\BCNEW`) | `.env` `SQL_HOST`, repo variable, SSMS connect |
+| AD doména NetBIOS / FQDN | `AXINETWORK` / `axinetwork.loc` | doménové ověření, SQL login prefix, UPN suffix |
+| Service account | `svc-itdashboard` (UPN `svc-itdashboard@axinetwork.loc`; SQL login `AXINETWORK\svc-itdashboard`) | AD user, NSSM service identity, runner identity, DB grant |
+| Dashboard hostname (volitelné, za IIS+TLS) | `itdashboard.axinetwork.loc` | jen pokud frontuješ API přes IIS reverse proxy s TLS |
+| DC pro DNS / doménové ověření | `10.8.2.254` | ověření připojení k doméně / DNS |
+
+> **Pozn. ke klientovi:** browser UI používá **relativní URL** (žádný API base se nekonfiguruje — buildí se ze serveru a běží same-origin). API base v installeru protocol-handleru **injektuje server při downloadu**. V klientovi tedy není nic host-specific k editaci.
+
 ## 0. Prerekvizity
 
 - [ ] RDP přístup na `10.8.2.213` s lokálním admin / Domain Admin v doméně `AXINETWORK.LOC`
 - [ ] SQL přístup na `10.8.2.225` (default instance — `B-S-W-SQL-04`, NE `\BCNEW`) jako sysadmin
 - [ ] GitHub repo admin role na `Anamax443/ITDashboard`
+
+> **Než začneš:** všechny příkazy níže obsahují **referenční hodnoty** z tabulky *Reference deployment values* nahoře (IP, hostname, doména, service account), aby je aktuální operátor mohl copy-pastovat. **V novém prostředí musíš tyto hodnoty vyměnit za své** — projdi příkaz po příkazu a nahraď `10.8.2.213`, `10.8.2.225`, `AXINETWORK` / `axinetwork.loc`, `svc-itdashboard`, `B-S-W-MIKOS` atd. Procedura sama se nemění.
 
 ## 1. Ověř GPO ExecutionPolicy
 
@@ -122,12 +139,16 @@ Set-Location C:\Apps\ITDashboard
 # Workspace install (jen server — desktop se buildí lokálně per IT-PC)
 npm install --workspace @itdashboard/server
 
-# .env
+# .env — kanonický seznam proměnných je `.env.example` v rootu repa.
+# Použij ho jako single source of truth (zkopíruj a doplň své hodnoty).
+# Auth je VŽDY Windows Integrated (Trusted Connection) přes msnodesqlv8 —
+# SQL_USER / SQL_PASSWORD kód NEČTE (service běží pod doménovým účtem
+# mapovaným na SQL login). Minimální server .env (referenční hodnoty —
+# v jiném prostředí nahraď SQL_HOST svým ze sekce Reference deployment values):
 @'
 SQL_HOST=10.8.2.225
 SQL_INSTANCE=
 SQL_DATABASE=ITDashboard
-SQL_TRUSTED_CONNECTION=true
 API_PORT=4000
 API_BIND=0.0.0.0
 COLLECTOR_POLL_INTERVAL_SEC=300
@@ -141,6 +162,8 @@ Set-Location apps\server
 npm run build
 npm run migrate
 ```
+
+**Pozn:** Auto-deploy pipeline (GitHub Actions) **nečte** tento `.env` — migrace v deploy.yml berou `SQL_HOST` / `SQL_INSTANCE` / `SQL_DATABASE` z **repository Variables** (viz krok 10), ne ze souboru.
 
 **Pozn:** Server používá driver `msnodesqlv8` (NE výchozí tedious) kvůli pravému Windows SSPI v doméně. tedious v doméně failuje s "untrusted domain". Driver má prebuilt binaries pro Node 20 Windows, žádný native build nepotřeba.
 

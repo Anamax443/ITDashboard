@@ -105,6 +105,7 @@ a.external { color: var(--accent); }
     <li><a href="#overview"><span data-lang="cs">Přehled</span><span data-lang="en">Overview</span></a></li>
     <li><a href="#architecture"><span data-lang="cs">Architektura</span><span data-lang="en">Architecture</span></a></li>
     <li><a href="#deployment"><span data-lang="cs">Deployment workflow</span><span data-lang="en">Deployment workflow</span></a></li>
+    <li><a href="#configuration"><span data-lang="cs">Konfigurace a přenositelnost</span><span data-lang="en">Configuration &amp; portability</span></a></li>
     <li><a href="#components"><span data-lang="cs">Komponenty</span><span data-lang="en">Components</span></a></li>
     <li><a href="#ui-tour"><span data-lang="cs">UI prohlídka</span><span data-lang="en">UI tour</span></a></li>
     <li><a href="#pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></a></li>
@@ -175,9 +176,9 @@ a.external { color: var(--accent); }
 
 <h2 id="architecture"><span data-lang="cs">Architektura</span><span data-lang="en">Architecture</span></h2>
 <div class="ascii">┌─────────────────┐       ┌──────────────────────┐       ┌─────────────────┐
-│ IT operator     │       │  10.8.2.213          │       │  10.8.2.225     │
+│ IT operator     │       │  API host            │       │  SQL host       │
 │ Electron client │◄─────►│  Node.js API svc     │◄─────►│  SQL Server     │
-│ or web browser  │ HTTPS │  Eventlog collector  │ TDS   │  DB: ITDashboard│
+│ or web browser  │ HTTP  │  Eventlog collector  │ TDS   │  DB: ITDashboard│
 │                 │       │  Disk collector      │ Integ │                 │
 │                 │       │  AD sync             │ Auth  │                 │
 └─────────────────┘       │  Activity log buffer │       └─────────────────┘
@@ -190,23 +191,42 @@ a.external { color: var(--accent); }
                                     ▼
                           ┌──────────────────────┐
                           │ Target PCs / NTB     │
-                          │ AXINETWORK domain    │
+                          │ AD domain            │
                           └──────────────────────┘</div>
 
 <table data-lang="en">
   <tr><th>Component</th><th>Location</th><th>Runs as</th></tr>
-  <tr><td>API + collectors + script runner</td><td><code>10.8.2.213</code> (B-S-W-MIKOS)</td><td>Windows Service <code>ITDashboardAPI</code> via NSSM under <code>AXINETWORK\svc-itdashboard</code></td></tr>
-  <tr><td>SQL Server</td><td><code>10.8.2.225</code> (B-S-W-SQL-04, default instance)</td><td>DB <code>ITDashboard</code>, Integrated Auth</td></tr>
-  <tr><td>GitHub Actions self-hosted runner</td><td><code>10.8.2.213</code></td><td>Windows Service, same service account</td></tr>
-  <tr><td>Desktop client</td><td>Per IT-operator PC</td><td>Electron app or browser; HTTPS to API</td></tr>
+  <tr><td>API + collectors + script runner</td><td>API host (see Reference deployment)</td><td>Windows Service <code>ITDashboardAPI</code> via NSSM under the configured service account</td></tr>
+  <tr><td>SQL Server</td><td>SQL host (see Reference deployment)</td><td>DB <code>ITDashboard</code>, Integrated Auth</td></tr>
+  <tr><td>GitHub Actions self-hosted runner</td><td>API host (see Reference deployment)</td><td>Windows Service, same service account</td></tr>
+  <tr><td>Desktop client</td><td>Per IT-operator PC</td><td>Electron app (built with <code>VITE_API_BASE</code>) or browser served by the API (relative URLs)</td></tr>
 </table>
 <table data-lang="cs">
   <tr><th>Komponenta</th><th>Umístění</th><th>Běží jako</th></tr>
-  <tr><td>API + collectory + script runner</td><td><code>10.8.2.213</code> (B-S-W-MIKOS)</td><td>Windows Service <code>ITDashboardAPI</code> přes NSSM pod <code>AXINETWORK\svc-itdashboard</code></td></tr>
-  <tr><td>SQL Server</td><td><code>10.8.2.225</code> (B-S-W-SQL-04, default instance)</td><td>DB <code>ITDashboard</code>, Integrated Auth</td></tr>
-  <tr><td>GitHub Actions self-hosted runner</td><td><code>10.8.2.213</code></td><td>Windows Service, stejný service account</td></tr>
-  <tr><td>Desktop klient</td><td>Per IT-operátor PC</td><td>Electron app nebo browser; HTTPS na API</td></tr>
+  <tr><td>API + collectory + script runner</td><td>API host (viz Reference deployment)</td><td>Windows Service <code>ITDashboardAPI</code> přes NSSM pod nakonfigurovaným service accountem</td></tr>
+  <tr><td>SQL Server</td><td>SQL host (viz Reference deployment)</td><td>DB <code>ITDashboard</code>, Integrated Auth</td></tr>
+  <tr><td>GitHub Actions self-hosted runner</td><td>API host (viz Reference deployment)</td><td>Windows Service, stejný service account</td></tr>
+  <tr><td>Desktop klient</td><td>Per IT-operátor PC</td><td>Electron app (sestavený s <code>VITE_API_BASE</code>) nebo browser servírovaný API (relativní URL)</td></tr>
 </table>
+
+<div class="callout callout-info" data-lang="en">
+  <strong>Reference deployment</strong> — the source tree carries no environment specifics; these are the actual values of the current AXINETWORK deployment, set via config only (see <a href="#configuration">Configuration &amp; portability</a>):
+  <ul>
+    <li>API / runtime host — <code>10.8.2.213</code> (B-S-W-MIKOS)</li>
+    <li>SQL host — <code>10.8.2.225</code> (B-S-W-SQL-04, default instance)</li>
+    <li>AD domain — <code>AXINETWORK</code> / <code>axinetwork.loc</code></li>
+    <li>Service account — <code>AXINETWORK\svc-itdashboard</code></li>
+  </ul>
+</div>
+<div class="callout callout-info" data-lang="cs">
+  <strong>Reference deployment</strong> — zdrojový strom neobsahuje žádné specifika prostředí; toto jsou skutečné hodnoty aktuálního nasazení v doméně AXINETWORK, nastavené pouze přes konfiguraci (viz <a href="#configuration">Konfigurace a přenositelnost</a>):
+  <ul>
+    <li>API / runtime host — <code>10.8.2.213</code> (B-S-W-MIKOS)</li>
+    <li>SQL host — <code>10.8.2.225</code> (B-S-W-SQL-04, default instance)</li>
+    <li>AD doména — <code>AXINETWORK</code> / <code>axinetwork.loc</code></li>
+    <li>Service account — <code>AXINETWORK\svc-itdashboard</code></li>
+  </ul>
+</div>
 
 <h2 id="deployment"><span data-lang="cs">Deployment workflow</span><span data-lang="en">Deployment workflow</span></h2>
 <p>
@@ -216,7 +236,7 @@ a.external { color: var(--accent); }
 <div class="ascii">local edit (d:/git/ITDashboard)
   ↓ git push origin main
 GitHub Actions
-  ↓ self-hosted runner on 10.8.2.213 picks up job
+  ↓ self-hosted runner on the API host picks up job
 robocopy → C:\Apps\ITDashboard (runtime location)
   ↓ npm install + typecheck + build + migrate
   ↓ sc stop ITDashboardAPI → poll for STOPPED state → sc start
@@ -234,6 +254,46 @@ service restarts on new dist/, in-memory state cleared</div>
 </div>
 <div class="callout callout-warn" data-lang="cs">
 <strong>Service control ACL gotcha</strong> — runner je svc-itdashboard, který by default nemůže stop/start vlastní Windows Service kterou hostuje. Granteme explicitní Stop/Start rights přes <code>sc sdset</code> jako one-time setup step. Bez toho deploys úspěšně dokončí robocopy/build, ale služba běží dál starý kód.
+</div>
+
+<h2 id="configuration"><span data-lang="cs">Konfigurace a přenositelnost</span><span data-lang="en">Configuration &amp; portability</span></h2>
+<div data-lang="en">
+  <p>Configuration is fully externalized into <code>apps/server/.env</code>. The committed template <code>apps/server/.env.example</code> is the single source of truth for which keys exist — the source tree itself carries no IP addresses, hostnames, domain or service-account names. To deploy somewhere else you change <code>.env</code> only (plus a few GitHub Actions repository <em>Variables</em> for the deploy job: <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>) — never the code.</p>
+  <p>Required server keys:</p>
+  <ul>
+    <li><code>SQL_HOST</code> — SQL Server host</li>
+    <li><code>SQL_INSTANCE</code> — named instance (empty for default instance)</li>
+    <li><code>SQL_DATABASE</code> — database name</li>
+    <li><code>AD_LDAP_URL</code> — LDAP endpoint for auth binds</li>
+    <li><code>AD_LDAP_DOMAIN</code> — NETBIOS / DNS domain used for binds (<strong>no hardcoded default</strong> — must be set)</li>
+    <li><code>AD_LDAP_BASE_DN</code> — base DN for group / membership lookups</li>
+    <li><code>AD_EDIT_GROUP</code> — AD group required for edit-tier actions</li>
+  </ul>
+  <p>Client API base resolution:</p>
+  <ul>
+    <li><strong>Browser</strong> — the UI is served by the API and uses <strong>relative URLs</strong>; it needs no API base URL and no hardcoded host.</li>
+    <li><strong>Electron client</strong> — the packaged desktop app sets <code>VITE_API_BASE</code> at build time to point at the API host.</li>
+    <li><strong>Protocol-handler installer</strong> — the API base is <strong>auto-injected by the server</strong> at download time (rewritten to the host the browser fetched the installer from), so it is never hardcoded in the source.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p>Konfigurace je plně externalizovaná do <code>apps/server/.env</code>. Verzovaná šablona <code>apps/server/.env.example</code> je jediný zdroj pravdy o tom, jaké klíče existují — samotný zdrojový strom neobsahuje žádné IP adresy, hostnames, doménu ani jména service accountů. Pro nasazení jinam měníš jen <code>.env</code> (plus pár GitHub Actions repository <em>Variables</em> pro deploy job: <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>) — nikdy ne kód.</p>
+  <p>Povinné server klíče:</p>
+  <ul>
+    <li><code>SQL_HOST</code> — host SQL Serveru</li>
+    <li><code>SQL_INSTANCE</code> — pojmenovaná instance (prázdné pro default instance)</li>
+    <li><code>SQL_DATABASE</code> — název databáze</li>
+    <li><code>AD_LDAP_URL</code> — LDAP endpoint pro auth bindy</li>
+    <li><code>AD_LDAP_DOMAIN</code> — NETBIOS / DNS doména pro bindy (<strong>žádný hardcoded default</strong> — musí být nastaveno)</li>
+    <li><code>AD_LDAP_BASE_DN</code> — base DN pro lookup skupin / členství</li>
+    <li><code>AD_EDIT_GROUP</code> — AD skupina vyžadovaná pro edit-tier akce</li>
+  </ul>
+  <p>Resolution API base na klientu:</p>
+  <ul>
+    <li><strong>Browser</strong> — UI je servírované přímo API a používá <strong>relativní URL</strong>; nepotřebuje žádnou API base URL ani hardcoded host.</li>
+    <li><strong>Electron klient</strong> — zabalená desktop app nastavuje <code>VITE_API_BASE</code> v build čase tak, aby ukazovala na API host.</li>
+    <li><strong>Installer protocol handlerů</strong> — API base <strong>injektuje server</strong> při stažení (přepíše ji na host, ze kterého si browser installer stáhl), takže není nikdy hardcoded ve zdroji.</li>
+  </ul>
 </div>
 
 <h2 id="components"><span data-lang="cs">Komponenty</span><span data-lang="en">Components</span></h2>
@@ -380,8 +440,8 @@ service restarts on new dist/, in-memory state cleared</div>
     <strong>Sprint 1.5 — edit-tier hardening (2026-06-04):</strong> (a) successful LDAP bind alone is NOT enough — the dashboard also requires the authenticated user to be a member of an AD group (<code>AD_EDIT_GROUP</code>, transitive resolution via <code>LDAP_MATCHING_RULE_IN_CHAIN</code>). Without the group, a domain janitor that knows their own password would still pass. Defaults to deny in production when <code>AD_EDIT_GROUP</code> is unset. (b) <code>AD_LDAP_STUB=1</code> refuses to boot when <code>NODE_ENV=production</code>. (c) Downloaded <code>.bat</code> files for PsExec and admin-share open now force a credential prompt at run time (<code>set /p adminuser</code> + <code>runas /netonly</code>) — never silently fall back to the operator's current Windows session creds, which on a multi-tier-account workstation would typically be the basic-tier user and get Access Denied. The <code>.rdp</code> file already forces credentials via <code>prompt for credentials:i:1</code>. New server env vars: <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>.
   </div>
   <div class="callout callout-info">
-    <strong>Machine-wide install for multi-user workstations:</strong> when several Windows accounts share one operator workstation (operator regular login + domain admin + helpdesk…), run the installer once with <code>/machine</code> from elevated cmd / PS. That writes launchers to <code>C:\ProgramData\ITDashboard\launchers</code> and registers handlers under <code>HKLM\Software\Classes\itd-*</code> — every Windows account on the workstation immediately has working handlers, no per-user installer run needed. Per-user mode (default, no flag) stays unchanged for single-user workstations. If switching from per-user to machine-wide, each affected user runs <code>install-handlers.cmd /uninstall-hkcu</code> once (no admin) to clear their HKCU shadow of the HKLM registration.
-    <pre><code>Invoke-WebRequest http://10.8.2.213:4000/actions/install-handlers.cmd -OutFile $env:TEMP\install-handlers.cmd
+    <strong>Machine-wide install for multi-user workstations:</strong> when several Windows accounts share one operator workstation (operator regular login + domain admin + helpdesk…), run the installer once with <code>/machine</code> from elevated cmd / PS. That writes launchers to <code>C:\ProgramData\ITDashboard\launchers</code> and registers handlers under <code>HKLM\Software\Classes\itd-*</code> — every Windows account on the workstation immediately has working handlers, no per-user installer run needed. Per-user mode (default, no flag) stays unchanged for single-user workstations. If switching from per-user to machine-wide, each affected user runs <code>install-handlers.cmd /uninstall-hkcu</code> once (no admin) to clear their HKCU shadow of the HKLM registration. Download the installer from your own API host (replace <code>API_HOST</code> below); the API base used by the generated launchers is no longer hardcoded — the server rewrites it at download time to the host you fetched the installer from.
+    <pre><code>Invoke-WebRequest http://API_HOST:4000/actions/install-handlers.cmd -OutFile $env:TEMP\install-handlers.cmd
 Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine" -Verb RunAs</code></pre>
   </div>
 </div>
@@ -423,8 +483,8 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
     <strong>Sprint 1.5 — edit-tier hardening (2026-06-04):</strong> (a) samotný úspěšný LDAP bind NESTAČÍ — dashboard navíc vyžaduje členství přihlášeného účtu v AD skupině (<code>AD_EDIT_GROUP</code>, transitivně přes <code>LDAP_MATCHING_RULE_IN_CHAIN</code>). Bez skupiny by uklízeč co umí svoje heslo prošel. Default = deny v produkci pokud <code>AD_EDIT_GROUP</code> není nastavené. (b) <code>AD_LDAP_STUB=1</code> odmítne nastartovat když <code>NODE_ENV=production</code>. (c) Stahované <code>.bat</code> pro PsExec a otevření admin-share teď vynucují credential prompt při spuštění (<code>set /p adminuser</code> + <code>runas /netonly</code>) — žádný silent fallback na aktuální Windows session creds, které by na multi-tier accountu byly typicky basic-tier user a vyhodily Access Denied. <code>.rdp</code> už dříve vynucuje credentials přes <code>prompt for credentials:i:1</code>. Nové server env vars: <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>.
   </div>
   <div class="callout callout-info">
-    <strong>Machine-wide install pro multi-user workstation:</strong> když více Windows účtů sdílí jednu operátorskou stanici (operátor regular login + domain admin + helpdesk…), spusť installer jednou s <code>/machine</code> z elevated cmd / PS. To zapíše launchery do <code>C:\ProgramData\ITDashboard\launchers</code> a zaregistruje handlery v <code>HKLM\Software\Classes\itd-*</code> — každý Windows účet na stanici má okamžitě funkční handlery, žádný per-user installer run není potřeba. Per-user mód (default, žádný flag) zůstává nezměněný pro single-user workstation. Při přechodu z per-user na machine-wide každý dotčený uživatel spustí <code>install-handlers.cmd /uninstall-hkcu</code> jednou (bez admin) aby vyčistil svůj HKCU shadow nad HKLM registrací.
-    <pre><code>Invoke-WebRequest http://10.8.2.213:4000/actions/install-handlers.cmd -OutFile $env:TEMP\install-handlers.cmd
+    <strong>Machine-wide install pro multi-user workstation:</strong> když více Windows účtů sdílí jednu operátorskou stanici (operátor regular login + domain admin + helpdesk…), spusť installer jednou s <code>/machine</code> z elevated cmd / PS. To zapíše launchery do <code>C:\ProgramData\ITDashboard\launchers</code> a zaregistruje handlery v <code>HKLM\Software\Classes\itd-*</code> — každý Windows účet na stanici má okamžitě funkční handlery, žádný per-user installer run není potřeba. Per-user mód (default, žádný flag) zůstává nezměněný pro single-user workstation. Při přechodu z per-user na machine-wide každý dotčený uživatel spustí <code>install-handlers.cmd /uninstall-hkcu</code> jednou (bez admin) aby vyčistil svůj HKCU shadow nad HKLM registrací. Installer stáhni ze svého API hostu (nahraď <code>API_HOST</code> níže); API base, kterou používají vygenerované launchery, už není hardcoded — server ji při stažení přepíše na host, ze kterého sis installer stáhl.
+    <pre><code>Invoke-WebRequest http://API_HOST:4000/actions/install-handlers.cmd -OutFile $env:TEMP\install-handlers.cmd
 Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine" -Verb RunAs</code></pre>
   </div>
 </div>
@@ -979,16 +1039,16 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
 <div data-lang="en">
   <p><strong>Cause:</strong> you are running an old launcher (pre-default-to-ask installer) AND have not set <code>ITD_ADMIN_USER</code>. Old launchers fell back to current-user MMC, which typically does not have admin rights on remote PCs. OR you have explicitly set <code>ITD_ADMIN_USER=current</code> on this workstation.</p>
   <p><strong>Fix:</strong> reinstall the handlers (the post-2026-06-03 installer defaults to <code>ask</code> mode when the env var is unset — every Launch then prompts for an admin account in CMD and opens the Windows credential dialog for the password, no per-user env var needed).</p>
-  <pre><code>Invoke-WebRequest http://10.8.2.213:4000/actions/install-handlers.cmd -OutFile $env:TEMP\install-handlers.cmd
+  <pre><code>Invoke-WebRequest http://API_HOST:4000/actions/install-handlers.cmd -OutFile $env:TEMP\install-handlers.cmd
 &amp; $env:TEMP\install-handlers.cmd</code></pre>
-  <p>If you explicitly want a fixed admin user (single-admin workstation), set <code>ITD_ADMIN_USER=DOMAIN\user</code>. If you explicitly want the old current-user behavior, set <code>ITD_ADMIN_USER=current</code>.</p>
+  <p>Replace <code>API_HOST</code> with your own API host; the server injects the matching API base into the generated launchers at download time. If you explicitly want a fixed admin user (single-admin workstation), set <code>ITD_ADMIN_USER=DOMAIN\user</code>. If you explicitly want the old current-user behavior, set <code>ITD_ADMIN_USER=current</code>.</p>
 </div>
 <div data-lang="cs">
   <p><strong>Příčina:</strong> používáš starý launcher (před default-to-ask installerem) A nemáš nastavené <code>ITD_ADMIN_USER</code>. Staré launchery padaly na current-user MMC, který typicky nemá admin práva na vzdálených PC. NEBO máš explicitně nastavené <code>ITD_ADMIN_USER=current</code> na téhle stanici.</p>
   <p><strong>Fix:</strong> reinstall handlerů (post-2026-06-03 installer defaultuje na <code>ask</code> mód když env var není nastavená — každý Launch pak vyzve k zadání admin účtu v CMD a otevře Windows credential dialog na heslo, žádný per-user env var setup není potřeba).</p>
-  <pre><code>Invoke-WebRequest http://10.8.2.213:4000/actions/install-handlers.cmd -OutFile $env:TEMP\install-handlers.cmd
+  <pre><code>Invoke-WebRequest http://API_HOST:4000/actions/install-handlers.cmd -OutFile $env:TEMP\install-handlers.cmd
 &amp; $env:TEMP\install-handlers.cmd</code></pre>
-  <p>Pokud explicitně chceš fixní admin user (single-admin workstation), nastav <code>ITD_ADMIN_USER=DOMAIN\user</code>. Pokud explicitně chceš staré current-user chování, nastav <code>ITD_ADMIN_USER=current</code>.</p>
+  <p>Nahraď <code>API_HOST</code> svým API hostem; server při stažení injektuje odpovídající API base do vygenerovaných launcherů. Pokud explicitně chceš fixní admin user (single-admin workstation), nastav <code>ITD_ADMIN_USER=DOMAIN\user</code>. Pokud explicitně chceš staré current-user chování, nastav <code>ITD_ADMIN_USER=current</code>.</p>
 </div>
 
 <h3><span data-lang="cs">Chybový výstup launcheru už nezobrazuje řádek URL</span><span data-lang="en">Launcher fail screen no longer shows the URL line</span></h3>

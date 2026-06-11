@@ -134,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               value={user}
               onChange={(e) => setUser(e.target.value)}
               autoComplete="username"
-              placeholder="AXINETWORK\trnka_admin"
+              placeholder="DOMAIN\admin_user"
               style={{ width: '100%', padding: '8px 12px', background: 'rgba(0,0,0,0.25)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 14, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }}
             />
 

@@ -1,6 +1,13 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-04 (session close — Sprint 1.5/1.6 prep, Sprint 1.7 ExitCode + NIS2, Sprint 1.8 export + cross-nav + per-tier disk scope)
+Last updated: 2026-06-11 (config externalization — repo made portable; all env-specific values out of code into .env)
+
+> The values in **Current Live State** are this deployment's actual endpoints,
+> kept here as the operator handoff record. They are **no longer hardcoded in
+> code** — the source tree carries no IPs/hostnames/domain. To stand the project
+> up elsewhere you change `apps/server/.env` (+ GitHub Actions repository
+> Variables) only, never code. See [Config externalization (2026-06-11)](#config-externalization-2026-06-11)
+> below and `.env.example` (single source of truth).
 
 ## Current Live State
 
@@ -14,6 +21,42 @@ Last updated: 2026-06-04 (session close — Sprint 1.5/1.6 prep, Sprint 1.7 Exit
 - Live commit: `0925d4d`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
+
+## Config externalization (2026-06-11)
+
+Goal: the repo can be handed to a third party who only changes access/config,
+not code. All site-specific values now live in `apps/server/.env` (template:
+`.env.example`, the single, accurate source of truth listing exactly the
+variables the code reads).
+
+Code changes (branch `chore/externalize-config`):
+
+- **Browser client uses relative API URLs.** `apps/desktop/src/api.ts` no longer
+  falls back to a hardcoded `http://10.8.2.213:4000`. The browser build is served
+  by the API itself, so an empty base = same-origin relative requests — portable
+  with no rebuild. Only the packaged Electron client still needs `VITE_API_BASE`
+  baked at build time.
+- **Installer API base injected at download.** `GET /actions/install-handlers.cmd`
+  now rewrites the `ITD_API_BASE` line to the URL the browser fetched it from
+  (honoring `x-forwarded-proto`/`x-forwarded-host` for reverse-proxy TLS). The
+  committed `.cmd` default is a neutral `http://localhost:4000` placeholder.
+  `ITD_API_BASE_OVERRIDE` still wins for a custom endpoint.
+- **No hardcoded AD domain.** `apps/server/src/auth/ldap.ts` dropped the
+  `AD_LDAP_DOMAIN ?? 'AXINETWORK.LOC'` default. When unset, bare usernames pass
+  through unchanged (operator supplies full UPN / `DOMAIN\user`) and the
+  edit-group filter matches on `sAMAccountName` alone instead of an invalid
+  `user@` UPN.
+- **Genericized environment-specific examples** in `i18n.tsx` (firewall help text,
+  example IPs) and in `ad-bridge` / `ad-sync` / `ip-guard` comments.
+
+Docs synced the same day: `README.md` ("Configuration" section), `.env.example`
+(rewritten as the single config surface — documents trusted-only SQL auth and the
+GitHub Actions Variables the deploy pipeline reads), `docs/ARCHITECTURE.md`
+("Configuration & portability"), `docs/dashboard.html` (CS/EN "Configuration"
+chapter + Reference-deployment box), `docs/SETUP-SERVER.md` ("Reference deployment
+values" table + parametric runbook), and `docs/project-status.html` (new status
+page). Dated historical records (oponentury / audit / change-requests) were left
+unchanged — they are point-in-time records.
 
 ## Protocol handler follow-up oponentura (NEW since 2026-06-03)
 

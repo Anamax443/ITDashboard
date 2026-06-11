@@ -2,10 +2,20 @@
 
 ## Components
 
+> **Reference deployment** — the project ships with no environment-specific values baked into code; everything below is the *current operator's* concrete deployment, recorded here for reference only. To run elsewhere you change config (`apps/server/.env` + GitHub Actions Variables), not code. See **## Configuration & portability**.
+>
+> | Role | Value |
+> |------|-------|
+> | API / runtime host | `10.8.2.213` (B-S-W-MIKOS) |
+> | SQL host | `10.8.2.225` (B-S-W-SQL-04, default instance) |
+> | AD domain (NetBIOS / FQDN) | `AXINETWORK` / `axinetwork.loc` |
+> | Service account | `AXINETWORK\svc-itdashboard` |
+> | Domain controller (example) | `10.8.2.254` |
+
 ### Desktop client (`apps/desktop`)
 - Electron + React + Vite + TypeScript.
 - Per-PC install (NSIS / portable build via electron-builder) OR run via browser through Vite dev server.
-- Renderer talks HTTPS with API on `10.8.2.213:4000`.
+- The browser UI is served **by the API** and talks to it over **relative URLs** — no hardcoded base, no IP. Only the packaged Electron client points at an explicit API host, set via `VITE_API_BASE` at build time.
 - `contextIsolation: true`, `nodeIntegration: false` — renderer has no direct Node.js access.
 - Scripts don't execute locally — client calls `POST /scripts/:slug/run` and API spawns them on the server.
 
@@ -19,8 +29,8 @@
 - **Settings** — periodic check frequency + enabled checks + disk thresholds (applied live, no restart)
 
 ### API + collectors (`apps/server`)
-- Fastify + TypeScript, runs as Windows Service `ITDashboardAPI` (NSSM) on `10.8.2.213`.
-- Service account `AXINETWORK\svc-itdashboard`.
+- Fastify + TypeScript, runs as Windows Service `ITDashboardAPI` (NSSM) on the API host.
+- Runs under a domain service account (suggested name `svc-itdashboard`).
 - Endpoints organised by feature (see `routes/*.ts`):
   - `health`, `version`, `docs`
   - `events` — list, summary, top-ids, timeline, top-computers
@@ -39,7 +49,7 @@
   - **Perf-events collector** — pulls slow boot/shutdown/standby/resume records from the `Microsoft-Windows-Diagnostics-Performance/Operational` channel; parses EventData XML for TotalTime / DegradationTime / culprit
   - **Retention purge** — `sp_purge_old_events @retention_days = 90` daily
 
-### Database (`MSSQL 10.8.2.225`, DB `ITDashboard`)
+### Database (MSSQL on the SQL host — `SQL_HOST` / `SQL_INSTANCE`, DB `SQL_DATABASE`)
 Tables:
 - `computers` — name, fqdn, os_version, last_seen, enabled (AD presence), monitor_enabled (operator intent), last_collected_at, last_error, consecutive_failures, distinguished_name, ou_path, last_status
 - `events` — raw events with unique idx `(computer_id, event_id, log_name, time_created)` for idempotency
@@ -53,6 +63,16 @@ Tables:
 - `scripts`, `script_runs` — catalog + history
 - `credentials` — DPAPI-encrypted blobs
 - `schema_migrations` — migration tracking
+
+## Configuration & portability
+
+All environment-specific configuration is fully externalized — the source tree carries **no IPs, hostnames, or domain names**. To stand the project up in a different environment you change config only, never code:
+
+- **`apps/server/.env`** is the single place for runtime config (SQL host/instance/database, AD/LDAP settings, edit-group DN, retention overrides, etc.). The committed **`.env.example`** is the template and the single source of truth for what knobs exist — copy it to `.env` and fill in access/values.
+- **GitHub Actions repository Variables** drive the auto-deploy pipeline: the workflow reads `SQL_HOST`, `SQL_INSTANCE`, and `SQL_DATABASE` from repo-level Variables, so the deploy target is configured in the repo settings, not in committed YAML.
+- **Browser client** uses relative URLs (served by the API), so it needs no base configuration. The **Electron** client sets `VITE_API_BASE` at build time. The **protocol-handler installer** base is injected by the server at download time (committed default is a neutral `localhost` placeholder).
+
+Handing the project to a new operator means: edit `apps/server/.env`, set the GitHub Actions Variables, and adjust access — no code changes.
 
 ## Key design decisions
 
@@ -97,14 +117,14 @@ AD sync is registered as the first check in the registry. Order matters: if a pe
 The whole tool follows the loop `observe → compare with threshold → show to operator`, never `observe → act → re-observe`. Remediation is delegated to the human at the screen. The Services tab "GPO script export" stays on the right side of this line (we export a script, we don't execute it). Future backlog items like "Direct fix button per service-PC" would cross it, and should be evaluated against this principle before being implemented. Two reasons: (1) absence of signal is ambiguous — an OFFLINE PC could be down, the network could be down, or the monitor itself could be blind, so acting on incomplete state is dangerous; (2) the monitor doesn't own truth, the machines do — every shown value is a 30-second-to-15-minute-stale derivative, and acting on stale state is how races and storms start.
 
 ### Per-PC Actions and URL protocol handlers
-Computers tab Actions are operator launch shortcuts, not automated remediation. Every row offers copy/download fallbacks. Optional one-click launch is implemented by a per-workstation installer (`apps/server/scripts/install-itd-handlers.cmd`) that registers custom `itd-*` URL protocols under HKCU only.
+Computers tab Actions are operator launch shortcuts, not automated remediation. Every row offers copy/download fallbacks. Optional one-click launch is implemented by a per-workstation installer (`apps/server/scripts/install-itd-handlers.cmd`) that registers custom `itd-*` URL protocols under HKCU only. The installer does **not** hardcode the API base — the committed default is a neutral `localhost` placeholder, and the server rewrites it at download time to whatever host the browser fetched it from, honoring `x-forwarded-proto` / `x-forwarded-host` so the injected base is correct behind a TLS-terminating reverse proxy.
 
 Security posture:
 - Generated launchers accept only non-empty hostnames matching `[a-zA-Z0-9._-]+` with a 63-character cap. Spaces, quotes, shell metacharacters, redirection and path traversal do not pass validation.
 - Browser prompt guidance is explicit: do not tick "Always allow"; per-click confirmation is a second layer against unrelated websites probing registered protocols.
 - PsExec is not installed by default because it opens `cmd.exe` on the remote PC; opt-in requires `/with-psexec`.
 - `itd-explorer://HOST/LETTER` intentionally supports only administrative drive shares (`C$`, `D$`). It is not a generic UNC share launcher.
-- `ITD_ADMIN_USER` defaults to **ask** mode when unset (no per-user setup needed; default is correct for multi-admin workstations). Behavior matrix: **(a) Unset (default ask):** the launcher prompts in CMD for the admin account on every launch — empty the first time, pre-fills the last entered user from `%LOCALAPPDATA%\ITDashboard\launchers\last-admin-user.txt` on subsequent runs (Enter accepts the cached value). Typed user is validated (max 128 chars, non-empty) and persisted; password is never persisted. **(b) Literal value `ask`:** same as unset, explicit form. **(c) Concrete value** (e.g. `AXINETWORK\trnka_admin`): `runas /user:%ITD_ADMIN_USER% /netonly` wraps every command, Windows credential dialog has the user pre-filled and asks only for password. **(d) Literal value `current`:** opt-in to the pre-default-change behavior — launchers run as the operator's current Windows account with no admin wrap. The PowerShell-based `itd-ps` launcher uses the same shared last-admin-user cache but renders the credential UI via `Get-Credential` for a native single-dialog both-fields experience. The default `set "ITD_ADMIN_USER=ask"` happens inside the launcher's `setlocal`, so the user's actual environment is never touched.
+- `ITD_ADMIN_USER` defaults to **ask** mode when unset (no per-user setup needed; default is correct for multi-admin workstations). Behavior matrix: **(a) Unset (default ask):** the launcher prompts in CMD for the admin account on every launch — empty the first time, pre-fills the last entered user from `%LOCALAPPDATA%\ITDashboard\launchers\last-admin-user.txt` on subsequent runs (Enter accepts the cached value). Typed user is validated (max 128 chars, non-empty) and persisted; password is never persisted. **(b) Literal value `ask`:** same as unset, explicit form. **(c) Concrete value** (e.g. `DOMAIN\admin_user`): `runas /user:%ITD_ADMIN_USER% /netonly` wraps every command, Windows credential dialog has the user pre-filled and asks only for password. **(d) Literal value `current`:** opt-in to the pre-default-change behavior — launchers run as the operator's current Windows account with no admin wrap. The PowerShell-based `itd-ps` launcher uses the same shared last-admin-user cache but renders the credential UI via `Get-Credential` for a native single-dialog both-fields experience. The default `set "ITD_ADMIN_USER=ask"` happens inside the launcher's `setlocal`, so the user's actual environment is never touched.
 - New `itd-ps://HOST` launcher opens a PowerShell console with `Enter-PSSession -ComputerName <host>`. In `ask`/preset mode, credentials are collected via `Get-Credential` (native Windows credential UI). PowerShell `-Command` inline form is used because it bypasses the `.ps1` file ExecutionPolicy / AllSigned restriction — no signed-script requirement. The host is regex-allowlisted (`[a-zA-Z0-9._-]+`, max 63 chars) before being injected into the PS command string, and the typed admin user is validated `^[A-Za-z0-9._@\\-]+$` inside PS before being persisted, preventing PS quoting / injection issues.
 - Installer supports two install scopes via flags: **per-user (default)** writes launcher files to `%LOCALAPPDATA%\ITDashboard\launchers` and registers handlers under `HKCU\Software\Classes\itd-*` — no admin required. **Machine-wide** via `/machine` flag writes launchers to `C:\ProgramData\ITDashboard\launchers` and registers handlers under `HKLM\Software\Classes\itd-*` — requires elevation, covers every Windows account on the workstation. Generated launchers always write logs and the `last-admin-user.txt` cache to per-user `%LOCALAPPDATA%` (each Windows user gets their own diagnostic trail and last-typed-admin pre-fill) and `mkdir` the dir at startup so a first-time user under a machine-wide install does not fail on missing dir. The `/uninstall-hkcu` flag (no admin) removes the current user's HKCU registrations + per-user launcher dir, used when switching a workstation from per-user to machine-wide install to clear the HKCU-over-HKLM shadowing.
 
@@ -129,7 +149,7 @@ every path that touches a remote PC.
 
 ### Auth Gate — session-scoped credential vault for silent launches
 
-Per-launch CMD prompts are friction when an IT specialist runs many tools in one session. The Auth Gate (`apps/server/src/auth/*` + `apps/server/src/routes/auth.ts` + `apps/desktop/src/components/AuthGate.tsx`) implements a server-mediated short-lived credential vault: the operator signs in once per browser session (LDAP bind against `AD_LDAP_URL`), credentials live in **server memory only** (Node Map) with a 30 min idle / 8 h hard max TTL, and every Launch click generates a 30-second one-shot redeem token, appends it to the protocol URL (`itd-mmc://HOST?tk=TOKEN`), and the launcher .cmd extracts the token, calls `GET /api/auth/redeem?token=X`, receives `{user, password}`, and uses them via `cmdkey` + the target tool (mstsc / mmc / explorer / psexec) or directly via `New-Object PSCredential` + `Enter-PSSession` for the PowerShell launcher. The cmdkey entry is created right before the tool starts and deleted after the tool exits (the PS wrapper does `Start-Process -PassThru | WaitForExit | cmdkey /delete`), so the credential is scoped to the tool's lifetime. Session cookie is HttpOnly + `SameSite=Strict`. Token can only be redeemed once; expired or already-redeemed tokens return `401`. All redeem events are audit-logged via `activity-log.ts` (who, when, target, tool, IP). Server restart clears all sessions — passwords are NEVER written to disk. Launchers retain the per-launch ask mode as a fallback when no token is present in the URL, so the system degrades gracefully if the auth backend is down or the operator is using a different browser tab. Server env vars: `AD_LDAP_URL` (e.g. `ldap://10.8.2.X:389`), `AD_LDAP_DOMAIN` (default `AXINETWORK.LOC`), `AD_LDAP_TIMEOUT_MS` (default 5000), `AD_LDAP_BASE_DN` (search root, required when group gate is on), `AD_EDIT_GROUP` (distinguishedName of the AD group whose members may unlock the edit tier — defaults to deny in production when unset).
+Per-launch CMD prompts are friction when an IT specialist runs many tools in one session. The Auth Gate (`apps/server/src/auth/*` + `apps/server/src/routes/auth.ts` + `apps/desktop/src/components/AuthGate.tsx`) implements a server-mediated short-lived credential vault: the operator signs in once per browser session (LDAP bind against `AD_LDAP_URL`), credentials live in **server memory only** (Node Map) with a 30 min idle / 8 h hard max TTL, and every Launch click generates a 30-second one-shot redeem token, appends it to the protocol URL (`itd-mmc://HOST?tk=TOKEN`), and the launcher .cmd extracts the token, calls `GET /api/auth/redeem?token=X`, receives `{user, password}`, and uses them via `cmdkey` + the target tool (mstsc / mmc / explorer / psexec) or directly via `New-Object PSCredential` + `Enter-PSSession` for the PowerShell launcher. The cmdkey entry is created right before the tool starts and deleted after the tool exits (the PS wrapper does `Start-Process -PassThru | WaitForExit | cmdkey /delete`), so the credential is scoped to the tool's lifetime. Session cookie is HttpOnly + `SameSite=Strict`. Token can only be redeemed once; expired or already-redeemed tokens return `401`. All redeem events are audit-logged via `activity-log.ts` (who, when, target, tool, IP). Server restart clears all sessions — passwords are NEVER written to disk. Launchers retain the per-launch ask mode as a fallback when no token is present in the URL, so the system degrades gracefully if the auth backend is down or the operator is using a different browser tab. Server env vars: `AD_LDAP_URL` (LDAP URL of a domain controller, e.g. `ldap://DC_HOST:389`), `AD_LDAP_DOMAIN` (no hardcoded default — when unset, users sign in with a full UPN or `DOMAIN\user`, and the edit-group LDAP filter matches on `sAMAccountName` alone), `AD_LDAP_TIMEOUT_MS` (default 5000), `AD_LDAP_BASE_DN` (search root, required when group gate is on), `AD_EDIT_GROUP` (distinguishedName of the AD group whose members may unlock the edit tier — defaults to deny in production when unset).
 
 ### Sprint 1.5 edit-tier hardening (2026-06-04)
 
@@ -166,8 +186,8 @@ because NSSM/Windows Service cwd is not a stable contract.
 ### Service Control ACL grant
 The runner runs as `svc-itdashboard` which by default cannot stop/start the `ITDashboardAPI` service it itself hosts. One-time setup grant via `sc sdset` adds explicit Stop/Start ACE for the SID. Without it deploys succeed at robocopy/build but service keeps running old code.
 
-### AXINETWORK GPO AllSigned ExecutionPolicy
-Domain enforces `AllSigned` ExecutionPolicy on Windows servers, blocking unsigned PS scripts including GitHub Actions runner's temp step files. Workflow uses `defaults.run.shell: cmd` (cmd not subject to PS ExecutionPolicy). Service restart in workflow uses `sc stop/start` (cmd), not `Restart-Service`.
+### Domain GPO AllSigned ExecutionPolicy
+The domain enforces `AllSigned` ExecutionPolicy on Windows servers, blocking unsigned PS scripts including GitHub Actions runner's temp step files. Workflow uses `defaults.run.shell: cmd` (cmd not subject to PS ExecutionPolicy). Service restart in workflow uses `sc stop/start` (cmd), not `Restart-Service`.
 
 ## Retention policy
 
@@ -180,11 +200,11 @@ Domain enforces `AllSigned` ExecutionPolicy on Windows servers, blocking unsigne
 | `disks` | jen poslední per (PC, drive) | MERGE replaces |
 | `script_runs` | 1 rok (planned) | TODO |
 
-`RETENTION_RAW_DAYS` env / hardcoded → 90.
+Raw-event retention is governed by the `events.retention_days` setting (default 90, migration 021), consumed by the retention-runner — not by any env var or hardcoded constant.
 
 ## Required permissions on target PCs
 
-For both collectors to succeed against a target PC, `AXINETWORK\svc-itdashboard` needs:
+For both collectors to succeed against a target PC, the domain service account (`svc-itdashboard`) needs:
 
 1. **TCP/135 reachable** — PC online, Domain firewall profile allows
 2. **Firewall rule "Remote Event Log Management"** enabled (predefined Windows rule)
