@@ -18,6 +18,7 @@ import { registerServicesRoutes } from './routes/services.js';
 import { registerPerfEventsRoutes } from './routes/perf-events.js';
 import { registerActionsRoutes } from './routes/actions.js';
 import { registerRetentionRoutes } from './routes/retention.js';
+import { registerAlertsRoutes } from './routes/alerts.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
 import { refreshIpGuard } from './services/ip-guard.js';
@@ -56,6 +57,7 @@ await registerServicesRoutes(app);
 await registerPerfEventsRoutes(app);
 await registerActionsRoutes(app);
 await registerRetentionRoutes(app);
+await registerAlertsRoutes(app);
 await registerFrontendRoutes(app);
 
 app.listen({ port: PORT, host: BIND }).then(async () => {

@@ -10,6 +10,7 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     const pool = await getPool();
     const r = await pool.request().query(`
       SELECT id, name, fqdn, os_version, last_seen, enabled, monitor_enabled, excluded,
+             disk_email_monitor,
              last_collected_at, last_error, consecutive_failures, ou_path, distinguished_name,
              last_status, [current_user], current_user_seen_at, ip_address, pc_info_collected_at
       FROM computers
@@ -120,6 +121,25 @@ export async function registerComputersRoutes(app: FastifyInstance) {
       .query(`
         UPDATE computers SET monitor_enabled = @m WHERE id = @id;
         SELECT id, name, monitor_enabled FROM computers WHERE id = @id;
+      `);
+    const row = r.recordset[0];
+    if (!row) {
+      reply.code(404);
+      return { error: 'Not found' };
+    }
+    return row;
+  });
+
+  app.patch('/computers/:id/disk-email-monitor', async (req, reply) => {
+    const params = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    const body = z.object({ enabled: z.boolean() }).parse(req.body);
+    const pool = await getPool();
+    const r = await pool.request()
+      .input('id', params.id)
+      .input('m', body.enabled ? 1 : 0)
+      .query(`
+        UPDATE computers SET disk_email_monitor = @m WHERE id = @id;
+        SELECT id, name, disk_email_monitor FROM computers WHERE id = @id;
       `);
     const row = r.recordset[0];
     if (!row) {

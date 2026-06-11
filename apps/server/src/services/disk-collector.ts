@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { Socket } from 'node:net';
 import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
+import { evaluateAndSendDiskAlerts } from './alerts.js';
 
 function tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -214,6 +215,16 @@ export async function runDiskCollectorOnce(): Promise<{ pcs: number; ok: number;
 
     const durationMs = Date.now() - t0;
     logActivity('success', 'disk', `Disk scan done: ${ok} OK / ${fail} fail / ${totalDrives} drives (${(durationMs/1000).toFixed(1)}s)`);
+
+    // Fire disk-critical email alerts off fresh data. Self-contained (checks the
+    // master enable flag + throttle internally) and never throws — a mail
+    // failure must not fail the scan.
+    try {
+      await evaluateAndSendDiskAlerts();
+    } catch (err) {
+      logActivity('error', 'alerts', `Disk alert evaluation failed: ${String(err).split('\n')[0]}`);
+    }
+
     return { pcs: targets.length, ok, fail, drives: totalDrives, durationMs };
   } finally {
     runInFlight = false;
