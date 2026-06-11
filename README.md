@@ -40,6 +40,38 @@ Internal IT operations dashboard for the **AXINETWORK** domain. Eventlog analyti
 - **Desktop client (`apps/desktop`)** — Electron + React + Vite + TypeScript. Per-PC install or accessed via browser through Vite.
 - **Deploy** — GitHub Actions self-hosted runner on 10.8.2.213. Push to `main` → auto-deploy.
 
+## Configuration
+
+All environment-specific values (SQL host, AD/LDAP endpoints, domain, ports)
+are config, not code — the source tree carries no IPs or hostnames. To deploy
+this repo into a different environment you only change access/config, not code:
+
+1. **Runtime `.env`** — copy [`.env.example`](.env.example) to `apps/server/.env`
+   on the API host and fill in your values. It is the single source of truth and
+   documents every variable the server reads. The `.env` is operator-owned and is
+   never overwritten by deploys (`robocopy … /XF .env`). The keys you must set for
+   a new environment (`[REQUIRED]` in the template):
+
+   | Key | What it is |
+   |-----|------------|
+   | `SQL_HOST` | SQL server IP/hostname |
+   | `SQL_INSTANCE` | named instance, or empty for default instance |
+   | `SQL_DATABASE` | database name (default `ITDashboard`) |
+   | `AD_LDAP_URL` | comma-separated DC LDAP URLs (edit-tier login) |
+   | `AD_LDAP_DOMAIN` | default UPN suffix for bare usernames |
+   | `AD_LDAP_BASE_DN` / `AD_EDIT_GROUP` | search root + edit-tier group DN |
+
+2. **GitHub Actions variables** (only if you use the auto-deploy pipeline) — set
+   `SQL_HOST`, `SQL_INSTANCE`, `SQL_DATABASE` as repository *Variables*; the
+   self-hosted runner label in [`deploy.yml`](.github/workflows/deploy.yml) must
+   match a runner registered on your host.
+
+3. **Clients need no code change** — the browser UI is served by the API and uses
+   relative URLs. The protocol-handler installer (`/actions/install-handlers.cmd`)
+   is rewritten by the server at download time to point back at whatever host it
+   was fetched from. Only the packaged Electron client needs an explicit
+   `VITE_API_BASE` baked at build time.
+
 ## Layout
 
 ```
