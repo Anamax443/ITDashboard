@@ -614,6 +614,15 @@ export function SettingsPage() {
               style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
             />
           </Field>
+          <Field label={t('settings.field.dashboardUrl')}>
+            <input
+              type="text"
+              value={value('alerts.dashboard_url', '')}
+              onChange={(e) => set('alerts.dashboard_url', e.target.value)}
+              placeholder="http://10.8.2.213:4000"
+              style={{ ...fieldStyle, width: '100%', minWidth: 320 }}
+            />
+          </Field>
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 8px 0', lineHeight: 1.5 }}>
             {t('settings.field.diskAlertsHelp')}
           </p>

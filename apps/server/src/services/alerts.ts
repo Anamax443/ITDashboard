@@ -11,6 +11,7 @@ import { logActivity } from './activity-log.js';
 
 export interface MonitoredCriticalDisk {
   computer: string;
+  ip: string | null;
   driveLetter: string;
   volumeLabel: string | null;
   totalBytes: number;
@@ -63,6 +64,7 @@ function parseRecipients(raw: string | undefined): string[] {
 
 interface DiskRow {
   computer: string;
+  ip_address: string | null;
   drive_letter: string;
   volume_label: string | null;
   total_bytes: number;
@@ -77,7 +79,7 @@ interface DiskRow {
 async function loadMonitoredCriticalDisks(settings: SettingsMap): Promise<MonitoredCriticalDisk[]> {
   const pool = await getPool();
   const r = await pool.request().query<DiskRow>(`
-    SELECT c.name AS computer, d.drive_letter, d.volume_label, d.total_bytes, d.free_bytes,
+    SELECT c.name AS computer, c.ip_address, d.drive_letter, d.volume_label, d.total_bytes, d.free_bytes,
            c.disk_email_drives
     FROM disks d
     JOIN computers c ON c.id = d.computer_id
@@ -111,6 +113,7 @@ async function loadMonitoredCriticalDisks(settings: SettingsMap): Promise<Monito
     if (isCrit && inScope(driveLetterOf(d.drive_letter), scopeFor(d.disk_email_drives))) {
       out.push({
         computer: d.computer,
+        ip: d.ip_address,
         driveLetter: d.drive_letter,
         volumeLabel: d.volume_label,
         totalBytes: d.total_bytes,
@@ -127,34 +130,118 @@ function fmtGb(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
-function renderDiskAlert(critical: MonitoredCriticalDisk[], isTest: boolean): { subject: string; text: string; html: string } {
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif";
+
+// One white card per critical disk. Pure table + inline styles so it renders in
+// Outlook / Gmail / mobile clients; cards are full-width blocks that stack
+// vertically, so they stay readable on a phone. A two-cell bar visualises usage
+// (red = used, light = free) — a nearly-full disk reads as a mostly-red bar.
+function diskCard(c: MonitoredCriticalDisk): string {
+  const usedPct = Math.max(2, Math.min(100, Math.round(100 - c.freePct)));
+  const freePct = 100 - usedPct;
+  const label = c.volumeLabel ? ` · ${escHtml(c.volumeLabel)}` : '';
+  const ip = c.ip ? ` · ${escHtml(c.ip)}` : '';
+  return `
+        <tr><td style="padding:0 0 12px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#ffffff;border:1px solid #e5e7eb;border-left:4px solid #dc2626;border-radius:8px">
+            <tr><td style="padding:14px 16px">
+              <div style="font-size:16px;font-weight:700;color:#111827;font-family:${FONT}">${escHtml(c.computer)}</div>
+              <div style="font-size:13px;color:#6b7280;margin:2px 0 10px;font-family:${FONT}">Disk ${escHtml(c.driveLetter)}${label}${ip}</div>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-radius:5px;overflow:hidden">
+                <tr>
+                  <td style="height:10px;background:#dc2626;width:${usedPct}%;font-size:0;line-height:0">&nbsp;</td>
+                  <td style="height:10px;background:#e5e7eb;width:${freePct}%;font-size:0;line-height:0">&nbsp;</td>
+                </tr>
+              </table>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px">
+                <tr>
+                  <td style="font-size:14px;color:#374151;font-family:${FONT}"><span style="color:#dc2626;font-weight:700">${fmtGb(c.freeBytes)}</span> volných <span style="color:#9ca3af">z ${fmtGb(c.totalBytes)}</span></td>
+                  <td align="right" style="font-size:15px;font-weight:700;color:#dc2626;font-family:${FONT};white-space:nowrap">${c.freePct.toFixed(1)} % volných</td>
+                </tr>
+              </table>
+            </td></tr>
+          </table>
+        </td></tr>`;
+}
+
+export function renderDiskAlert(critical: MonitoredCriticalDisk[], isTest: boolean, dashboardUrl: string): { subject: string; text: string; html: string } {
   const pcs = new Set(critical.map((c) => c.computer)).size;
   const prefix = isTest ? '[TEST] ' : '';
-  const subject = critical.length > 0
+  const has = critical.length > 0;
+  const subject = has
     ? `${prefix}ITDashboard — kritický stav disků (${critical.length} na ${pcs} PC)`
     : `${prefix}ITDashboard — test disk alertu (žádný kritický disk)`;
 
-  const lines = critical.map((c) =>
-    `  ${c.computer}  ${c.driveLetter}${c.volumeLabel ? ` (${c.volumeLabel})` : ''}  —  ${fmtGb(c.freeBytes)} volných z ${fmtGb(c.totalBytes)} (${c.freePct.toFixed(1)} %)`,
-  );
-  const text = (critical.length > 0
-    ? `Sledované disky pod kritickým prahem:\n\n${lines.join('\n')}\n`
-    : 'Žádný sledovaný disk není aktuálně v kritickém stavu.\n')
-    + (isTest ? '\n(Toto je testovací zpráva spuštěná ručně z Nastavení.)\n' : '');
+  // Server-local generation timestamp (Prague time).
+  const generated = new Date().toLocaleString('cs-CZ', {
+    timeZone: 'Europe/Prague',
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
 
-  const rows = critical.map((c) =>
-    `<tr><td style="padding:4px 10px">${c.computer}</td><td style="padding:4px 10px">${c.driveLetter}${c.volumeLabel ? ` <span style="color:#888">(${c.volumeLabel})</span>` : ''}</td><td style="padding:4px 10px;text-align:right">${fmtGb(c.freeBytes)}</td><td style="padding:4px 10px;text-align:right">${fmtGb(c.totalBytes)}</td><td style="padding:4px 10px;text-align:right;color:#c0392b;font-weight:600">${c.freePct.toFixed(1)} %</td></tr>`,
-  ).join('');
-  const html = `<div style="font-family:Segoe UI,system-ui,sans-serif;font-size:14px;color:#222">
-    <h2 style="margin:0 0 8px">${prefix}ITDashboard — kritický stav disků</h2>
-    ${critical.length > 0
-      ? `<table style="border-collapse:collapse;border:1px solid #ddd">
-           <tr style="background:#f5f5f5"><th style="padding:4px 10px;text-align:left">PC</th><th style="padding:4px 10px;text-align:left">Disk</th><th style="padding:4px 10px;text-align:right">Volné</th><th style="padding:4px 10px;text-align:right">Celkem</th><th style="padding:4px 10px;text-align:right">% volných</th></tr>
-           ${rows}
-         </table>`
-      : '<p>Žádný sledovaný disk není aktuálně v kritickém stavu.</p>'}
-    ${isTest ? '<p style="color:#888;margin-top:12px">Toto je testovací zpráva spuštěná ručně z Nastavení.</p>' : ''}
-  </div>`;
+  // Plaintext fallback.
+  const lines = critical.map((c) =>
+    `  • ${c.computer}${c.ip ? ` (${c.ip})` : ''}  ${c.driveLetter}${c.volumeLabel ? ` (${c.volumeLabel})` : ''}  —  ${fmtGb(c.freeBytes)} volných z ${fmtGb(c.totalBytes)} (${c.freePct.toFixed(1)} % volných)`,
+  );
+  const text = (has
+    ? `ITDashboard — kritický stav disků\n${critical.length} disk(ů) na ${pcs} PC pod kritickým prahem:\n\n${lines.join('\n')}\n`
+    : 'ITDashboard — test disk alertu\nŽádný sledovaný disk není aktuálně v kritickém stavu.\n')
+    + (isTest ? '\n(Testovací zpráva spuštěná ručně z Nastavení.)\n' : '')
+    + (dashboardUrl ? `\nOtevřít ITDashboard: ${dashboardUrl}\n` : '')
+    + `Vygenerováno: ${generated}\n`;
+
+  // Header colour: red when there are critical disks, green for the "all clear"
+  // test case.
+  const headerBg = has ? '#dc2626' : '#16a34a';
+  const headerSub = has ? '#fde2e2' : '#dcfce7';
+  const headerTitle = has ? '🔴 Kritický stav disků' : '✅ Disky v pořádku';
+  const headerLine = has
+    ? `${critical.length} disk(ů) na ${pcs} PC pod kritickým prahem`
+    : 'Žádný sledovaný disk není aktuálně v kritickém stavu';
+
+  const body = has
+    ? critical.map(diskCard).join('')
+    : `<tr><td style="padding:4px 0 12px;font-size:14px;color:#374151;font-family:${FONT}">Všechny sledované disky jsou nad kritickým prahem. 👍</td></tr>`;
+
+  const testBanner = isTest
+    ? `<tr><td style="padding:0 0 14px"><div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:6px;padding:10px 14px;font-size:13px;font-family:${FONT}">ℹ️ Testovací zpráva spuštěná ručně z Nastavení.</div></td></tr>`
+    : '';
+
+  const ctaButton = dashboardUrl
+    ? `<tr><td style="padding:2px 0 16px"><a href="${escHtml(dashboardUrl)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 20px;border-radius:6px;font-family:${FONT}">Otevřít ITDashboard →</a></td></tr>`
+    : '';
+
+  const footerAddr = dashboardUrl
+    ? `<a href="${escHtml(dashboardUrl)}" style="color:#6b7280;text-decoration:underline">${escHtml(dashboardUrl)}</a> · `
+    : '';
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 12px">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;border-collapse:collapse">
+        <tr><td style="background:${headerBg};border-radius:10px 10px 0 0;padding:18px 20px">
+          <div style="font-size:18px;font-weight:700;color:#ffffff;font-family:${FONT}">${prefix}${headerTitle}</div>
+          <div style="font-size:13px;color:${headerSub};margin-top:3px;font-family:${FONT}">${headerLine}</div>
+        </td></tr>
+        <tr><td style="background:#ffffff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 10px 10px;padding:18px 20px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            ${testBanner}
+            ${body}
+            ${ctaButton}
+          </table>
+          <div style="margin-top:8px;padding-top:14px;border-top:1px solid #eef0f2;font-size:12px;color:#9ca3af;font-family:${FONT};line-height:1.6">
+            ${footerAddr}Vygenerováno ${generated} · ITDashboard automatický report.<br>
+            Sledované disky a písmena: záložka Počítače (📧 Disk); práh a četnost: Nastavení.
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
 
   return { subject, text, html };
 }
@@ -206,7 +293,7 @@ export async function evaluateAndSendDiskAlerts(): Promise<void> {
   if (Number.isFinite(lastSent) && now - lastSent < freqHours * 3600_000) return; // throttled
 
   try {
-    const recipients = await sendMail(settings, renderDiskAlert(critical, false));
+    const recipients = await sendMail(settings, renderDiskAlert(critical, false, (settings['alerts.dashboard_url'] ?? '').trim()));
     await setSetting('alerts.disk.last_sent_at', new Date(now).toISOString());
     const pcs = new Set(critical.map((c) => c.computer)).size;
     logActivity('warn', 'alerts', `Disk alert email sent to ${recipients} recipient(s) — ${critical.length} critical drive(s) on ${pcs} monitored PC(s)`);
@@ -220,7 +307,7 @@ export async function evaluateAndSendDiskAlerts(): Promise<void> {
 export async function sendDiskAlertTest(): Promise<{ recipients: number; critical: number; monitoredPcs: number }> {
   const settings = await getAllSettings();
   const critical = await loadMonitoredCriticalDisks(settings);
-  const recipients = await sendMail(settings, renderDiskAlert(critical, true));
+  const recipients = await sendMail(settings, renderDiskAlert(critical, true, (settings['alerts.dashboard_url'] ?? '').trim()));
   const pcs = new Set(critical.map((c) => c.computer)).size;
   logActivity('info', 'alerts', `Disk alert TEST email sent to ${recipients} recipient(s) (${critical.length} critical drive(s))`);
   return { recipients, critical: critical.length, monitoredPcs: pcs };
