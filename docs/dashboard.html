@@ -679,20 +679,64 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><th>Field</th><th>Meaning</th></tr>
   <tr><td>Enable</td><td>Master on/off for disk email alerts (off by default)</td></tr>
   <tr><td>Frequency (hours)</td><td>Throttle cadence while a disk stays critical (default 24h)</td></tr>
-  <tr><td>SMTP relay host + port</td><td>Internal relay; port default <code>25</code></td></tr>
+  <tr><td>SMTP relay host + port</td><td>Mail server + port; default <code>25</code> (see "How mail is sent" below)</td></tr>
   <tr><td>Sender (From)</td><td>From address on the report email</td></tr>
   <tr><td>Recipients</td><td>One per line or comma-separated</td></tr>
-  <tr><td>Send test email</td><td>Emails the current state immediately, regardless of enable / throttle — use it to verify SMTP works</td></tr>
+  <tr><td>Dashboard address (<code>alerts.dashboard_url</code>)</td><td>Where ITDashboard is reachable, e.g. <code>http://10.8.2.213:4000</code>. When filled, the alert email shows an "Open ITDashboard" button plus the address, so recipients know where to go to act.</td></tr>
+  <tr><td>Send test email</td><td>Emails the current state immediately, regardless of enable / throttle — use it to verify mail delivery. It now auto-saves any pending Settings first, so you no longer need to click Save beforehand.</td></tr>
 </table>
 <table data-lang="cs">
   <tr><th>Pole</th><th>Význam</th></tr>
   <tr><td>Enable</td><td>Hlavní zap/vyp email alertů disků (defaultně vypnuto)</td></tr>
   <tr><td>Frequency (hodiny)</td><td>Cadence throttlingu po dobu, co disk zůstává critical (default 24h)</td></tr>
-  <tr><td>SMTP relay host + port</td><td>Interní relay; port default <code>25</code></td></tr>
+  <tr><td>SMTP relay host + port</td><td>Mailserver + port; default <code>25</code> (viz "Jak se odesílá mail" níže)</td></tr>
   <tr><td>Sender (From)</td><td>Adresa odesílatele v report emailu</td></tr>
   <tr><td>Recipients</td><td>Jeden na řádek nebo oddělené čárkou</td></tr>
-  <tr><td>Send test email</td><td>Pošle aktuální stav okamžitě, bez ohledu na enable / throttle — slouží k ověření, že SMTP funguje</td></tr>
+  <tr><td>Adresa dashboardu (<code>alerts.dashboard_url</code>)</td><td>Kde je ITDashboard dostupný, např. <code>http://10.8.2.213:4000</code>. Když je vyplněno, alert email zobrazí tlačítko "Otevřít ITDashboard" a adresu, takže příjemci ví, kam jít zasáhnout.</td></tr>
+  <tr><td>Send test email</td><td>Pošle aktuální stav okamžitě, bez ohledu na enable / throttle — slouží k ověření doručování mailu. Nově před odesláním automaticky uloží rozpracované Nastavení, takže už nemusíš nejdřív klikat Save.</td></tr>
 </table>
+
+<h3><span data-lang="cs">Co report email obsahuje</span><span data-lang="en">What the report email contains</span></h3>
+<div data-lang="en">
+  <ul>
+    <li>A <strong>mobile-friendly HTML report</strong> — readable on a phone — with <strong>one card per critical disk</strong>.</li>
+    <li>Each card shows the <strong>PC name</strong>, the <strong>drive letter + volume label</strong>, a <strong>used/free bar</strong>, and <strong>free/total + % free</strong>.</li>
+    <li>The affected <strong>PC IP address</strong> so you can connect straight away.</li>
+    <li>A <strong>generation date/time</strong> in the footer (when the report was built).</li>
+    <li>The <strong>"Open ITDashboard"</strong> link/button (shown when <code>alerts.dashboard_url</code> is set).</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <ul>
+    <li><strong>Mobile-friendly HTML report</strong> — čitelný na telefonu — s <strong>jednou kartou na každý critical disk</strong>.</li>
+    <li>Každá karta ukazuje <strong>název PC</strong>, <strong>písmeno disku + label svazku</strong>, <strong>bar využité/volné</strong> a <strong>volné/celkem + % volného</strong>.</li>
+    <li><strong>IP adresu dotčeného PC</strong>, abys mohl rovnou připojit.</li>
+    <li><strong>Datum/čas vygenerování</strong> v patičce (kdy byl report sestaven).</li>
+    <li>Odkaz/tlačítko <strong>"Otevřít ITDashboard"</strong> (zobrazí se, když je nastaveno <code>alerts.dashboard_url</code>).</li>
+  </ul>
+</div>
+
+<h3><span data-lang="cs">Jak se odesílá mail (SMTP) — Microsoft 365 Direct Send</span><span data-lang="en">How mail is sent (SMTP) — Microsoft 365 Direct Send</span></h3>
+<div data-lang="en">
+  <p>In this deployment the mail domain (<code>axima.cz</code>) is on Microsoft 365, so ITDashboard sends via O365 <strong>Direct Send</strong>: host <code>axima-cz.mail.protection.outlook.com</code>, port <code>25</code>, STARTTLS, <strong>no password</strong> (the sender is identified by sending IP / SPF), From an <code>@axima.cz</code> address. Direct Send delivers only to your own domain's mailboxes.</p>
+  <p>SMTP port options:</p>
+  <ul>
+    <li><code>25</code> — Direct Send: no auth, own domain recipients only.</li>
+    <li><code>587</code> — SMTP AUTH: login + app password, any recipient.</li>
+    <li><code>465</code> — SMTPS (legacy).</li>
+  </ul>
+  <p><strong>Note:</strong> if mail gets quarantined, add the API server's public IP to the domain's SPF record.</p>
+</div>
+<div data-lang="cs">
+  <p>V této instalaci je mailová doména (<code>axima.cz</code>) na Microsoft 365, takže ITDashboard odesílá přes O365 <strong>Direct Send</strong>: host <code>axima-cz.mail.protection.outlook.com</code>, port <code>25</code>, STARTTLS, <strong>bez hesla</strong> (odesílatel je identifikován odesílací IP / SPF), From na adrese <code>@axima.cz</code>. Direct Send doručuje jen do schránek vlastní domény.</p>
+  <p>Možnosti SMTP portu:</p>
+  <ul>
+    <li><code>25</code> — Direct Send: bez autentizace, jen příjemci vlastní domény.</li>
+    <li><code>587</code> — SMTP AUTH: login + app password, libovolný příjemce.</li>
+    <li><code>465</code> — SMTPS (legacy).</li>
+  </ul>
+  <p><strong>Pozn.:</strong> pokud mail spadne do karantény, přidej veřejnou IP API serveru do SPF záznamu domény.</p>
+</div>
 
 <h3><span data-lang="cs">Throttle a cadence (jak se nespamuje)</span><span data-lang="en">Throttle and cadence (how it avoids spamming)</span></h3>
 <div data-lang="en">
@@ -717,10 +761,10 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
 </p>
 
 <div class="callout callout-info" data-lang="en">
-  <strong>Tip:</strong> use <strong>Send test email</strong> right after entering the SMTP relay + recipients to confirm the relay accepts the message and the From address is allowed — it bypasses both the enable flag and the throttle, so you do not have to wait for a real critical disk to verify the plumbing.
+  <strong>Tip:</strong> use <strong>Send test email</strong> right after entering the SMTP host + recipients to confirm the message is accepted and the From address is allowed — it auto-saves pending Settings first (no need to click Save), and bypasses both the enable flag and the throttle, so you do not have to wait for a real critical disk to verify the plumbing.
 </div>
 <div class="callout callout-info" data-lang="cs">
-  <strong>Tip:</strong> hned po zadání SMTP relay + příjemců použij <strong>Send test email</strong> pro ověření, že relay zprávu přijme a From adresa je povolená — obejde enable flag i throttle, takže nemusíš čekat na reálně plný disk, abys ověřil zapojení.
+  <strong>Tip:</strong> hned po zadání SMTP hostu + příjemců použij <strong>Send test email</strong> pro ověření, že zpráva projde a From adresa je povolená — nejdřív automaticky uloží rozpracované Nastavení (není třeba klikat Save) a obejde enable flag i throttle, takže nemusíš čekat na reálně plný disk, abys ověřil zapojení.
 </div>
 
 <h2 id="services"><span data-lang="cs">Services collector + policy</span><span data-lang="en">Services collector + policy</span></h2>

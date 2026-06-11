@@ -71,10 +71,17 @@ How an operator uses it:
   those drives; empty = all in-scope drives. Same scope syntax as
   `disk.crit_drives` (`C`, `C,D`, `<>C`/`!C`, `*`).
 - **Settings → "Email alerts — disks"** — master enable, frequency (hours),
-  SMTP relay host + port (internal relay, default 25), sender, recipients (one
-  per line / comma), and a **Send test email** button (sends current state
-  ignoring enable/throttle, to verify SMTP).
-- **Dashboard** — "Watched disks" tile shows criticalPcs/monitoredPcs + on/off.
+  SMTP relay host + port, sender, recipients (one per line / comma), **dashboard
+  address** (`alerts.dashboard_url`, e.g. `http://10.8.2.213:4000` — rendered as
+  an "Otevřít ITDashboard" button + footer link in the email), and a **Send test
+  email** button. The test button now **auto-saves** pending edits before sending
+  (no need to click Save first).
+- **The report email** is mobile-friendly HTML: one card per critical disk (PC
+  name, drive + label, used/free bar, free/total + % free), the affected PC's
+  **IP address**, and a **generation timestamp** (Europe/Prague) in the footer.
+  Plaintext fallback included.
+- **Dashboard** — "Watched disks" tile shows criticalPcs/monitoredPcs + on/off;
+  clicking it filters Computers to the monitored PCs.
 
 Behavior: after every disk scan, monitored PCs' in-scope drives are evaluated
 against the CRITICAL threshold (from Disks settings). If any is critical, an
@@ -95,13 +102,43 @@ Implementation (branches `feat/disk-email-alerts` + `feat/disk-email-per-drive`)
 - Migrations: `028_disk_email_alerts` (computers.disk_email_monitor BIT +
   alerts.* settings seed), `029_disk_email_drives` (computers.disk_email_drives).
 - Adds the `nodemailer` dependency.
-- SMTP relay is assumed internal: no client auth, opportunistic TLS with cert
-  validation disabled (self-signed internal relays). Add `alerts.smtp_user`/
-  `password` handling later if a relay requires auth.
+- Transport assumes no client auth (opportunistic STARTTLS, cert validation
+  disabled). For this deployment that maps to Microsoft 365 Direct Send — see the
+  Mail transport section below. Add `alerts.smtp_user`/`password` handling later
+  only if a relay ever requires authenticated submission.
+- `alerts.dashboard_url` is a plain settings key (no migration) — created on
+  first save; empty by default so the email link is simply omitted until set.
 
-**Operator setup checklist:** fill SMTP host/port/from + recipients in Settings →
-Save → click "Send test email" to verify → tick the key PCs (📧 Disk, optional
-letters) → flip the master enable on.
+**Operator setup checklist:** in Settings → Email alerts fill host
+`axima-cz.mail.protection.outlook.com`, port `25`, From an `@axima.cz` address,
+recipients, and dashboard address `http://10.8.2.213:4000` → click "Send test
+email" (it auto-saves) and confirm it arrives → tick the key PCs (📧 Disk,
+optional letters) → flip the master enable on.
+
+### Mail transport — Microsoft 365 Direct Send (verified 2026-06-11)
+
+The `axima.cz` mail domain is Microsoft 365 (MX
+`axima-cz.mail.protection.outlook.com`); there is no on-prem Exchange/relay. So
+ITDashboard sends via **O365 Direct Send**: host
+`axima-cz.mail.protection.outlook.com`, port **25**, STARTTLS, **no password**
+(identity by sending IP/SPF), From an `@axima.cz` address. Direct Send delivers
+**only to your own domain** (`@axima.cz`) — no external recipients. Verified
+landing in the Inbox on 2026-06-11.
+
+- Port options if ever needed: 25 = Direct Send / MX (no auth, own domain only);
+  587 = `smtp.office365.com` SMTP AUTH (licensed mailbox + app password due to
+  MFA, any recipient); 465 = SMTPS implicit TLS (legacy).
+- Deliverability: if mail from the API server `10.8.2.213` gets quarantined /
+  Junked, add that server's public/NAT egress IP to the `axima.cz` SPF record.
+  Not needed as of 2026-06-11 (Inbox delivery confirmed).
+
+### Reliability / CI fixes (2026-06-11)
+
+- **Access flash on deploy fixed** — the access-check whitelist now loads
+  (`refreshIpGuard('boot')`) before `app.listen()`, so the brief
+  "Access not configured" window right after each service restart is gone.
+- **GitHub Actions** — `actions/checkout` + `actions/setup-node` bumped v4 → v5
+  (Node 24; GitHub forces Node 24 onto runners from 2026-06-16).
 
 ## Protocol handler follow-up oponentura (NEW since 2026-06-03)
 

@@ -181,9 +181,20 @@ A few "key" PCs can be opted into disk-critical email alerting — the operator 
 
 **Transport.** nodemailer to an internal SMTP relay (`alerts.smtp_host`/`alerts.smtp_port`, default port 25), opportunistic TLS with cert validation disabled (internal self-signed relays), no client auth assumed. Sender is `alerts.smtp_from`, recipients are `alerts.recipients` (comma/newline list).
 
-**Config & routes.** Configuration lives entirely in Settings (DB `settings` table, `alerts.*` keys) plus the per-PC columns — nothing in `.env`, consistent with the portability model. Routes: `PATCH /computers/:id/disk-email-monitor` `{ enabled?, drives? }` and `POST /alerts/disk/test` (sends the current state ignoring enable/throttle, backing the Settings test button); `GET /computers` now returns `disk_email_monitor` + `disk_email_drives`. The Dashboard shows a "Watched disks" tile (criticalPcs/monitoredPcs + alerts on/off).
+**Mail transport reality — Microsoft 365 Direct Send.** In the reference deployment the `axima.cz` mail domain is hosted on Microsoft 365 (no on-prem Exchange/relay), so ITDashboard sends via O365 **Direct Send**: host `axima-cz.mail.protection.outlook.com`, port **25**, STARTTLS, **no authentication** (sender identity is established by the sending IP / SPF), From an `@axima.cz` address. Direct Send delivers **only to your own domain** — external recipients require authenticated submission. SMTP port landscape for portability: **25** = Direct Send / MX (no auth, own-domain only); **587** = SMTP AUTH client submission (login + app password, any recipient); **465** = SMTPS implicit TLS (legacy). Deliverability note: if mail from the API host is quarantined, add the host's public/NAT IP to the domain SPF record.
+
+**Config & routes.** Configuration lives entirely in Settings (DB `settings` table, `alerts.*` keys) plus the per-PC columns — nothing in `.env`, consistent with the portability model. Routes: `PATCH /computers/:id/disk-email-monitor` `{ enabled?, drives? }` and `POST /alerts/disk/test` (sends the current state ignoring enable/throttle, backing the Settings test button); `GET /computers` now returns `disk_email_monitor` + `disk_email_drives`. The Dashboard shows a "Watched disks" tile (criticalPcs/monitoredPcs + alerts on/off). The runtime settings key `alerts.dashboard_url` (see below) has no migration — it is a plain settings key created on first save.
 
 This stays on the right side of **Observer, not executor**: it emails the operator about a stale-derived threshold breach, it does not act on the target.
+
+### Disk alert email report
+
+The email is a responsive **600px table-based HTML layout** (Outlook / Gmail / mobile-safe): a colored header (red = critical, green = all-clear test), then one stacking white card per critical disk with a used/free bar (red = used, light = free) and the free/total figures + % free. A plaintext fallback is retained for clients that don't render HTML.
+
+- Each disk card shows the affected PC's **IP address** (`computers.ip_address`) so the recipient can locate the machine.
+- The footer carries a **generation timestamp** on every report, formatted for `Europe/Prague`.
+- New configurable setting **`alerts.dashboard_url`** (Settings field): when set, the email renders an "Otevřít ITDashboard" button plus the address in the footer so recipients know where to go to act; the button/address are omitted when the setting is empty. `renderDiskAlert` is exported for preview/testing.
+- `alerts.dashboard_url` is a runtime settings key created on first save — **no migration** was added for it (the migration table stays at 029).
 
 ### Activity log is two-tier
 Live view: ring buffer of 500 entries, polled by dashboard every 2s. Lost on service restart. Persistent history: every `logActivity()` call is also fire-and-forget INSERT into `activity_log` table (`apps/server/src/services/activity-log.ts`). DB writes are intentionally not awaited so collector cadence isn't tied to DB latency; if persistence fails the live view is unaffected. The Activity tab has a Live/History mode toggle — History queries `activity_log` with filters (time range, level, source, message search) and supports pagination. Retention via `activity.retention_days` setting (default 30) and `sp_purge_old_activity` stored procedure.
@@ -202,6 +213,8 @@ The runner runs as `svc-itdashboard` which by default cannot stop/start the `ITD
 
 ### Domain GPO AllSigned ExecutionPolicy
 The domain enforces `AllSigned` ExecutionPolicy on Windows servers, blocking unsigned PS scripts including GitHub Actions runner's temp step files. Workflow uses `defaults.run.shell: cmd` (cmd not subject to PS ExecutionPolicy). Service restart in workflow uses `sc stop/start` (cmd), not `Restart-Service`.
+
+The deploy workflow's `actions/checkout` and `actions/setup-node` were bumped v4 → v5 (Node 24; GitHub forces Node 24 from 2026-06-16).
 
 ## Retention policy
 
@@ -236,7 +249,7 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
   - DB `db_owner`
   - Stop/Start ACL on its own service (`ITDashboardAPI`)
 - **Credentials vault:** DPAPI CurrentUser scope — encryption bound to the service account. Rotating account invalidates secrets.
-- **API → desktop:** currently HTTP on port 4000. The dashboard UI is gated frontend-side: on mount, `App.tsx` calls `GET /access-check` which returns `{ ip, allowed }`; if not allowed, the app renders an "access not configured" screen instead of the dashboard. The Windows Firewall rule "ITDashboard API (4000)" provides the whitelist source of truth — its `RemoteAddress` field is cached in memory and refreshed on PUT. **The JSON API itself, the bundle, and `/docs` are intentionally open** — the server is on an internal domain network and the API is intentionally reachable by anyone in the domain. This is a UX gate, not a security boundary; bypass via DevTools is acceptable for the threat model (incidental UI discovery, not adversarial access). TLS termination + auth tokens planned if the API needs to become a real security boundary.
+- **API → desktop:** currently HTTP on port 4000. The dashboard UI is gated frontend-side: on mount, `App.tsx` calls `GET /access-check` which returns `{ ip, allowed }`; if not allowed, the app renders an "access not configured" screen instead of the dashboard. The Windows Firewall rule "ITDashboard API (4000)" provides the whitelist source of truth — its `RemoteAddress` field is cached in memory and refreshed on PUT. The whitelist is now loaded (`refreshIpGuard('boot')`) **before** `app.listen()`, so there is no longer a brief window right after a deploy/restart where the in-memory whitelist is empty and every request gets "Access not configured". **The JSON API itself, the bundle, and `/docs` are intentionally open** — the server is on an internal domain network and the API is intentionally reachable by anyone in the domain. This is a UX gate, not a security boundary; bypass via DevTools is acceptable for the threat model (incidental UI discovery, not adversarial access). TLS termination + auth tokens planned if the API needs to become a real security boundary.
 - **Audit:** every script run captured in `script_runs` (invoker, target, params, exit code, stdout/stderr).
 - **Runner auth:** outbound HTTPS only. No inbound holes from GitHub into the network.
 
@@ -273,3 +286,5 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 027_event_summary_window | events.summary_window_days setting |
 | 028_disk_email_alerts | computers.disk_email_monitor BIT + alerts.* settings seed (enabled, frequency_hours, smtp_host, smtp_port, smtp_from, recipients) |
 | 029_disk_email_drives | computers.disk_email_drives NVARCHAR(64) — per-PC drive-letter scope |
+
+> `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — **no migration**, so the table stays at 029.
