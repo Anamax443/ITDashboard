@@ -60,8 +60,16 @@ await registerRetentionRoutes(app);
 await registerAlertsRoutes(app);
 await registerFrontendRoutes(app);
 
+// Load the access-check whitelist BEFORE we start accepting connections, so
+// there is no window right after a deploy/restart where the in-memory cache is
+// still empty and every request is denied ("Access not configured"). The deploy
+// restarts the service on every push to main, so this window was visible to any
+// operator who happened to load the dashboard in that moment. refreshIpGuard
+// catches its own errors and never throws — a firewall-query failure just leaves
+// the cache empty (same as before), so awaiting it here can't block startup.
+await refreshIpGuard('boot');
+
 app.listen({ port: PORT, host: BIND }).then(async () => {
-  await refreshIpGuard('boot');
   await startChecksSchedule();
   await startRetentionSchedule();
 }).catch((err) => {
