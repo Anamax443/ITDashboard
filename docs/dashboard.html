@@ -112,6 +112,7 @@ a.external { color: var(--accent); }
     <li><a href="#collector">Eventlog collector</a></li>
     <li><a href="#disk"><span data-lang="cs">Disk collector</span><span data-lang="en">Disk space collector</span></a></li>
     <li><a href="#disk-alerts"><span data-lang="cs">Email alerty disků</span><span data-lang="en">Disk email alerts</span></a></li>
+    <li><a href="#service-alerts"><span data-lang="cs">Email alerty služeb</span><span data-lang="en">Service email alerts</span></a></li>
     <li><a href="#services">Services collector + policy</a></li>
     <li><a href="#perf">Perf events (Diagnostics-Performance)</a></li>
     <li><a href="#ad-sync">AD sync</a></li>
@@ -765,6 +766,116 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
 </div>
 <div class="callout callout-info" data-lang="cs">
   <strong>Tip:</strong> hned po zadání SMTP hostu + příjemců použij <strong>Send test email</strong> pro ověření, že zpráva projde a From adresa je povolená — nejdřív automaticky uloží rozpracované Nastavení (není třeba klikat Save) a obejde enable flag i throttle, takže nemusíš čekat na reálně plný disk, abys ověřil zapojení.
+</div>
+
+<h2 id="service-alerts"><span data-lang="cs">Email alerty služeb</span><span data-lang="en">Service email alerts</span></h2>
+<p>
+  <span data-lang="cs">Pošle IT operátorovi email, když na klíčovém serveru spadne kritická Windows služba — bez falešných poplachů z nočních restartů. <strong>Defaultně vypnuto.</strong> Vybíráš jen ty stroje, na kterých ti na běhu služeb reálně záleží (doménové řadiče, zálohovací a souborové servery), takže krátkodobé výpadky na běžných stanicích schránku nezahltí.</span>
+  <span data-lang="en">Emails the IT operator when a critical Windows service goes down on a key server — without false alarms from nightly reboots. <strong>Off by default.</strong> You pick only the machines whose services you actually care about (domain controllers, backup and file servers), so transient blips on ordinary workstations never flood your inbox.</span>
+</p>
+<p>
+  <span data-lang="cs">Po každém services skenu se služby monitorovaných PC porovnají proti <strong>seznamu kritických služeb</strong> z nastavení. Služba, která je <strong>Auto</strong> a <strong>není Running</strong>, matchne kritický seznam a zároveň není na whitelistu, se alertne — ale až poté, co je dole déle než <strong>debounce</strong> (ochrana proti flappingu), mimo <strong>údržbové okno</strong> a v rytmu zadaném <strong>reminderem</strong>.</span>
+  <span data-lang="en">After each services scan, the services of monitored PCs are checked against the <strong>critical services list</strong> from the settings. A service that is <strong>Auto</strong> and <strong>not Running</strong>, matches the critical list and is not on the whitelist, gets alerted — but only once it has been down longer than the <strong>debounce</strong> (flapping guard), outside the <strong>maintenance window</strong>, and throttled to the cadence set by the <strong>reminder</strong>.</span>
+</p>
+
+<h3><span data-lang="cs">Jak zapnout — sloupec 🔔 Služby v záložce Počítače</span><span data-lang="en">How to enable — the 🔔 Services column in the Computers tab</span></h3>
+<div data-lang="en">
+  <ul>
+    <li>The Computers tab has a new <strong>🔔 Services</strong> column. Tick a PC to put it under service alerting.</li>
+    <li>Tick the <strong>key servers</strong> — domain controllers, backup and file servers — where a dead service actually hurts. Ordinary workstations should stay unticked.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <ul>
+    <li>Záložka Počítače má nový sloupec <strong>🔔 Služby</strong>. Zaškrtnutím dáš PC pod alerting služeb.</li>
+    <li>Zaškrtni <strong>klíčové servery</strong> — doménové řadiče, zálohovací a souborové servery — kde mrtvá služba reálně bolí. Běžné stanice nech nezaškrtnuté.</li>
+  </ul>
+</div>
+
+<h3><span data-lang="cs">Nastavení → "Email alerty — služby"</span><span data-lang="en">Settings → "Email alerts — services"</span></h3>
+<p>
+  <span data-lang="cs">Vše se konfiguruje v záložce Nastavení, sekce <strong>"Email alerty — služby"</strong> — žádná editace <code>.env</code>. SMTP relay, příjemce a adresu dashboardu sdílí s disk alerty (viz <a href="#disk-alerts">Email alerty disků</a>). Sekce obsahuje:</span>
+  <span data-lang="en">Everything is configured in the Settings tab, the <strong>"Email alerts — services"</strong> section — no <code>.env</code> editing. It shares the SMTP relay, recipients and dashboard URL with the disk alerts (see <a href="#disk-alerts">Disk email alerts</a>). The section contains:</span>
+</p>
+<table data-lang="en">
+  <tr><th>Field</th><th>Meaning</th></tr>
+  <tr><td>Enable</td><td>Master on/off for service email alerts (off by default)</td></tr>
+  <tr><td>Debounce (minutes)</td><td>How long a service must stay down before it alerts — the <strong>flapping guard</strong> that swallows nightly reboots and short blips</td></tr>
+  <tr><td>Reminder (hours)</td><td>Throttle cadence while a service stays down (reminder emails)</td></tr>
+  <tr><td>Maintenance window (<code>HH:MM-HH:MM</code>)</td><td>Time window that suppresses alerts, e.g. <code>02:00-04:00</code> for the backup/reboot window; <strong>can cross midnight</strong> (e.g. <code>23:00-01:00</code>)</td></tr>
+  <tr><td>Critical services list</td><td>Service names that count as critical — case-insensitive, with <code>*</code> / <code>?</code> wildcards. Seeded with the common infra set (see below)</td></tr>
+  <tr><td>Whitelist</td><td>Service names to never alert on even if they match the critical list — e.g. updaters like <code>gupdate*</code>, <code>GoogleUpdater*</code></td></tr>
+  <tr><td>Send test email</td><td>Emails the current down state immediately, regardless of enable / debounce / throttle. Auto-saves any pending Settings first, so you do not need to click Save beforehand</td></tr>
+</table>
+<table data-lang="cs">
+  <tr><th>Pole</th><th>Význam</th></tr>
+  <tr><td>Enable</td><td>Hlavní zap/vyp email alertů služeb (defaultně vypnuto)</td></tr>
+  <tr><td>Debounce (minuty)</td><td>Jak dlouho musí být služba dole, než alertne — <strong>ochrana proti flappingu</strong>, která spolkne noční restarty a krátké výpadky</td></tr>
+  <tr><td>Reminder (hodiny)</td><td>Cadence throttlingu po dobu, co je služba dole (připomínkové emaily)</td></tr>
+  <tr><td>Údržbové okno (<code>HH:MM-HH:MM</code>)</td><td>Časové okno, které potlačuje alerty, např. <code>02:00-04:00</code> pro okno záloh/restartů; <strong>může přejít přes půlnoc</strong> (např. <code>23:00-01:00</code>)</td></tr>
+  <tr><td>Seznam kritických služeb</td><td>Názvy služeb, které se počítají jako kritické — case-insensitive, s wildcardy <code>*</code> / <code>?</code>. Předvyplněno běžnou infra sadou (viz níže)</td></tr>
+  <tr><td>Whitelist</td><td>Názvy služeb, na které se nikdy nealertuje, i kdyby matchly kritický seznam — např. updatery jako <code>gupdate*</code>, <code>GoogleUpdater*</code></td></tr>
+  <tr><td>Send test email</td><td>Pošle aktuální stav (co je teď dole) okamžitě, bez ohledu na enable / debounce / throttle. Nejdřív automaticky uloží rozpracované Nastavení, takže nemusíš nejdřív klikat Save</td></tr>
+</table>
+<p>
+  <span data-lang="cs">Kritický seznam je předvyplněn běžnou infrastrukturní sadou: <code>NTDS</code>, <code>DNS</code>, <code>Kdc</code>, <code>Netlogon</code>, <code>W32Time</code>, <code>VMTools</code>, <code>VeeamBackupSvc</code>, <code>VeeamBrokerSvc</code>, <code>ekrn</code>, <code>DHCPServer</code>, <code>LanmanServer</code>.</span>
+  <span data-lang="en">The critical list is seeded with the common infra set: <code>NTDS</code>, <code>DNS</code>, <code>Kdc</code>, <code>Netlogon</code>, <code>W32Time</code>, <code>VMTools</code>, <code>VeeamBackupSvc</code>, <code>VeeamBrokerSvc</code>, <code>ekrn</code>, <code>DHCPServer</code>, <code>LanmanServer</code>.</span>
+</p>
+
+<h3><span data-lang="cs">Co report email obsahuje</span><span data-lang="en">What the report email contains</span></h3>
+<div data-lang="en">
+  <ul>
+    <li>A <strong>mobile-friendly HTML report</strong> — readable on a phone — with <strong>one card per down service</strong>.</li>
+    <li>Each card shows the <strong>PC name</strong>, the <strong>PC IP address</strong>, the <strong>service name</strong>, and <strong>how long it has been down</strong>.</li>
+    <li>A <strong>generation date/time</strong> in the footer (when the report was built).</li>
+    <li>The <strong>"Open ITDashboard"</strong> link/button (shown when <code>alerts.dashboard_url</code> is set).</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <ul>
+    <li><strong>Mobile-friendly HTML report</strong> — čitelný na telefonu — s <strong>jednou kartou na každou spadlou službu</strong>.</li>
+    <li>Každá karta ukazuje <strong>název PC</strong>, <strong>IP adresu PC</strong>, <strong>název služby</strong> a <strong>jak dlouho je dole</strong>.</li>
+    <li><strong>Datum/čas vygenerování</strong> v patičce (kdy byl report sestaven).</li>
+    <li>Odkaz/tlačítko <strong>"Otevřít ITDashboard"</strong> (zobrazí se, když je nastaveno <code>alerts.dashboard_url</code>).</li>
+  </ul>
+</div>
+
+<h3><span data-lang="cs">Debounce, údržbové okno a throttle (jak se nespamuje)</span><span data-lang="en">Debounce, maintenance window and throttle (how it avoids spamming)</span></h3>
+<div data-lang="en">
+  <ul>
+    <li><strong>Debounce swallows reboots</strong> — a service must stay down longer than the debounce minutes before the first alert, so a nightly reboot (service briefly down during restart) never triggers a false alarm.</li>
+    <li><strong>Maintenance window suppresses</strong> — alerts inside the configured window (e.g. <code>02:00-04:00</code>, may cross midnight) are held back, so planned backups/reboots stay quiet.</li>
+    <li><strong>Reminders at the cadence</strong> — while a service stays down, at most one email per the configured reminder hours.</li>
+    <li><strong>Recovery resets it</strong> — once the service is Running again, the throttle clears, so the next incident alerts promptly.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <ul>
+    <li><strong>Debounce spolkne restarty</strong> — služba musí být dole déle než debounce minut, než přijde první alert, takže noční restart (služba je krátce dole během restartu) nikdy nespustí falešný poplach.</li>
+    <li><strong>Údržbové okno potlačuje</strong> — alerty uvnitř nakonfigurovaného okna (např. <code>02:00-04:00</code>, může přejít přes půlnoc) se zadrží, takže plánované zálohy/restarty zůstanou potichu.</li>
+    <li><strong>Připomínky v cadence</strong> — dokud je služba dole, nejvýše jeden email za nakonfigurovaný počet reminder hodin.</li>
+    <li><strong>Recovery to resetuje</strong> — jakmile je služba zase Running, throttle se vynuluje, takže příští incident zase alertne okamžitě.</li>
+  </ul>
+</div>
+
+<h3><span data-lang="cs">Dashboard dlaždice "Watched services"</span><span data-lang="en">Dashboard "Watched services" tile</span></h3>
+<p>
+  <span data-lang="cs">Na Dashboardu je dlaždice <strong>Sledované služby</strong>, která ukazuje affectedPcs/monitoredPcs (kolik z hlídaných PC má teď spadlou kritickou službu) a zda jsou alerty zapnuté.</span>
+  <span data-lang="en">The Dashboard has a <strong>Watched services</strong> tile showing affectedPcs/monitoredPcs (how many of the watched PCs currently have a down critical service) and whether alerts are on.</span>
+</p>
+
+<div class="callout callout-info" data-lang="en">
+  <strong>Tip:</strong> use <strong>Send test email</strong> right after entering the recipients to confirm delivery and the From address — it auto-saves pending Settings first (no need to click Save) and bypasses the enable flag, debounce and throttle, sending the current down state, so you do not have to wait for a real outage to verify the plumbing.
+</div>
+<div class="callout callout-info" data-lang="cs">
+  <strong>Tip:</strong> hned po zadání příjemců použij <strong>Send test email</strong> pro ověření doručování a From adresy — nejdřív automaticky uloží rozpracované Nastavení (není třeba klikat Save) a obejde enable flag, debounce i throttle, odešle aktuální stav (co je teď dole), takže nemusíš čekat na reálný výpadek, abys ověřil zapojení.
+</div>
+
+<div class="callout callout-info" data-lang="en">
+  <strong>Architecture note:</strong> watching the service <strong>Running</strong> state is the first step. A future enhancement will also check the service <strong>port from outside</strong> — TCP 389 (LDAP), TCP 445 (SMB), UDP 53 (DNS), TCP 3389 (RDP) — to test the whole path network → firewall → OS → service, not just whether the OS reports the service as started.
+</div>
+<div class="callout callout-info" data-lang="cs">
+  <strong>Pozn. k architektuře:</strong> sledování stavu <strong>Running</strong> je první krok. Budoucí rozšíření bude navíc kontrolovat <strong>port služby zvenčí</strong> — TCP 389 (LDAP), TCP 445 (SMB), UDP 53 (DNS), TCP 3389 (RDP) — aby otestovalo celou cestu síť → firewall → OS → služba, ne jen to, jestli OS hlásí službu jako spuštěnou.
 </div>
 
 <h2 id="services"><span data-lang="cs">Services collector + policy</span><span data-lang="en">Services collector + policy</span></h2>

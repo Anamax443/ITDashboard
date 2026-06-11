@@ -68,6 +68,7 @@
     <li><strong>AD-synchronizovaný inventář</strong> — OS, poslední přihlášení, OU cesta, operátorem řízený monitor toggle (perzistuje napříč syncs).</li>
     <li><strong>Monitoring disků</strong> — periodický DCOM sken, konfigurovatelné prahy (% / GB), per-tier scope písmen disků.</li>
     <li><strong>Email alerty disků</strong> — per-PC opt-in (sloupec 📧 Disk v Počítačích, volitelně konkrétní písmena <code>C,F</code>); po skenu pošle report o kritických discích, throttle 1× za nastavený interval. SMTP relay, příjemci a četnost v Settings; defaultně vypnuto.</li>
+    <li><strong>Email alerty služeb</strong> — per-PC opt-in (sloupec 🔔 Služby) na konfigurovatelný seznam kritických služeb (NTDS, DNS, Kdc, … + wildcardy) s whitelistem; email když je kritická služba mimo Running, s ochranou proti flappingu (časový debounce + okno údržby). Sdílí SMTP/příjemce s disky; defaultně vypnuto.</li>
     <li><strong>Services collector + policy</strong> — Auto + neběžící služby, klasifikace drift vs. policy tabulka, ExitCode capture, GPO PS export.</li>
     <li><strong>Performance events</strong> — pomalý boot/shutdown/standby/resume z Diagnostics-Performance kanálu s pojmenovanými culprity.</li>
     <li><strong>Klasifikace dostupnosti</strong> — každý běh: online / offline / rpc_unavailable / access_denied.</li>
@@ -88,6 +89,7 @@
     <tr><td>Electron klient</td><td><code>VITE_API_BASE</code> zapečené při buildu.</td></tr>
     <tr><td>Protocol-handler installer</td><td>API base injektuje server při stažení (dle <code>Host</code> hlavičky) — nic ručně needitovat.</td></tr>
     <tr><td>Email alerty disků</td><td>Settings → „Email alerty — disky" (DB <code>settings.alerts.*</code>); per-PC výběr v Počítačích (📧 Disk). Nic v <code>.env</code>.</td></tr>
+    <tr><td>Email alerty služeb</td><td>Settings → „Email alerty — služby" (DB <code>settings.alerts.services.*</code>); per-PC výběr (🔔 Služby). Sdílí SMTP/příjemce s disky.</td></tr>
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>.</p>
 
@@ -101,9 +103,16 @@
     <li><strong>Odesílání:</strong> přes Microsoft 365 <strong>Direct Send</strong> (<code>axima-cz.mail.protection.outlook.com:25</code>, STARTTLS, bez hesla, From <code>@axima.cz</code>) — ověřeno do Inboxu. Porty: 25 = Direct Send (bez auth, jen vlastní doména), 587 = SMTP AUTH (login), 465 = SMTPS (legacy).</li>
     <li>Backend: <code>services/alerts.ts</code> (nodemailer) hooknutý do disk collectoru; migrace 028 + 029. Vše v Settings/DB, nic v <code>.env</code>.</li>
   </ul>
+  <p style="margin:8px 0 4px"><strong>Email alerty služeb</strong></p>
+  <ul>
+    <li>Per-PC opt-in (sloupec 🔔 Služby) na konfigurovatelný seznam kritických služeb (seed: NTDS, DNS, Kdc, Netlogon, W32Time, VMTools, Veeam*, ekrn, DHCPServer, LanmanServer; wildcardy) + <strong>whitelist</strong> na šum (updatery).</li>
+    <li><strong>Flapping:</strong> časový debounce (služba mimo Running ≥ <code>alerts.services.debounce_minutes</code>, default 10) + volitelné <strong>okno údržby</strong> (<code>HH:MM-HH:MM</code>) + throttle připomínky. Stav v tabulce <code>service_alert_state</code>.</li>
+    <li>Settings → „Email alerty — služby"; dashboard dlaždice „Sledované služby"; report stejného stylu (PC, IP, služba, jak dlouho mimo provoz). Migrace 030. <em>Porty (fáze 2): TCP 389/445/3389, UDP 53.</em></li>
+  </ul>
   <p style="margin:8px 0 4px"><strong>Spolehlivost / CI</strong></p>
   <ul>
     <li>Oprava bliknutí „Access not configured" při deployi — whitelist se načítá před <code>app.listen()</code>.</li>
+    <li>Oprava řazení v Počítačích (IP, jména, diakritika; Status podle skutečného stavu) + obnova seznamu po zavření Actions okna.</li>
     <li>GitHub Actions <code>checkout</code> + <code>setup-node</code> v4 → v5 (Node 24, deadline 16. 6. 2026).</li>
   </ul>
   <p style="margin:8px 0 4px"><strong>Externalizace konfigurace</strong></p>

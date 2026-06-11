@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-11 (config externalization + disk-critical email alerting)
+Last updated: 2026-06-11 (config externalization + disk & critical-service email alerting)
 
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in
@@ -139,6 +139,52 @@ landing in the Inbox on 2026-06-11.
   "Access not configured" window right after each service restart is gone.
 - **GitHub Actions** — `actions/checkout` + `actions/setup-node` bumped v4 → v5
   (Node 24; GitHub forces Node 24 onto runners from 2026-06-16).
+- **Computers sorting** — comparator is now locale-aware with numeric chunking
+  (IPs `10.8.2.9 < 10.8.2.10`, hostnames `PC2 < PC10`, accents; nulls last); the
+  "Status" column sorts by the displayed reachability status (`last_status`), not
+  the `enabled` flag. Closing the Per-PC Actions modal after a manual single-PC
+  refresh re-syncs the main list.
+
+## Critical-service email alerting (2026-06-11)
+
+Mirror of disk alerts for Windows services, with flapping protection. Off by
+default; configured in Settings (`alerts.services.*`). Shares SMTP relay /
+sender / recipients / dashboard URL with the disk alerts.
+
+How an operator uses it:
+
+- **Computers tab → "🔔 Služby" column** — tick the key servers (DCs, backup /
+  file servers). A "🔔 svc" chip + "service monitored" filter list them.
+- **Settings → "Email alerty — služby"** — master enable, **debounce** (minutes a
+  service must stay down before the first alert — the flapping guard), **reminder**
+  (hours), **maintenance window** (`HH:MM-HH:MM`, may cross midnight, suppresses
+  alerts), the **critical-services list** (names, `*`/`?` wildcards; seeded with
+  NTDS, DNS, Kdc, Netlogon, W32Time, VMTools, VeeamBackupSvc, VeeamBrokerSvc,
+  ekrn, DHCPServer, LanmanServer) and a **whitelist** (never alert on these even
+  if matched — e.g. `gupdate*`, `GoogleUpdater*`), plus a save-first test button.
+- **Dashboard** — "Sledované služby" tile (affectedPcs/monitoredPcs + on/off);
+  clicking it filters Computers to the service-monitored PCs.
+
+Behavior: after every services scan, monitored PCs' Auto + non-Running services
+matching the critical list (and not whitelisted, excluding per-user services) are
+alerted — but only once a service has been down ≥ `alerts.services.debounce_minutes`
+(default 10), outside the maintenance window, throttled by
+`alerts.services.frequency_hours` (default 24). The per-(PC,service) outage clock
++ last-sent live in the `service_alert_state` table; recovery clears the row so
+the next outage starts a fresh debounce.
+
+Implementation: service-alert logic in `apps/server/src/services/alerts.ts`
+(glob match critical/whitelist, time-based debounce, maintenance-window
+suppression, throttle, mobile report), hooked at the end of `runServicesScanOnce`
+(self-contained, never throws). Routes `PATCH /computers/:id/service-email-monitor`,
+`POST /alerts/services/test`; `GET /computers` returns `service_email_monitor`.
+Migration `030_service_email_alerts` (computers.service_email_monitor +
+service_alert_state + alerts.services.* seed).
+
+**Phase 2 (planned, not in v1):** watching service `State='Running'` is the first
+step; checking the service's PORT from outside (TCP 389 LDAP, TCP 445 SMB, UDP 53
+DNS, TCP 3389 RDP) tests the whole path network→firewall→OS→service and is more
+robust. To be added as port-based availability checks.
 
 ## Protocol handler follow-up oponentura (NEW since 2026-06-03)
 

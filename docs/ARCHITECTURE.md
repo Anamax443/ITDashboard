@@ -51,12 +51,13 @@
 
 ### Database (MSSQL on the SQL host — `SQL_HOST` / `SQL_INSTANCE`, DB `SQL_DATABASE`)
 Tables:
-- `computers` — name, fqdn, os_version, last_seen, enabled (AD presence), monitor_enabled (operator intent), last_collected_at, last_error, consecutive_failures, distinguished_name, ou_path, last_status, `disk_email_monitor` (per-PC opt-in to disk-critical email alerts) + `disk_email_drives` (optional per-PC drive-letter scope)
+- `computers` — name, fqdn, os_version, last_seen, enabled (AD presence), monitor_enabled (operator intent), last_collected_at, last_error, consecutive_failures, distinguished_name, ou_path, last_status, `disk_email_monitor` (per-PC opt-in to disk-critical email alerts) + `disk_email_drives` (optional per-PC drive-letter scope), `service_email_monitor` (per-PC opt-in to critical-service email alerts)
 - `events` — raw events with unique idx `(computer_id, event_id, log_name, time_created)` for idempotency
 - `event_daily_agg` — daily aggregates per (computer, log_name, event_id, level), kept forever
 - `disks` — per-drive snapshot (replaces row on each scan)
 - `perf_events` — slow boot/shutdown/standby/resume records with parsed culprit + total/degradation timings; dedupe on `(computer_id, time_created, event_id)`
 - `service_problems`, `service_policy` — services collector state + drift rules
+- `service_alert_state` — per-(PC, service) flapping-debounce state for critical-service email alerts (`first_down_at`); row cleared on service recovery
 - `settings` — key-value, edited via Settings tab
 - `collector_runs` — eventlog collector run audit
 - `ad_sync_runs` — AD sync audit
@@ -194,7 +195,31 @@ The email is a responsive **600px table-based HTML layout** (Outlook / Gmail / m
 - Each disk card shows the affected PC's **IP address** (`computers.ip_address`) so the recipient can locate the machine.
 - The footer carries a **generation timestamp** on every report, formatted for `Europe/Prague`.
 - New configurable setting **`alerts.dashboard_url`** (Settings field): when set, the email renders an "Otevřít ITDashboard" button plus the address in the footer so recipients know where to go to act; the button/address are omitted when the setting is empty. `renderDiskAlert` is exported for preview/testing.
-- `alerts.dashboard_url` is a runtime settings key created on first save — **no migration** was added for it (the migration table stays at 029).
+- `alerts.dashboard_url` is a runtime settings key created on first save — **no migration** was added for it (it is not part of any migration row).
+
+### Critical-service email alerting (per-PC, opt-in)
+
+Built as a direct mirror of disk alerting (2026-06-11), for the small set of servers where a stopped service is an incident, not a footnote. The operator ticks key servers in the Computers tab (new "🔔 Services" column); a status chip + a "service monitored" filter list which PCs are opted in. Opt-in is stored per-PC in `computers.service_email_monitor`. Same rationale as disk alerts: alerting on every monitored PC would be noise, so the model is "a handful of PCs that matter get email, everything else stays on the dashboard". It shares the transport, sender, recipients and dashboard URL with disk alerts (see **Disk email alerting** above) — only the evaluation logic and flapping guard are new.
+
+**What counts as critical.** A configurable list `alerts.services.critical_names` (seeded with `NTDS`, `DNS`, `Kdc`, `Netlogon`, `W32Time`, `VMTools`, `VeeamBackupSvc`, `VeeamBrokerSvc`, `ekrn`, `DHCPServer`, `LanmanServer`) is matched case-insensitively with `*`/`?` glob wildcards against each service's name. A second list `alerts.services.whitelist` (e.g. `gupdate*`, `GoogleUpdater*`) names services that must **never** alert even if they match the critical list — noisy auto-updaters that legitimately sit in `Stopped` between runs. Per-user services (LUID-suffixed instances) are excluded outright.
+
+**Hook point.** Evaluation runs at the end of `runServicesScanOnce`, after every services scan. For each monitored PC, its Auto + non-`Running` services that match the critical list (and not the whitelist) are candidates. The hook lives in `apps/server/src/services/alerts.ts` (glob match, debounce, maintenance-window suppression, throttle) and is self-contained — it checks the master enable flag internally and never throws, so a mail failure can't fail the scan, exactly like the disk hook.
+
+**Flapping guard (the reason this isn't just disk-alerting copy-paste).** Services legitimately bounce during patch reboots, so a naive "Auto + not Running → page" would storm every Patch Tuesday. Three layers protect against it:
+- **Time-based debounce.** A service must have been down for at least `alerts.services.debounce_minutes` (default 10) before the *first* alert fires. The first-seen-down timestamp is tracked per `(PC, service)` in the new `service_alert_state` table (`first_down_at`); a nightly reboot blip that comes back inside the window never pages anyone.
+- **Maintenance window.** Optional `alerts.services.maintenance_window` (`"HH:MM-HH:MM"`, server local time, may cross midnight) during which service alerts are fully suppressed.
+- **Reminder throttle.** At most one reminder per `alerts.services.frequency_hours` (default 24) while a service stays down. Recovery clears the state row, so the next outage starts a fresh debounce rather than inheriting a stale window.
+
+**Report email.** Same mobile-friendly 600px card layout as the disk report — one card per down service showing PC, IP address, service name + display name, and how long it has been down; a generation timestamp footer (`Europe/Prague`) and the "Otevřít ITDashboard" link when `alerts.dashboard_url` is set.
+
+**Settings & dashboard.** A "Email alerts — services" section in Settings exposes enable, debounce, reminder, maintenance window, and the critical-names + whitelist textareas, with a save-first test button (`POST /alerts/services/test` sends the current state ignoring enable/throttle). The Dashboard shows a "Watched services" tile (affectedPcs/monitoredPcs + alerts on/off); clicking it filters the Computers tab to service-monitored PCs. Routes: `PATCH /computers/:id/service-email-monitor`; `GET /computers` now also returns `service_email_monitor`.
+
+**Observer, not executor — preserved.** The feature emails the operator about a stopped service; it does **not** restart it. A "restart service" button would cross the line in **Observer, not executor** and is deliberately out of scope.
+
+**Planned phase 2 — port-based availability.** Checking the service's `Running` state is a useful first step but only proves the service-control manager *thinks* the service is up; it does not prove the service is actually answering. A more robust check probes the service's listening **port from outside** (TCP 389 LDAP, TCP 445 SMB, UDP 53 DNS, TCP 3389 RDP), which exercises the whole path — network → firewall → OS → service — and catches the "process alive but wedged / firewall-blocked" failure mode that a `Running` flag misses. This is noted as a planned phase-2 enhancement, not part of v1.
+
+### Computers tab sorting (reliability)
+Sorting is locale-aware with numeric chunking, so IPs order naturally (`10.8.2.9` < `10.8.2.10`), hostnames order naturally (`PC2` < `PC10`), accented names collate correctly, and nulls sort last. The "Status" column sorts by the displayed reachability status (`computers.last_status`), not the `enabled` flag. Closing the Per-PC Actions modal after a manual refresh re-syncs the list so the row reflects the latest scan.
 
 ### Activity log is two-tier
 Live view: ring buffer of 500 entries, polled by dashboard every 2s. Lost on service restart. Persistent history: every `logActivity()` call is also fire-and-forget INSERT into `activity_log` table (`apps/server/src/services/activity-log.ts`). DB writes are intentionally not awaited so collector cadence isn't tied to DB latency; if persistence fails the live view is unaffected. The Activity tab has a Live/History mode toggle — History queries `activity_log` with filters (time range, level, source, message search) and supports pagination. Retention via `activity.retention_days` setting (default 30) and `sp_purge_old_activity` stored procedure.
@@ -286,5 +311,6 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 027_event_summary_window | events.summary_window_days setting |
 | 028_disk_email_alerts | computers.disk_email_monitor BIT + alerts.* settings seed (enabled, frequency_hours, smtp_host, smtp_port, smtp_from, recipients) |
 | 029_disk_email_drives | computers.disk_email_drives NVARCHAR(64) — per-PC drive-letter scope |
+| 030_service_email_alerts | computers.service_email_monitor BIT + service_alert_state table (per-(PC, service) `first_down_at` flapping-debounce state) + alerts.services.* settings seed (enabled, debounce_minutes, frequency_hours, maintenance_window, critical_names, whitelist) |
 
-> `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — **no migration**, so the table stays at 029.
+> `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).
