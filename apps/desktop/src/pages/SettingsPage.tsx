@@ -617,7 +617,7 @@ export function SettingsPage() {
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 8px 0', lineHeight: 1.5 }}>
             {t('settings.field.diskAlertsHelp')}
           </p>
-          <DiskAlertTestButton />
+          <DiskAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
         </Section>
 
       </div>
@@ -625,7 +625,7 @@ export function SettingsPage() {
   );
 }
 
-function DiskAlertTestButton() {
+function DiskAlertTestButton({ onSaveFirst, hasUnsaved }: { onSaveFirst: () => Promise<void>; hasUnsaved: boolean }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -636,6 +636,10 @@ function DiskAlertTestButton() {
     setResult(null);
     setError(null);
     try {
+      // The test sends from the server using SAVED settings, so persist any
+      // pending form edits first — otherwise it reads stale/empty values and
+      // fails with "not configured" even though the form looks filled in.
+      if (hasUnsaved) await onSaveFirst();
       const r = await api.sendDiskAlertTest();
       setResult(t('settings.field.diskAlertsTestOk')
         .replace('{recipients}', String(r.recipients))
