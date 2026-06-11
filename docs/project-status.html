@@ -107,12 +107,14 @@
   <ul>
     <li>Per-PC opt-in (sloupec 🔔 Služby) na konfigurovatelný seznam kritických služeb (seed: NTDS, DNS, Kdc, Netlogon, W32Time, VMTools, Veeam*, ekrn, DHCPServer, LanmanServer; wildcardy) + <strong>whitelist</strong> na šum (updatery).</li>
     <li><strong>Flapping:</strong> časový debounce (služba mimo Running ≥ <code>alerts.services.debounce_minutes</code>, default 10) + volitelné <strong>okno údržby</strong> (<code>HH:MM-HH:MM</code>) + throttle připomínky. Stav v tabulce <code>service_alert_state</code>.</li>
-    <li>Settings → „Email alerty — služby"; dashboard dlaždice „Sledované služby"; report stejného stylu (PC, IP, služba, jak dlouho mimo provoz). Migrace 030. <em>Porty (fáze 2): TCP 389/445/3389, UDP 53.</em></li>
+    <li>Settings → „Email alerty — služby"; dashboard dlaždice „Sledované služby"; report stejného stylu (PC, IP, služba, jak dlouho mimo provoz). Migrace 030.</li>
+    <li><strong>Port-checky (fáze 2):</strong> z dashboardu se TCP-probnou klíčové porty sledovaných PC (LDAP 389, SMB 445, RDP 3389, Kerberos 88, DNS 53) — testuje cestu síť→firewall→OS→služba (chytí „běží, ale nedostupné"). Baseline learning (alert až co byl port jednou dostupný), offline-skip, sdílí debounce/okno/throttle. Migrace 031.</li>
   </ul>
   <p style="margin:8px 0 4px"><strong>Spolehlivost / CI</strong></p>
   <ul>
     <li>Oprava bliknutí „Access not configured" při deployi — whitelist se načítá před <code>app.listen()</code>.</li>
     <li>Oprava řazení v Počítačích (IP, jména, diakritika; Status podle skutečného stavu) + obnova seznamu po zavření Actions okna.</li>
+    <li>Hromadné ✓/✗ v hlavičkách sloupců 📧 Disk / 🔔 Služby / Exclude — přepne všechny viditelné (filtrované) řádky najednou.</li>
     <li>GitHub Actions <code>checkout</code> + <code>setup-node</code> v4 → v5 (Node 24, deadline 16. 6. 2026).</li>
   </ul>
   <p style="margin:8px 0 4px"><strong>Externalizace konfigurace</strong></p>

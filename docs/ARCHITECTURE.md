@@ -22,7 +22,7 @@
 6 navigation tabs:
 - **Dashboard** — collector status, summary cards (clickable drill-down), timeline chart, top noisy PCs chart, top event IDs, computers summary
 - **Events** — full-width events table with search + filters (Computer, Source, Level, Time range)
-- **Computers** — inventory with status chips, monitor checkboxes, bulk all/none, AD sync, disk scan, sync history
+- **Computers** — inventory with status chips, monitor checkboxes, bulk all/none, AD sync, disk scan, sync history. The 📧 Disk / 🔔 Services / Exclude column headers each carry a "✓ all / ✗ none" control that sets that flag for all currently visible (filtered) rows in one shot, via `POST /computers/bulk-flag { ids, flag, value }` (server whitelists the `flag` column name).
 - **Services** — Auto + non-Running detection with policy/drift, by-PC + by-service views, GPO PS script export
 - **Perf** — Diagnostics-Performance channel: summary cards, top culprits, most-affected PCs, recent slow boot/shutdown/standby/resume events
 - **Activity** — terminal-style live log (filter, pause, copy)
@@ -58,6 +58,7 @@ Tables:
 - `perf_events` — slow boot/shutdown/standby/resume records with parsed culprit + total/degradation timings; dedupe on `(computer_id, time_created, event_id)`
 - `service_problems`, `service_policy` — services collector state + drift rules
 - `service_alert_state` — per-(PC, service) flapping-debounce state for critical-service email alerts (`first_down_at`); row cleared on service recovery
+- `port_check_state` — per-(PC, port) state for service port reachability checks: baseline `last_ok_at` (a port becomes alert-eligible only once it has answered) + flapping-debounce state; row cleared on port recovery
 - `settings` — key-value, edited via Settings tab
 - `collector_runs` — eventlog collector run audit
 - `ad_sync_runs` — AD sync audit
@@ -216,7 +217,17 @@ Built as a direct mirror of disk alerting (2026-06-11), for the small set of ser
 
 **Observer, not executor — preserved.** The feature emails the operator about a stopped service; it does **not** restart it. A "restart service" button would cross the line in **Observer, not executor** and is deliberately out of scope.
 
-**Planned phase 2 — port-based availability.** Checking the service's `Running` state is a useful first step but only proves the service-control manager *thinks* the service is up; it does not prove the service is actually answering. A more robust check probes the service's listening **port from outside** (TCP 389 LDAP, TCP 445 SMB, UDP 53 DNS, TCP 3389 RDP), which exercises the whole path — network → firewall → OS → service — and catches the "process alive but wedged / firewall-blocked" failure mode that a `Running` flag misses. This is noted as a planned phase-2 enhancement, not part of v1.
+### Service port reachability checks (phase 2)
+
+Checking the service's `Running` state only proves the service-control manager *thinks* the service is up; it does not prove the service is actually answering. Phase 2 (shipped 2026-06-11) adds an outside-in port probe that exercises the whole path — network → firewall → OS → service — and catches the "running but unreachable" failure mode (firewall rule dropped, process wedged/frozen) that a `Running` flag misses.
+
+**What is probed.** After each services scan, for every `service_email_monitor` PC the API host TCP-connects key infra ports: LDAP 389, SMB 445, RDP 3389, Kerberos 88, DNS 53 — all **TCP** (Windows DNS also listens on TCP/53, so a TCP connect is a valid liveness probe). A successful connect means the path is open end-to-end.
+
+**Baseline learning (avoids false alerts on never-open ports).** A `(PC, port)` becomes alert-eligible only once it has been reachable at least once — the first successful connect stamps `port_check_state.last_ok_at`. A port that never answers on a given box (e.g. RDP closed on a server that does not accept RDP) is never alerted, because the tool has no baseline that it *should* be open. A whole-PC-offline condition (TCP/135 unreachable, the same fail-fast probe the collectors use) is detected first and skips all per-port evaluation, so a powered-off box fires nothing rather than one alert per port.
+
+**Reuses the service-alert guards.** The port checks reuse the service-alert `debounce_minutes` / `maintenance_window` / `frequency_hours` (no separate flapping config), but have their own enable toggle so port checks can be turned on/off independently of the `Running`-state alerts. Settings keys: `alerts.services.port_checks_enabled`, `alerts.services.port_checks` (seeded `LDAP:389,SMB:445,RDP:3389,Kerberos:88,DNS:53`), and `alerts.services.port_timeout_ms` (default 2000).
+
+**Implementation.** `evaluateAndSendPortAlerts` in `apps/server/src/services/alerts.ts` does the TCP probe, baseline learning, debounce / maintenance-window / throttle, and renders its own mobile-friendly report; it is hooked right after `evaluateAndSendServiceAlerts` in `runServicesScanOnce`. Route `POST /alerts/ports/test` runs a live probe (ignoring enable/throttle) to back the Settings test button.
 
 ### Computers tab sorting (reliability)
 Sorting is locale-aware with numeric chunking, so IPs order naturally (`10.8.2.9` < `10.8.2.10`), hostnames order naturally (`PC2` < `PC10`), accented names collate correctly, and nulls sort last. The "Status" column sorts by the displayed reachability status (`computers.last_status`), not the `enabled` flag. Closing the Per-PC Actions modal after a manual refresh re-syncs the list so the row reflects the latest scan.
@@ -312,5 +323,6 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 028_disk_email_alerts | computers.disk_email_monitor BIT + alerts.* settings seed (enabled, frequency_hours, smtp_host, smtp_port, smtp_from, recipients) |
 | 029_disk_email_drives | computers.disk_email_drives NVARCHAR(64) — per-PC drive-letter scope |
 | 030_service_email_alerts | computers.service_email_monitor BIT + service_alert_state table (per-(PC, service) `first_down_at` flapping-debounce state) + alerts.services.* settings seed (enabled, debounce_minutes, frequency_hours, maintenance_window, critical_names, whitelist) |
+| 031_service_port_checks | port_check_state table (per-(PC, port) baseline `last_ok_at` + flapping-debounce state) + alerts.services.port_checks_enabled / port_checks (seeded `LDAP:389,SMB:445,RDP:3389,Kerberos:88,DNS:53`) / port_timeout_ms (2000) settings seed |
 
 > `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).

@@ -181,10 +181,38 @@ suppression, throttle, mobile report), hooked at the end of `runServicesScanOnce
 Migration `030_service_email_alerts` (computers.service_email_monitor +
 service_alert_state + alerts.services.* seed).
 
-**Phase 2 (planned, not in v1):** watching service `State='Running'` is the first
-step; checking the service's PORT from outside (TCP 389 LDAP, TCP 445 SMB, UDP 53
-DNS, TCP 3389 RDP) tests the whole path network→firewall→OS→service and is more
-robust. To be added as port-based availability checks.
+### Port reachability checks (phase 2, shipped 2026-06-11)
+
+Watching `State='Running'` misses "running but unreachable" (firewall / freeze).
+Phase 2 adds outside-in TCP probing: for each `service_email_monitor` PC the API
+host TCP-connects key infra ports after each services scan — **LDAP 389, SMB 445,
+RDP 3389, Kerberos 88, DNS 53** (all TCP; Windows DNS listens on TCP 53 too) —
+testing the whole path network→firewall→OS→service.
+
+- **Baseline learning** (false-positive guard): a (PC, port) is only alert-eligible
+  once it has been reachable at least once (`port_check_state.last_ok_at`); a port
+  that never answers on a box (e.g. RDP closed) is never alerted. → enable it and
+  let one scan run before expecting alerts, so the baseline is learned.
+- **Whole-PC-offline skip**: if TCP/135 is unreachable the PC is skipped, so a
+  powered-off box doesn't fire one alert per port (that's the reachability card).
+- Reuses the service `debounce_minutes` / `maintenance_window` / `frequency_hours`;
+  own enable toggle.
+- Settings (in the services section): `alerts.services.port_checks_enabled`,
+  `alerts.services.port_checks` (seeded `LDAP:389,SMB:445,RDP:3389,Kerberos:88,DNS:53`),
+  `alerts.services.port_timeout_ms` (2000) + a "Test ports (live probe)" button.
+- Implementation: `evaluateAndSendPortAlerts` in `alerts.ts` (TCP probe, baseline,
+  debounce/maintenance/throttle, own mobile report), hooked after the service
+  alert eval in `runServicesScanOnce`. Route `POST /alerts/ports/test`. Migration
+  `031_service_port_checks` (port_check_state table + the settings seed).
+
+### Bulk column toggles (Computers tab, 2026-06-11)
+
+The 📧 Disk, 🔔 Services and Exclude column headers each have a "✓ all / ✗ none"
+control that sets that flag for all currently **visible (filtered)** rows — e.g.
+filter to your servers, then ✓ the 🔔 column to enable service alerts on all of
+them. Server: `POST /computers/bulk-flag { ids, flag, value }` (whitelisted flag
+column: `monitor_enabled` / `disk_email_monitor` / `service_email_monitor` /
+`excluded`).
 
 ## Protocol handler follow-up oponentura (NEW since 2026-06-03)
 

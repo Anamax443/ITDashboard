@@ -661,6 +661,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
     <li>The Computers tab has a new <strong>📧 Disk</strong> column. Tick a PC to put it under disk email monitoring.</li>
     <li>Optionally type specific drive letters into the small field next to the checkbox — e.g. <code>C</code> or <code>C,F</code>. Leave it empty to watch all in-scope drives on that PC.</li>
     <li>The letter syntax is the same as the Disks "critical drives" scope: <code>C</code>, <code>C,D</code>, <code>&lt;&gt;C</code> / <code>!C</code> (everything except C), <code>*</code> (all).</li>
+    <li><strong>Bulk toggles:</strong> the <strong>📧 Disk</strong>, <strong>🔔 Services</strong> and <strong>Exclude</strong> column headers each carry a small <strong>"✓ all / ✗ none"</strong> control that ticks/unticks that column for <strong>all currently visible (filtered) PCs</strong> at once — e.g. filter to your servers, then ✓ to enable disk alerts on all of them.</li>
   </ul>
 </div>
 <div data-lang="cs">
@@ -668,6 +669,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
     <li>Záložka Počítače má nový sloupec <strong>📧 Disk</strong>. Zaškrtnutím dáš PC pod disk email monitoring.</li>
     <li>Volitelně do malého pole vedle checkboxu napiš konkrétní písmena disků — např. <code>C</code> nebo <code>C,F</code>. Prázdné = sledují se všechny disky v rozsahu na daném PC.</li>
     <li>Syntaxe písmen je stejná jako u "critical drives" scope v Discích: <code>C</code>, <code>C,D</code>, <code>&lt;&gt;C</code> / <code>!C</code> (vše kromě C), <code>*</code> (vše).</li>
+    <li><strong>Hromadné přepínače:</strong> hlavičky sloupců <strong>📧 Disk</strong>, <strong>🔔 Služby</strong> a <strong>Exclude</strong> mají každá malý ovladač <strong>"✓ all / ✗ none"</strong>, který naráz zaškrtne/odškrtne daný sloupec pro <strong>všechna právě zobrazená (vyfiltrovaná) PC</strong> — např. vyfiltruj si servery a pak ✓ zapne disk alerty na všech najednou.</li>
   </ul>
 </div>
 
@@ -783,12 +785,14 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <ul>
     <li>The Computers tab has a new <strong>🔔 Services</strong> column. Tick a PC to put it under service alerting.</li>
     <li>Tick the <strong>key servers</strong> — domain controllers, backup and file servers — where a dead service actually hurts. Ordinary workstations should stay unticked.</li>
+    <li><strong>Bulk toggles:</strong> the <strong>📧 Disk</strong>, <strong>🔔 Services</strong> and <strong>Exclude</strong> column headers each carry a small <strong>"✓ all / ✗ none"</strong> control that ticks/unticks that column for <strong>all currently visible (filtered) PCs</strong> at once — e.g. filter to your servers, then ✓ to enable service alerts on all of them.</li>
   </ul>
 </div>
 <div data-lang="cs">
   <ul>
     <li>Záložka Počítače má nový sloupec <strong>🔔 Služby</strong>. Zaškrtnutím dáš PC pod alerting služeb.</li>
     <li>Zaškrtni <strong>klíčové servery</strong> — doménové řadiče, zálohovací a souborové servery — kde mrtvá služba reálně bolí. Běžné stanice nech nezaškrtnuté.</li>
+    <li><strong>Hromadné přepínače:</strong> hlavičky sloupců <strong>📧 Disk</strong>, <strong>🔔 Služby</strong> a <strong>Exclude</strong> mají každá malý ovladač <strong>"✓ all / ✗ none"</strong>, který naráz zaškrtne/odškrtne daný sloupec pro <strong>všechna právě zobrazená (vyfiltrovaná) PC</strong> — např. vyfiltruj si servery a pak ✓ zapne service alerty na všech najednou.</li>
   </ul>
 </div>
 
@@ -871,12 +875,49 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <strong>Tip:</strong> hned po zadání příjemců použij <strong>Send test email</strong> pro ověření doručování a From adresy — nejdřív automaticky uloží rozpracované Nastavení (není třeba klikat Save) a obejde enable flag, debounce i throttle, odešle aktuální stav (co je teď dole), takže nemusíš čekat na reálný výpadek, abys ověřil zapojení.
 </div>
 
-<div class="callout callout-info" data-lang="en">
-  <strong>Architecture note:</strong> watching the service <strong>Running</strong> state is the first step. A future enhancement will also check the service <strong>port from outside</strong> — TCP 389 (LDAP), TCP 445 (SMB), UDP 53 (DNS), TCP 3389 (RDP) — to test the whole path network → firewall → OS → service, not just whether the OS reports the service as started.
+<h3><span data-lang="cs">Port-checky (fáze 2)</span><span data-lang="en">Port checks (phase 2)</span></h3>
+<p>
+  <span data-lang="cs">Sledování stavu <strong>Running</strong> je první krok. <strong>Fáze 2</strong> jde dál: u hlídaných PC (🔔) se dashboard ze serveru přímo <strong>TCP-připojí na klíčové infra porty</strong> — LDAP <code>389</code>, SMB <code>445</code>, RDP <code>3389</code>, Kerberos <code>88</code>, DNS <code>53</code> (vše TCP; Windows DNS poslouchá i na TCP <code>53</code>). Tím se testuje <strong>celá cesta síť → firewall → OS → služba</strong>, ne jen to, jestli OS hlásí službu jako spuštěnou. Odhalí to případy <strong>"služba běží, ale není dostupná"</strong> (zablokovaný firewall, zamrznutí), které prostá kontrola Running mine.</span>
+  <span data-lang="en">Watching the <strong>Running</strong> state is the first step. <strong>Phase 2</strong> goes further: for watched PCs (🔔) the dashboard <strong>TCP-connects to key infra ports</strong> straight from the server — LDAP <code>389</code>, SMB <code>445</code>, RDP <code>3389</code>, Kerberos <code>88</code>, DNS <code>53</code> (all TCP; Windows DNS listens on TCP <code>53</code> too). This tests the <strong>whole path network → firewall → OS → service</strong>, not just whether the OS reports the service as started. It catches <strong>"service running but unreachable"</strong> cases (firewall block, freeze) that a plain Running check misses.</span>
+</p>
+<h4><span data-lang="cs">Baseline learning (jak se nespamuje)</span><span data-lang="en">Baseline learning (how it avoids spam)</span></h4>
+<div data-lang="en">
+  <ul>
+    <li>A port is only alerted <strong>once it has been reachable at least once</strong> — the check learns each box's baseline.</li>
+    <li>A port that <strong>never answers</strong> on a box (e.g. RDP closed there) is <strong>never alerted</strong>, so a deliberately closed port is not treated as a fault.</li>
+    <li>A <strong>fully offline PC is skipped</strong> — no one-alert-per-port spam when the whole box is down.</li>
+  </ul>
 </div>
-<div class="callout callout-info" data-lang="cs">
-  <strong>Pozn. k architektuře:</strong> sledování stavu <strong>Running</strong> je první krok. Budoucí rozšíření bude navíc kontrolovat <strong>port služby zvenčí</strong> — TCP 389 (LDAP), TCP 445 (SMB), UDP 53 (DNS), TCP 3389 (RDP) — aby otestovalo celou cestu síť → firewall → OS → služba, ne jen to, jestli OS hlásí službu jako spuštěnou.
+<div data-lang="cs">
+  <ul>
+    <li>Port se alertne, <strong>až když byl alespoň jednou dostupný</strong> — kontrola se naučí baseline každého stroje.</li>
+    <li>Port, který na daném stroji <strong>nikdy neodpoví</strong> (např. zavřené RDP), se <strong>nikdy nealertne</strong>, takže záměrně zavřený port není brán jako chyba.</li>
+    <li><strong>Plně offline PC se přeskočí</strong> — žádný spam jeden-alert-na-port, když je celý stroj dole.</li>
+  </ul>
 </div>
+<h4><span data-lang="cs">Nastavení port-checků</span><span data-lang="en">Port check settings</span></h4>
+<p>
+  <span data-lang="cs">V sekci <strong>"Email alerty — služby"</strong> přibyly k port-checkům tato pole:</span>
+  <span data-lang="en">The <strong>"Email alerts — services"</strong> section gained these fields for port checks:</span>
+</p>
+<table data-lang="en">
+  <tr><th>Field</th><th>Meaning</th></tr>
+  <tr><td>Enable port checks (phase 2)</td><td>Toggle that turns the port probing on/off (independent of the service Running check)</td></tr>
+  <tr><td>Port list (<code>Name:Port</code>)</td><td>Comma-separated list of named ports, e.g. <code>LDAP:389, SMB:445, RDP:3389, DNS:53</code></td></tr>
+  <tr><td>Port timeout (ms)</td><td>How long each TCP connect attempt may take before it counts as unreachable</td></tr>
+  <tr><td>Test ports (live probe)</td><td>Runs the port probe against the watched PCs right now and shows the live result</td></tr>
+</table>
+<table data-lang="cs">
+  <tr><th>Pole</th><th>Význam</th></tr>
+  <tr><td>Enable port checks (phase 2)</td><td>Přepínač, který zapíná/vypíná probování portů (nezávisle na kontrole Running u služeb)</td></tr>
+  <tr><td>Seznam portů (<code>Name:Port</code>)</td><td>Čárkou oddělený seznam pojmenovaných portů, např. <code>LDAP:389, SMB:445, RDP:3389, DNS:53</code></td></tr>
+  <tr><td>Port timeout (ms)</td><td>Jak dlouho smí trvat každý pokus o TCP připojení, než se počítá jako nedostupný</td></tr>
+  <tr><td>Test ports (live probe)</td><td>Spustí probu portů proti hlídaným PC hned teď a ukáže živý výsledek</td></tr>
+</table>
+<p>
+  <span data-lang="cs">Port-checky <strong>sdílí stejný debounce, údržbové okno a throttle</strong> jako service alerty. Mají vlastní report email (PC, IP, název služby + TCP port, jak dlouho je nedostupný).</span>
+  <span data-lang="en">Port checks <strong>reuse the same debounce, maintenance window and throttle</strong> as the service alerts. They have their own report email (PC, IP, service name + TCP port, how long it has been unreachable).</span>
+</p>
 
 <h2 id="services"><span data-lang="cs">Services collector + policy</span><span data-lang="en">Services collector + policy</span></h2>
 <p>
