@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-11 (config externalization — repo made portable; all env-specific values out of code into .env)
+Last updated: 2026-06-11 (config externalization + disk-critical email alerting)
 
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in
@@ -57,6 +57,51 @@ chapter + Reference-deployment box), `docs/SETUP-SERVER.md` ("Reference deployme
 values" table + parametric runbook), and `docs/project-status.html` (new status
 page). Dated historical records (oponentury / audit / change-requests) were left
 unchanged — they are point-in-time records.
+
+## Disk-critical email alerting (2026-06-11)
+
+Per-PC opt-in email reports when a "key" PC's disk goes critical. Off by
+default; configured entirely in the Settings UI (DB `settings`, `alerts.*`
+keys) — nothing in `.env`, consistent with the portability model.
+
+How an operator uses it:
+
+- **Computers tab → "📧 Disk" column** — tick the key PCs. Each ticked PC has a
+  small letters field next to the checkbox: type `C` or `C,F` to watch only
+  those drives; empty = all in-scope drives. Same scope syntax as
+  `disk.crit_drives` (`C`, `C,D`, `<>C`/`!C`, `*`).
+- **Settings → "Email alerts — disks"** — master enable, frequency (hours),
+  SMTP relay host + port (internal relay, default 25), sender, recipients (one
+  per line / comma), and a **Send test email** button (sends current state
+  ignoring enable/throttle, to verify SMTP).
+- **Dashboard** — "Watched disks" tile shows criticalPcs/monitoredPcs + on/off.
+
+Behavior: after every disk scan, monitored PCs' in-scope drives are evaluated
+against the CRITICAL threshold (from Disks settings). If any is critical, an
+email report goes out — throttled to once per `alerts.disk.frequency_hours`
+(default 24) while the condition holds. Edge + reminder: first detection sends
+immediately, reminders at the cadence, recovery resets the throttle
+(`alerts.disk.last_sent_at`) so the next incident alerts promptly.
+
+Implementation (branches `feat/disk-email-alerts` + `feat/disk-email-per-drive`):
+
+- `apps/server/src/services/alerts.ts` — nodemailer SMTP send + server-side
+  critical-disk eval (mirrors the dashboard scope/threshold rules) + throttle.
+  Hooked at the end of `runDiskCollectorOnce`; self-contained and never throws
+  so a mail failure can't fail the scan.
+- Routes: `PATCH /computers/:id/disk-email-monitor { enabled?, drives? }`,
+  `POST /alerts/disk/test`. `GET /computers` returns `disk_email_monitor` +
+  `disk_email_drives`.
+- Migrations: `028_disk_email_alerts` (computers.disk_email_monitor BIT +
+  alerts.* settings seed), `029_disk_email_drives` (computers.disk_email_drives).
+- Adds the `nodemailer` dependency.
+- SMTP relay is assumed internal: no client auth, opportunistic TLS with cert
+  validation disabled (self-signed internal relays). Add `alerts.smtp_user`/
+  `password` handling later if a relay requires auth.
+
+**Operator setup checklist:** fill SMTP host/port/from + recipients in Settings →
+Save → click "Send test email" to verify → tick the key PCs (📧 Disk, optional
+letters) → flip the master enable on.
 
 ## Protocol handler follow-up oponentura (NEW since 2026-06-03)
 

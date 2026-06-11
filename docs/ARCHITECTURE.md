@@ -51,7 +51,7 @@
 
 ### Database (MSSQL on the SQL host — `SQL_HOST` / `SQL_INSTANCE`, DB `SQL_DATABASE`)
 Tables:
-- `computers` — name, fqdn, os_version, last_seen, enabled (AD presence), monitor_enabled (operator intent), last_collected_at, last_error, consecutive_failures, distinguished_name, ou_path, last_status
+- `computers` — name, fqdn, os_version, last_seen, enabled (AD presence), monitor_enabled (operator intent), last_collected_at, last_error, consecutive_failures, distinguished_name, ou_path, last_status, `disk_email_monitor` (per-PC opt-in to disk-critical email alerts) + `disk_email_drives` (optional per-PC drive-letter scope)
 - `events` — raw events with unique idx `(computer_id, event_id, log_name, time_created)` for idempotency
 - `event_daily_agg` — daily aggregates per (computer, log_name, event_id, level), kept forever
 - `disks` — per-drive snapshot (replaces row on each scan)
@@ -171,6 +171,20 @@ The perf-events collector subscribes to the `Microsoft-Windows-Diagnostics-Perfo
 
 **Server SKU gotcha:** the channel is **disabled by default on Windows Server**. Get-WinEvent on a disabled channel returns `"There is not an event log on the X computer that matches"`. The collector detects this pattern, classifies it as `channel-disabled` (separate from `fail`), and skips silently — no per-PC noise in the activity log, one aggregate count at end of run. To enable across the server fleet, push a GPO computer-startup script that runs `wevtutil sl Microsoft-Windows-Diagnostics-Performance/Operational /e:true` (same pattern as the Services GPO script export).
 
+### Disk email alerting (per-PC, opt-in)
+
+A few "key" PCs can be opted into disk-critical email alerting — the operator ticks them in the Computers tab (new "📧 Disk" column), and each ticked PC can optionally be narrowed to specific drive letters typed in a small field next to the checkbox (`C` or `C,F`; empty = all in-scope drives). The scope field uses the same syntax as `disk.crit_drives` (`C`, `C,D`, `<>C`/`!C`, `*`), and falls back to the global `disk.crit_drives` scope when the per-PC field is empty. This is deliberately not a fleet-wide page — alerting on every monitored PC would be noise; the model is "a handful of PCs that matter get email, everything else stays on the dashboard".
+
+**Hook point.** Evaluation runs at the end of `runDiskCollectorOnce`, after every disk scan. Monitored PCs' disks are checked against the CRITICAL threshold from the Disks settings (pct/gb/either + per-PC drive scope), reusing the same scope/threshold rules the dashboard applies — the server-side evaluation in `apps/server/src/services/alerts.ts` mirrors those rules rather than inventing its own. If any in-scope drive is critical, an email report is sent (HTML table: PC, drive, free/total, % free). The hook is self-contained: it checks the master enable flag + throttle internally and never throws, so a mail failure can't fail the scan.
+
+**Throttle (edge + reminder).** At most one mail per `alerts.disk.frequency_hours` (default 24) while at least one monitored disk stays critical. First detection sends immediately, resends at the cadence while still critical, and clearing the condition resets the throttle (stored in `alerts.disk.last_sent_at`) so the next incident alerts promptly rather than waiting out a stale window.
+
+**Transport.** nodemailer to an internal SMTP relay (`alerts.smtp_host`/`alerts.smtp_port`, default port 25), opportunistic TLS with cert validation disabled (internal self-signed relays), no client auth assumed. Sender is `alerts.smtp_from`, recipients are `alerts.recipients` (comma/newline list).
+
+**Config & routes.** Configuration lives entirely in Settings (DB `settings` table, `alerts.*` keys) plus the per-PC columns — nothing in `.env`, consistent with the portability model. Routes: `PATCH /computers/:id/disk-email-monitor` `{ enabled?, drives? }` and `POST /alerts/disk/test` (sends the current state ignoring enable/throttle, backing the Settings test button); `GET /computers` now returns `disk_email_monitor` + `disk_email_drives`. The Dashboard shows a "Watched disks" tile (criticalPcs/monitoredPcs + alerts on/off).
+
+This stays on the right side of **Observer, not executor**: it emails the operator about a stale-derived threshold breach, it does not act on the target.
+
 ### Activity log is two-tier
 Live view: ring buffer of 500 entries, polled by dashboard every 2s. Lost on service restart. Persistent history: every `logActivity()` call is also fire-and-forget INSERT into `activity_log` table (`apps/server/src/services/activity-log.ts`). DB writes are intentionally not awaited so collector cadence isn't tied to DB latency; if persistence fails the live view is unaffected. The Activity tab has a Live/History mode toggle — History queries `activity_log` with filters (time range, level, source, message search) and supports pagination. Retention via `activity.retention_days` setting (default 30) and `sp_purge_old_activity` stored procedure.
 
@@ -254,3 +268,8 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 022_inactive_threshold | inactive.threshold_days (90) — drives Dashboard "Inactive PCs" card and Computers tab filter chip |
 | 023_pc_user_history | pc_user_history table + pcUserHistory.retention_days (90) + sp_purge_pc_user_history — per-PC interactive login history |
 | 024_pc_user_history_ip | pc_user_history.ip_address — IP the PC had at the moment of each login session |
+| 025_event_dedup | event dedup lookback settings |
+| 026_service_exit_code | service_problems.exit_code + service_specific_exit_code |
+| 027_event_summary_window | events.summary_window_days setting |
+| 028_disk_email_alerts | computers.disk_email_monitor BIT + alerts.* settings seed (enabled, frequency_hours, smtp_host, smtp_port, smtp_from, recipients) |
+| 029_disk_email_drives | computers.disk_email_drives NVARCHAR(64) — per-PC drive-letter scope |

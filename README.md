@@ -7,6 +7,7 @@ Internal IT operations dashboard for the **AXINETWORK** domain. Eventlog analyti
 - **Eventlog visibility** — pulls Warning/Error/Critical events from every monitored PC into a central DB. Filter, search, sort, drill down.
 - **AD-synced inventory** — keeps a current list of domain computers (OS, last logon, OU path) with operator-controlled per-PC monitor toggle.
 - **Disk space monitoring** — periodic DCOM scan; configurable thresholds (% / GB); colored progress bars; drill-down filter.
+- **Disk email alerts** — per-PC opt-in (📧 Disk column in Computers, optional per-PC drive letters like `C,F`); emails a critical-disk report after a scan, throttled to once per configurable interval. SMTP relay, recipients and cadence all in Settings; off by default.
 - **Services collector + policy** — detects Auto + non-Running services across the fleet, classifies legitimate cases (Trigger / Delayed / per-user), flags real drift against a policy table, GPO PS script export.
 - **Performance events** — pulls slow boot / shutdown / standby / resume records from the `Microsoft-Windows-Diagnostics-Performance/Operational` channel with named culprits and timings (observer of Windows' own diagnostics, no continuous polling).
 - **Reachability classification** — every collector run categorises each PC as `online` / `offline` / `rpc_unavailable` / `access_denied`. Dashboard surfaces breakdown.

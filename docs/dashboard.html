@@ -111,6 +111,7 @@ a.external { color: var(--accent); }
     <li><a href="#pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></a></li>
     <li><a href="#collector">Eventlog collector</a></li>
     <li><a href="#disk"><span data-lang="cs">Disk collector</span><span data-lang="en">Disk space collector</span></a></li>
+    <li><a href="#disk-alerts"><span data-lang="cs">Email alerty disků</span><span data-lang="en">Disk email alerts</span></a></li>
     <li><a href="#services">Services collector + policy</a></li>
     <li><a href="#perf">Perf events (Diagnostics-Performance)</a></li>
     <li><a href="#ad-sync">AD sync</a></li>
@@ -643,6 +644,85 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
 </ul>
 </div>
 
+<h2 id="disk-alerts"><span data-lang="cs">Email alerty disků</span><span data-lang="en">Disk email alerts</span></h2>
+<p>
+  <span data-lang="cs">Pošle IT operátorovi email, když dojde místo na disku u "klíčového" PC — bez spamování. <strong>Defaultně vypnuto.</strong> Vybíráš jen ty stroje, na kterých ti na disku reálně záleží (servery, kritické stanice), takže běžné notebooky s plným diskem nezahltí schránku.</span>
+  <span data-lang="en">Emails the IT operator when a "key" PC runs out of disk space — without spamming. <strong>Off by default.</strong> You pick only the machines whose disk you actually care about (servers, critical workstations), so ordinary laptops with a full disk never flood your inbox.</span>
+</p>
+<p>
+  <span data-lang="cs">Po každém disk skenu se disky monitorovaných PC porovnají proti <strong>CRITICAL thresholdu</strong> z nastavení disků (sekce <a href="#disk">Disk space collector</a> / <a href="#settings">Nastavení</a>). Pokud je některý disk v rozsahu critical, odešle se report email (HTML tabulka: PC, drive, volné/celkem, % volného).</span>
+  <span data-lang="en">After each disk scan, the disks of monitored PCs are checked against the <strong>CRITICAL threshold</strong> from the disk settings (see <a href="#disk">Disk space collector</a> / <a href="#settings">Settings</a>). If any in-scope drive is critical, a report email is sent (HTML table: PC, drive, free/total, % free).</span>
+</p>
+
+<h3><span data-lang="cs">Jak zapnout — sloupec 📧 Disk v záložce Počítače</span><span data-lang="en">How to enable — the 📧 Disk column in the Computers tab</span></h3>
+<div data-lang="en">
+  <ul>
+    <li>The Computers tab has a new <strong>📧 Disk</strong> column. Tick a PC to put it under disk email monitoring.</li>
+    <li>Optionally type specific drive letters into the small field next to the checkbox — e.g. <code>C</code> or <code>C,F</code>. Leave it empty to watch all in-scope drives on that PC.</li>
+    <li>The letter syntax is the same as the Disks "critical drives" scope: <code>C</code>, <code>C,D</code>, <code>&lt;&gt;C</code> / <code>!C</code> (everything except C), <code>*</code> (all).</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <ul>
+    <li>Záložka Počítače má nový sloupec <strong>📧 Disk</strong>. Zaškrtnutím dáš PC pod disk email monitoring.</li>
+    <li>Volitelně do malého pole vedle checkboxu napiš konkrétní písmena disků — např. <code>C</code> nebo <code>C,F</code>. Prázdné = sledují se všechny disky v rozsahu na daném PC.</li>
+    <li>Syntaxe písmen je stejná jako u "critical drives" scope v Discích: <code>C</code>, <code>C,D</code>, <code>&lt;&gt;C</code> / <code>!C</code> (vše kromě C), <code>*</code> (vše).</li>
+  </ul>
+</div>
+
+<h3><span data-lang="cs">Nastavení → "Email alerty — disky"</span><span data-lang="en">Settings → "Email alerts — disks"</span></h3>
+<p>
+  <span data-lang="cs">Vše se konfiguruje v záložce Nastavení — žádná editace <code>.env</code>, konzistentně se zbytkem nástroje. Sekce obsahuje:</span>
+  <span data-lang="en">Everything is configured in the Settings tab — no <code>.env</code> editing, consistent with the rest of the tool. The section contains:</span>
+</p>
+<table data-lang="en">
+  <tr><th>Field</th><th>Meaning</th></tr>
+  <tr><td>Enable</td><td>Master on/off for disk email alerts (off by default)</td></tr>
+  <tr><td>Frequency (hours)</td><td>Throttle cadence while a disk stays critical (default 24h)</td></tr>
+  <tr><td>SMTP relay host + port</td><td>Internal relay; port default <code>25</code></td></tr>
+  <tr><td>Sender (From)</td><td>From address on the report email</td></tr>
+  <tr><td>Recipients</td><td>One per line or comma-separated</td></tr>
+  <tr><td>Send test email</td><td>Emails the current state immediately, regardless of enable / throttle — use it to verify SMTP works</td></tr>
+</table>
+<table data-lang="cs">
+  <tr><th>Pole</th><th>Význam</th></tr>
+  <tr><td>Enable</td><td>Hlavní zap/vyp email alertů disků (defaultně vypnuto)</td></tr>
+  <tr><td>Frequency (hodiny)</td><td>Cadence throttlingu po dobu, co disk zůstává critical (default 24h)</td></tr>
+  <tr><td>SMTP relay host + port</td><td>Interní relay; port default <code>25</code></td></tr>
+  <tr><td>Sender (From)</td><td>Adresa odesílatele v report emailu</td></tr>
+  <tr><td>Recipients</td><td>Jeden na řádek nebo oddělené čárkou</td></tr>
+  <tr><td>Send test email</td><td>Pošle aktuální stav okamžitě, bez ohledu na enable / throttle — slouží k ověření, že SMTP funguje</td></tr>
+</table>
+
+<h3><span data-lang="cs">Throttle a cadence (jak se nespamuje)</span><span data-lang="en">Throttle and cadence (how it avoids spamming)</span></h3>
+<div data-lang="en">
+  <ul>
+    <li><strong>First detection sends immediately</strong> — the moment an in-scope drive goes critical, you get the email.</li>
+    <li><strong>Reminders at the cadence</strong> — while the drive stays critical, at most one email per the configured frequency (default 24h).</li>
+    <li><strong>Recovery resets it</strong> — once the drive is no longer critical, the throttle clears, so the next incident alerts promptly again instead of waiting out the old window.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <ul>
+    <li><strong>První detekce odešle hned</strong> — v okamžiku, kdy disk v rozsahu spadne do critical, dostaneš email.</li>
+    <li><strong>Připomínky v cadence</strong> — dokud disk zůstává critical, nejvýše jeden email za nakonfigurovanou frekvenci (default 24h).</li>
+    <li><strong>Recovery to resetuje</strong> — jakmile disk přestane být critical, throttle se vynuluje, takže příští incident zase alertne okamžitě a nečeká na dojetí starého okna.</li>
+  </ul>
+</div>
+
+<h3><span data-lang="cs">Dashboard dlaždice "Watched disks"</span><span data-lang="en">Dashboard "Watched disks" tile</span></h3>
+<p>
+  <span data-lang="cs">Na Dashboardu je dlaždice <strong>Watched disks</strong>, která ukazuje criticalPcs/monitoredPcs (kolik z hlídaných PC je teď v critical) a zda jsou alerty zapnuté.</span>
+  <span data-lang="en">The Dashboard has a <strong>Watched disks</strong> tile showing criticalPcs/monitoredPcs (how many of the watched PCs are currently critical) and whether alerts are on.</span>
+</p>
+
+<div class="callout callout-info" data-lang="en">
+  <strong>Tip:</strong> use <strong>Send test email</strong> right after entering the SMTP relay + recipients to confirm the relay accepts the message and the From address is allowed — it bypasses both the enable flag and the throttle, so you do not have to wait for a real critical disk to verify the plumbing.
+</div>
+<div class="callout callout-info" data-lang="cs">
+  <strong>Tip:</strong> hned po zadání SMTP relay + příjemců použij <strong>Send test email</strong> pro ověření, že relay zprávu přijme a From adresa je povolená — obejde enable flag i throttle, takže nemusíš čekat na reálně plný disk, abys ověřil zapojení.
+</div>
+
 <h2 id="services"><span data-lang="cs">Services collector + policy</span><span data-lang="en">Services collector + policy</span></h2>
 <p>
   <span data-lang="cs">Detekuje Windows služby s <strong>StartMode = Automatic</strong> ale <strong>State ≠ Running</strong> na každém monitorovaném PC. Filtruje legitimní případy (Trigger Start, Delayed Start, per-user instances) a zbytek porovnává proti policy tabulce.</span>
@@ -1122,6 +1202,7 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td>Script execution authorisation</td><td>Audit log in <code>script_runs</code>; destructive scripts require UI confirmation flag (planned)</td></tr>
   <tr><td>Custom URL protocol handlers</td><td>Optional HKCU install only; strict hostname allowlist; PsExec opt-in; admin-share-only Explorer; browser "Always allow" discouraged; <code>ITD_ADMIN_USER</code> uses <code>runas /netonly</code> prompt instead of stored credentials</td></tr>
   <tr><td>API network exposure</td><td>Frontend gate via IP whitelist (UX boundary); OS firewall rule mirrors same whitelist (defense-in-depth)</td></tr>
+  <tr><td>Disk-alert email egress</td><td>Outbound to an internal SMTP relay only (host/port/From/recipients configured in Settings, not <code>.env</code>); off by default; opt-in per PC via the 📧 Disk column; throttled to at most one mail per configured frequency while critical</td></tr>
   <tr><td>Service account scope</td><td>Domain user (not Domain Admin); only Event Log Readers + Performance Monitor Users + DB <code>db_owner</code> + Service Stop/Start on ITDashboardAPI</td></tr>
   <tr><td>GitHub runner auth</td><td>Outbound HTTPS only; no inbound holes. Runner polls GitHub from inside the network.</td></tr>
   <tr><td>Code-in-transit</td><td>All git operations + Actions runner traffic uses HTTPS (TLS 1.2+) to github.com</td></tr>
@@ -1134,6 +1215,7 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td>Autorizace spouštění skriptů</td><td>Audit log v <code>script_runs</code>; destruktivní skripty vyžadují UI confirmation flag (plánováno)</td></tr>
   <tr><td>Custom URL protocol handlers</td><td>Volitelný HKCU install; strict hostname allowlist; PsExec opt-in; Explorer jen pro admin shares; browser "Vždy povolit" se nedoporučuje; <code>ITD_ADMIN_USER</code> používá <code>runas /netonly</code> prompt místo uložených credentials</td></tr>
   <tr><td>Network exposure API</td><td>Frontend gate přes IP whitelist (UX hranice); OS firewall rule zrcadlí stejný whitelist (defense-in-depth)</td></tr>
+  <tr><td>Email egress disk alertů</td><td>Pouze odchozí na interní SMTP relay (host/port/From/příjemci v Nastavení, ne v <code>.env</code>); defaultně vypnuto; opt-in per PC přes sloupec 📧 Disk; throttle nejvýše jeden mail za nakonfigurovanou frekvenci po dobu critical</td></tr>
   <tr><td>Scope service account</td><td>Doménový user (ne Domain Admin); jen Event Log Readers + Performance Monitor Users + DB <code>db_owner</code> + Service Stop/Start na ITDashboardAPI</td></tr>
   <tr><td>GitHub runner auth</td><td>Pouze outbound HTTPS; žádné inbound díry. Runner pollí GitHub zevnitř sítě.</td></tr>
   <tr><td>Code-in-transit</td><td>Všechny git operace + Actions runner traffic používá HTTPS (TLS 1.2+) na github.com</td></tr>

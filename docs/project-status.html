@@ -67,6 +67,7 @@
     <li><strong>Eventlog napříč flotilou</strong> — Warning/Error/Critical z každého PC do centrální DB; filtrování, vyhledávání, časové grafy, žebříček „noisy" PC.</li>
     <li><strong>AD-synchronizovaný inventář</strong> — OS, poslední přihlášení, OU cesta, operátorem řízený monitor toggle (perzistuje napříč syncs).</li>
     <li><strong>Monitoring disků</strong> — periodický DCOM sken, konfigurovatelné prahy (% / GB), per-tier scope písmen disků.</li>
+    <li><strong>Email alerty disků</strong> — per-PC opt-in (sloupec 📧 Disk v Počítačích, volitelně konkrétní písmena <code>C,F</code>); po skenu pošle report o kritických discích, throttle 1× za nastavený interval. SMTP relay, příjemci a četnost v Settings; defaultně vypnuto.</li>
     <li><strong>Services collector + policy</strong> — Auto + neběžící služby, klasifikace drift vs. policy tabulka, ExitCode capture, GPO PS export.</li>
     <li><strong>Performance events</strong> — pomalý boot/shutdown/standby/resume z Diagnostics-Performance kanálu s pojmenovanými culprity.</li>
     <li><strong>Klasifikace dostupnosti</strong> — každý běh: online / offline / rpc_unavailable / access_denied.</li>
@@ -86,10 +87,19 @@
     <tr><td>Browser klient</td><td>Bez konfigurace — servíruje ho API, používá relativní URL.</td></tr>
     <tr><td>Electron klient</td><td><code>VITE_API_BASE</code> zapečené při buildu.</td></tr>
     <tr><td>Protocol-handler installer</td><td>API base injektuje server při stažení (dle <code>Host</code> hlavičky) — nic ručně needitovat.</td></tr>
+    <tr><td>Email alerty disků</td><td>Settings → „Email alerty — disky" (DB <code>settings.alerts.*</code>); per-PC výběr v Počítačích (📧 Disk). Nic v <code>.env</code>.</td></tr>
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>.</p>
 
-  <h2>Poslední změna — externalizace konfigurace (2026-06-11)</h2>
+  <h2>Poslední změny (2026-06-11)</h2>
+  <p style="margin:0 0 4px"><strong>Email alerty disků</strong></p>
+  <ul>
+    <li>Per-PC opt-in v Počítačích (sloupec 📧 Disk) + volitelný výběr konkrétních písmen disků (<code>C</code>, <code>C,F</code>); prázdné = všechny in-scope disky.</li>
+    <li>Po každém disk skenu se sledované disky vyhodnotí proti kritickému prahu; report jde emailem, throttle 1× za <code>alerts.disk.frequency_hours</code> (default 24 h), edge + připomínka.</li>
+    <li>Settings → „Email alerty — disky": zapnout, četnost, SMTP relay, odesílatel, příjemci + tlačítko testovacího emailu. Dashboard dlaždice „Sledované disky".</li>
+    <li>Backend: <code>services/alerts.ts</code> (nodemailer) hooknutý do disk collectoru; migrace 028 + 029. Vše v Settings/DB, nic v <code>.env</code>.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Externalizace konfigurace</strong></p>
   <ul>
     <li>Browser klient přešel na relativní API URL (konec napevno zadané IP v buildu).</li>
     <li>Installer: server přepisuje <code>ITD_API_BASE</code> podle hostu stažení.</li>
