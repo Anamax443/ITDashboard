@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { sendDiskAlertTest, sendServiceAlertTest } from '../services/alerts.js';
+import { sendDiskAlertTest, sendServiceAlertTest, sendPortAlertTest } from '../services/alerts.js';
 
 export async function registerAlertsRoutes(app: FastifyInstance) {
   // Manual test from the Settings page — sends the current monitored-disk
@@ -19,6 +19,17 @@ export async function registerAlertsRoutes(app: FastifyInstance) {
   app.post('/alerts/services/test', async (_req, reply) => {
     try {
       const result = await sendServiceAlertTest();
+      return { ok: true, ...result };
+    } catch (err) {
+      reply.code(400);
+      return { ok: false, error: String(err).split('\n')[0] };
+    }
+  });
+
+  // Same, for outside-in port checks (live-probes monitored PCs' ports).
+  app.post('/alerts/ports/test', async (_req, reply) => {
+    try {
+      const result = await sendPortAlertTest();
       return { ok: true, ...result };
     } catch (err) {
       reply.code(400);

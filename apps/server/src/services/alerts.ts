@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { Socket } from 'node:net';
 import { getPool } from '../db/pool.js';
 import { getAllSettings, setSetting, type SettingsMap } from './settings.js';
 import { logActivity } from './activity-log.js';
@@ -564,6 +565,253 @@ export function renderServiceAlert(down: DownCriticalService[], now: number, isT
           <div style="margin-top:8px;padding-top:14px;border-top:1px solid #eef0f2;font-size:12px;color:#9ca3af;font-family:${FONT};line-height:1.6">
             ${footerAddr}Vygenerováno ${generated} · ITDashboard automatický report.<br>
             Sledovaná PC: záložka Počítače (🔔 Služby); seznam kritických služeb, debounce a okno údržby: Nastavení.
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  return { subject, text, html };
+}
+
+// =====================================================================
+// Phase 2 — outside-in port reachability checks
+// =====================================================================
+
+function tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new Socket();
+    let settled = false;
+    const done = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    const t = setTimeout(() => done(false), timeoutMs);
+    socket.once('connect', () => { clearTimeout(t); done(true); });
+    socket.once('error', () => { clearTimeout(t); done(false); });
+    socket.connect(port, host);
+  });
+}
+
+interface PortCheck { name: string; port: number; }
+function parsePortChecks(raw: string | undefined): PortCheck[] {
+  const out: PortCheck[] = [];
+  for (const tok of (raw ?? '').split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean)) {
+    const m = tok.match(/^(.+):(\d{1,5})$/);
+    if (!m) continue;
+    const port = Number(m[2]);
+    if (port >= 1 && port <= 65535) out.push({ name: m[1]!.trim(), port });
+  }
+  return out;
+}
+
+export interface PortDown {
+  computerId: number;
+  computer: string;
+  ip: string | null;
+  checkName: string;
+  port: number;
+  firstDownAt: Date | null;
+}
+
+const PROBE_CONCURRENCY = 5;
+
+// Called after every services scan (when port checks are enabled). TCP-probes
+// each monitored PC's key ports from the API host, learns a per-(PC,port)
+// baseline, and alerts on ports that were reachable and went down — with the
+// same debounce / maintenance-window / throttle as service-state alerts.
+export async function evaluateAndSendPortAlerts(): Promise<void> {
+  const settings = await getAllSettings();
+  if (!boolSetting(settings['alerts.services.port_checks_enabled'])) return;
+  const checks = parsePortChecks(settings['alerts.services.port_checks']);
+  if (checks.length === 0) return;
+  const timeoutMs = Number(settings['alerts.services.port_timeout_ms'] ?? 2000) || 2000;
+
+  const pool = await getPool();
+  const pcs = (await pool.request().query<{ id: number; name: string }>(`
+    SELECT id, name FROM computers
+    WHERE enabled = 1 AND service_email_monitor = 1 AND excluded = 0
+  `)).recordset;
+
+  const nowDate = new Date();
+  const now = nowDate.getTime();
+
+  for (let i = 0; i < pcs.length; i += PROBE_CONCURRENCY) {
+    const batch = pcs.slice(i, i + PROBE_CONCURRENCY);
+    await Promise.all(batch.map(async (pc) => {
+      // Skip a powered-off box entirely — don't start per-port outages for it.
+      if (!(await tcpProbe(pc.name, 135, timeoutMs))) return;
+      for (const chk of checks) {
+        const ok = await tcpProbe(pc.name, chk.port, timeoutMs);
+        const req = pool.request().input('cid', pc.id).input('nm', chk.name).input('port', chk.port).input('t', nowDate);
+        if (ok) {
+          await req.query(`
+            MERGE port_check_state AS t USING (SELECT @cid AS cid, @nm AS nm) AS s
+              ON t.computer_id = s.cid AND t.check_name = s.nm
+            WHEN MATCHED THEN UPDATE SET last_ok_at = @t, first_down_at = NULL, port = @port
+            WHEN NOT MATCHED THEN INSERT (computer_id, check_name, port, last_ok_at) VALUES (@cid, @nm, @port, @t);
+          `);
+        } else {
+          // Only start tracking an outage if the port was EVER up (baseline) and
+          // isn't already being tracked. Never-up ports are left untracked.
+          await req.query(`
+            UPDATE port_check_state SET first_down_at = @t, port = @port
+            WHERE computer_id = @cid AND check_name = @nm AND last_ok_at IS NOT NULL AND first_down_at IS NULL;
+          `);
+        }
+      }
+    }));
+  }
+
+  if (inMaintenanceWindow(settings['alerts.services.maintenance_window'], nowDate)) return;
+
+  const debounceMs = (Number(settings['alerts.services.debounce_minutes'] ?? 10) || 10) * 60_000;
+  const freqMs = (Number(settings['alerts.services.frequency_hours'] ?? 24) || 24) * 3_600_000;
+
+  const downRows = (await pool.request().query<{
+    computer_id: number; computer: string; ip_address: string | null;
+    check_name: string; port: number; first_down_at: Date; last_sent_at: Date | null;
+  }>(`
+    SELECT s.computer_id, c.name AS computer, c.ip_address, s.check_name, s.port, s.first_down_at, s.last_sent_at
+    FROM port_check_state s
+    JOIN computers c ON c.id = s.computer_id
+    WHERE s.first_down_at IS NOT NULL AND c.enabled = 1 AND c.service_email_monitor = 1
+    ORDER BY c.name, s.check_name
+  `)).recordset;
+
+  const eligible: PortDown[] = [];
+  for (const r of downRows) {
+    const downMs = now - new Date(r.first_down_at).getTime();
+    if (downMs < debounceMs) continue;
+    if (r.last_sent_at && now - new Date(r.last_sent_at).getTime() < freqMs) continue;
+    eligible.push({ computerId: r.computer_id, computer: r.computer, ip: r.ip_address, checkName: r.check_name, port: r.port, firstDownAt: r.first_down_at });
+  }
+  if (eligible.length === 0) return;
+
+  try {
+    const recipients = await sendMail(settings, renderPortAlert(eligible, now, false, (settings['alerts.dashboard_url'] ?? '').trim()));
+    for (const a of eligible) {
+      await pool.request().input('cid', a.computerId).input('nm', a.checkName).input('t', nowDate)
+        .query(`UPDATE port_check_state SET last_sent_at = @t WHERE computer_id = @cid AND check_name = @nm`);
+    }
+    const pcsN = new Set(eligible.map((e) => e.computer)).size;
+    logActivity('warn', 'alerts', `Port alert email sent to ${recipients} recipient(s) — ${eligible.length} unreachable port(s) on ${pcsN} PC(s)`);
+  } catch (err) {
+    logActivity('error', 'alerts', `Port alert email failed: ${String(err).split('\n')[0]}`);
+  }
+}
+
+// Manual test — live-probes all monitored PCs' ports and reports the currently
+// unreachable ones (ignoring baseline/debounce/throttle/maintenance).
+export async function sendPortAlertTest(): Promise<{ recipients: number; down: number; monitoredPcs: number }> {
+  const settings = await getAllSettings();
+  const checks = parsePortChecks(settings['alerts.services.port_checks']);
+  const timeoutMs = Number(settings['alerts.services.port_timeout_ms'] ?? 2000) || 2000;
+  const pool = await getPool();
+  const pcs = (await pool.request().query<{ id: number; name: string; ip_address: string | null }>(`
+    SELECT id, name, ip_address FROM computers
+    WHERE enabled = 1 AND service_email_monitor = 1 AND excluded = 0
+  `)).recordset;
+
+  const down: PortDown[] = [];
+  for (let i = 0; i < pcs.length; i += PROBE_CONCURRENCY) {
+    const batch = pcs.slice(i, i + PROBE_CONCURRENCY);
+    await Promise.all(batch.map(async (pc) => {
+      if (!(await tcpProbe(pc.name, 135, timeoutMs))) return; // skip offline
+      for (const chk of checks) {
+        if (!(await tcpProbe(pc.name, chk.port, timeoutMs))) {
+          down.push({ computerId: pc.id, computer: pc.name, ip: pc.ip_address, checkName: chk.name, port: chk.port, firstDownAt: null });
+        }
+      }
+    }));
+  }
+
+  const recipients = await sendMail(settings, renderPortAlert(down, Date.now(), true, (settings['alerts.dashboard_url'] ?? '').trim()));
+  const monitoredPcs = pcs.length;
+  logActivity('info', 'alerts', `Port alert TEST email sent to ${recipients} recipient(s) (${down.length} unreachable port(s))`);
+  return { recipients, down: down.length, monitoredPcs };
+}
+
+function portCard(c: PortDown, now: number): string {
+  const ip = c.ip ? ` · ${escHtml(c.ip)}` : '';
+  const since = c.firstDownAt ? `nedostupný ${fmtDuration(now - new Date(c.firstDownAt).getTime())}` : 'aktuálně nedostupný';
+  return `
+        <tr><td style="padding:0 0 12px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#ffffff;border:1px solid #e5e7eb;border-left:4px solid #dc2626;border-radius:8px">
+            <tr><td style="padding:14px 16px">
+              <div style="font-size:16px;font-weight:700;color:#111827;font-family:${FONT}">${escHtml(c.computer)}</div>
+              <div style="font-size:13px;color:#6b7280;margin:2px 0 6px;font-family:${FONT}">${escHtml(c.checkName)} · TCP ${c.port}${ip}</div>
+              <div style="font-size:14px;color:#dc2626;font-weight:700;font-family:${FONT}">🔌 ${since}</div>
+            </td></tr>
+          </table>
+        </td></tr>`;
+}
+
+export function renderPortAlert(down: PortDown[], now: number, isTest: boolean, dashboardUrl: string): { subject: string; text: string; html: string } {
+  const pcs = new Set(down.map((c) => c.computer)).size;
+  const prefix = isTest ? '[TEST] ' : '';
+  const has = down.length > 0;
+  const subject = has
+    ? `${prefix}ITDashboard — port služby nedostupný (${down.length} na ${pcs} PC)`
+    : `${prefix}ITDashboard — test port checku (vše dostupné)`;
+
+  const generated = new Date().toLocaleString('cs-CZ', {
+    timeZone: 'Europe/Prague',
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+
+  const lines = down.map((c) =>
+    `  • ${c.computer}${c.ip ? ` (${c.ip})` : ''}  ${c.checkName} TCP ${c.port}  —  ${c.firstDownAt ? `nedostupný ${fmtDuration(now - new Date(c.firstDownAt).getTime())}` : 'nedostupný'}`,
+  );
+  const text = (has
+    ? `ITDashboard — port služby nedostupný\n${down.length} port(ů) na ${pcs} PC:\n\n${lines.join('\n')}\n`
+    : 'ITDashboard — test port checku\nVšechny sledované porty jsou dostupné.\n')
+    + (isTest ? '\n(Testovací zpráva spuštěná ručně z Nastavení.)\n' : '')
+    + (dashboardUrl ? `\nOtevřít ITDashboard: ${dashboardUrl}\n` : '')
+    + `Vygenerováno: ${generated}\n`;
+
+  const headerBg = has ? '#dc2626' : '#16a34a';
+  const headerSub = has ? '#fde2e2' : '#dcfce7';
+  const headerTitle = has ? '🔌 Port služby nedostupný' : '✅ Porty dostupné';
+  const headerLine = has
+    ? `${down.length} port(ů) na ${pcs} PC nelze z dashboardu dosáhnout`
+    : 'Všechny sledované porty jsou dostupné';
+
+  const body = has
+    ? down.map((c) => portCard(c, now)).join('')
+    : `<tr><td style="padding:4px 0 12px;font-size:14px;color:#374151;font-family:${FONT}">Všechny sledované porty odpovídají. 👍</td></tr>`;
+
+  const testBanner = isTest
+    ? `<tr><td style="padding:0 0 14px"><div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:6px;padding:10px 14px;font-size:13px;font-family:${FONT}">ℹ️ Testovací zpráva spuštěná ručně z Nastavení.</div></td></tr>`
+    : '';
+  const ctaButton = dashboardUrl
+    ? `<tr><td style="padding:2px 0 16px"><a href="${escHtml(dashboardUrl)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 20px;border-radius:6px;font-family:${FONT}">Otevřít ITDashboard →</a></td></tr>`
+    : '';
+  const footerAddr = dashboardUrl
+    ? `<a href="${escHtml(dashboardUrl)}" style="color:#6b7280;text-decoration:underline">${escHtml(dashboardUrl)}</a> · `
+    : '';
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 12px">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;border-collapse:collapse">
+        <tr><td style="background:${headerBg};border-radius:10px 10px 0 0;padding:18px 20px">
+          <div style="font-size:18px;font-weight:700;color:#ffffff;font-family:${FONT}">${prefix}${headerTitle}</div>
+          <div style="font-size:13px;color:${headerSub};margin-top:3px;font-family:${FONT}">${headerLine}</div>
+        </td></tr>
+        <tr><td style="background:#ffffff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 10px 10px;padding:18px 20px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            ${testBanner}
+            ${body}
+            ${ctaButton}
+          </table>
+          <div style="margin-top:8px;padding-top:14px;border-top:1px solid #eef0f2;font-size:12px;color:#9ca3af;font-family:${FONT};line-height:1.6">
+            ${footerAddr}Vygenerováno ${generated} · ITDashboard automatický report.<br>
+            Port-checky testují cestu síť→firewall→OS→služba. Sledovaná PC + porty: Nastavení (🔔 Služby).
           </div>
         </td></tr>
       </table>

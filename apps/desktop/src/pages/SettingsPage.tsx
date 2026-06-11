@@ -674,6 +674,31 @@ export function SettingsPage() {
             {t('settings.field.svcAlertsHelp')}
           </p>
           <ServiceAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
+
+          <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 10px' }} />
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.portChecksEnabled')}
+              checked={value('alerts.services.port_checks_enabled', '0') === '1'}
+              onChange={(checked) => set('alerts.services.port_checks_enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.portTimeout')}>
+              <NumberInput v={value('alerts.services.port_timeout_ms', '2000')} onChange={(v) => set('alerts.services.port_timeout_ms', v)} suffix="ms" />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.portList')}>
+            <input
+              type="text"
+              value={value('alerts.services.port_checks', '')}
+              onChange={(e) => set('alerts.services.port_checks', e.target.value)}
+              placeholder="LDAP:389, SMB:445, RDP:3389, Kerberos:88, DNS:53"
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace' }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 8px 0', lineHeight: 1.5 }}>
+            {t('settings.field.portChecksHelp')}
+          </p>
+          <PortAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
         </Section>
 
       </div>
@@ -745,6 +770,40 @@ function ServiceAlertTestButton({ onSaveFirst, hasUnsaved }: { onSaveFirst: () =
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <button className="refresh-btn" onClick={send} disabled={busy}>
         {busy ? t('settings.field.diskAlertsTesting') : t('settings.field.diskAlertsTest')}
+      </button>
+      {result && <span style={{ color: 'var(--ok)', fontSize: 12 }}>✓ {result}</span>}
+      {error && <span style={{ color: 'var(--critical)', fontSize: 12 }}>⚠ {error}</span>}
+    </div>
+  );
+}
+
+function PortAlertTestButton({ onSaveFirst, hasUnsaved }: { onSaveFirst: () => Promise<void>; hasUnsaved: boolean }) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async () => {
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      if (hasUnsaved) await onSaveFirst();
+      const r = await api.sendPortAlertTest();
+      setResult(t('settings.field.svcAlertsTestOk')
+        .replace('{recipients}', String(r.recipients))
+        .replace('{down}', String(r.down)));
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <button className="refresh-btn" onClick={send} disabled={busy}>
+        {busy ? t('settings.field.portTesting') : t('settings.field.portTest')}
       </button>
       {result && <span style={{ color: 'var(--ok)', fontSize: 12 }}>✓ {result}</span>}
       {error && <span style={{ color: 'var(--critical)', fontSize: 12 }}>⚠ {error}</span>}

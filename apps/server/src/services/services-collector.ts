@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { Socket } from 'node:net';
 import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
-import { evaluateAndSendServiceAlerts } from './alerts.js';
+import { evaluateAndSendServiceAlerts, evaluateAndSendPortAlerts } from './alerts.js';
 
 function tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -239,6 +239,11 @@ export async function runServicesScanOnce(): Promise<{ pcs: number; ok: number; 
       await evaluateAndSendServiceAlerts();
     } catch (err) {
       logActivity('error', 'alerts', `Service alert evaluation failed: ${String(err).split('\n')[0]}`);
+    }
+    try {
+      await evaluateAndSendPortAlerts();
+    } catch (err) {
+      logActivity('error', 'alerts', `Port alert evaluation failed: ${String(err).split('\n')[0]}`);
     }
 
     return { pcs: targets.length, ok, fail, problems: totalProblems, durationMs };

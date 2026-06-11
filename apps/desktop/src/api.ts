@@ -482,6 +482,12 @@ export const api = {
     if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/services/test → ${r.status}`);
     return body as { ok: true; recipients: number; down: number; monitoredPcs: number };
   },
+  sendPortAlertTest: async () => {
+    const r = await fetch(`${API_BASE}/alerts/ports/test`, { method: 'POST' });
+    const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; down?: number; monitoredPcs?: number };
+    if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/ports/test → ${r.status}`);
+    return body as { ok: true; recipients: number; down: number; monitoredPcs: number };
+  },
   disks: () => jget<{ items: DiskItem[] }>('/disks'),
   disksCollect: () => jpost<{ pcs: number; ok: number; fail: number; drives: number; durationMs: number }>('/disks/collect'),
   serviceProblems: () => jget<{ items: ServiceProblem[] }>('/services/problems'),
