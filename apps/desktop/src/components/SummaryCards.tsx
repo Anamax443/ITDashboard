@@ -90,7 +90,7 @@ export function SummaryCards({
         value={mds.monitoredPcs === 0 ? '—' : `${mds.criticalPcs}/${mds.monitoredPcs} PC`}
         sub={mdsSub}
         kind={mds.criticalPcs > 0 ? 'critical' : 'info'}
-        onClick={mds.criticalPcs > 0 ? onClickMonitoredDisks : undefined}
+        onClick={mds.monitoredPcs > 0 ? onClickMonitoredDisks : undefined}
       />
       <Card
         label={t('cards.stoppedServices')}

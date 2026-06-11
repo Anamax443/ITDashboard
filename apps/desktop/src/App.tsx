@@ -48,7 +48,7 @@ export function App() {
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [inactiveStats, setInactiveStats] = useState<InactiveStats | null>(null);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
-  const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'failing' | 'inactive' | null>(null);
+  const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'disk-email' | 'failing' | 'inactive' | null>(null);
   const [computersSearchPrefill, setComputersSearchPrefill] = useState<string | null>(null);
 
   // Cross-tab jump: any tab that renders a computer name calls this to
@@ -227,7 +227,7 @@ export function App() {
             serviceProblems={serviceProblems}
             perfSummary={perfSummary}
             inactiveStats={inactiveStats}
-            onClickMonitoredDisks={() => { setComputersPreFilter('disk-critical'); setView('computers'); }}
+            onClickMonitoredDisks={() => { setComputersPreFilter('disk-email'); setView('computers'); }}
             onClickServices={() => setView('services')}
             onClickPerf={() => setView('perf')}
             onClickCritical={() => { setFilterLevel('critical'); setFilterHours((summary?.window_days ?? 1) * 24); setView('events'); }}
