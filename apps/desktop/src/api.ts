@@ -530,6 +530,15 @@ export const api = {
     if (!r.ok) throw new Error(`PUT /settings → ${r.status}`);
     return r.json() as Promise<{ updated: number }>;
   },
+  bulkSetFlag: async (ids: number[], flag: 'monitor_enabled' | 'disk_email_monitor' | 'service_email_monitor' | 'excluded', value: boolean) => {
+    const r = await fetch(`${API_BASE}/computers/bulk-flag`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, flag, value }),
+    });
+    if (!r.ok) throw new Error(`POST /computers/bulk-flag → ${r.status}`);
+    return r.json() as Promise<{ updated: number; flag: string; value: boolean }>;
+  },
   setMonitorBulk: async (ids: number[], monitor: boolean) => {
     const r = await fetch(`${API_BASE}/computers/monitor/bulk`, {
       method: 'POST',

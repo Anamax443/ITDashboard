@@ -185,6 +185,24 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     return row;
   });
 
+  // Bulk-set one boolean per-PC flag for a set of computers (used by the
+  // "✓ all / ✗ none" header toggles in the Computers tab). Flag is a fixed
+  // whitelist so it is safe to interpolate into the column name.
+  app.post('/computers/bulk-flag', async (req, reply) => {
+    const body = z.object({
+      ids: z.array(z.number().int()).min(1),
+      flag: z.enum(['monitor_enabled', 'disk_email_monitor', 'service_email_monitor', 'excluded']),
+      value: z.boolean(),
+    }).parse(req.body);
+    if (body.ids.length > 5000) { reply.code(400); return { error: 'too many ids' }; }
+    const idsCSV = body.ids.join(',');
+    const pool = await getPool();
+    const r = await pool.request()
+      .input('v', body.value ? 1 : 0)
+      .query(`UPDATE computers SET ${body.flag} = @v WHERE id IN (${idsCSV})`);
+    return { updated: r.rowsAffected[0] ?? 0, flag: body.flag, value: body.value };
+  });
+
   app.post('/computers/monitor/bulk', async (req) => {
     const body = z.object({
       ids: z.array(z.number().int()).min(1),

@@ -206,6 +206,19 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
   };
 
 
+  // Bulk-toggle a per-PC flag for ALL currently visible (filtered) rows.
+  const bulkSetFlag = async (flag: 'disk_email_monitor' | 'service_email_monitor' | 'excluded', value: boolean) => {
+    const targetIds = sorted.map((c) => c.id);
+    if (targetIds.length === 0) return;
+    try {
+      await api.bulkSetFlag(targetIds, flag, value);
+      setError(null);
+      onRefreshLocal();
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
   const bulkSetMonitor = async (monitor: boolean) => {
     // Apply to ALL currently visible (filtered) rows — incl. disabled,
     // because the operator's choice should persist if PC reactivates later.
@@ -341,9 +354,9 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
               <tr>
                 <th style={{ width: 24 }}></th>
                 <th style={{ width: 70, textAlign: 'center' }} title="Collect events from this PC">Monitor</th>
-                <th style={{ width: 70, textAlign: 'center' }} title="Permanently exclude from all stats and views">Exclude</th>
-                <th style={{ width: 112, textAlign: 'center' }} title={t('computers.diskEmail.title')}>📧 Disk</th>
-                <th style={{ width: 64, textAlign: 'center' }} title={t('computers.svcEmail.title')}>🔔 Služby</th>
+                <th style={{ width: 70, textAlign: 'center' }} title="Permanently exclude from all stats and views">Exclude<BulkToggle onAll={() => bulkSetFlag('excluded', true)} onNone={() => bulkSetFlag('excluded', false)} /></th>
+                <th style={{ width: 112, textAlign: 'center' }} title={t('computers.diskEmail.title')}>📧 Disk<BulkToggle onAll={() => bulkSetFlag('disk_email_monitor', true)} onNone={() => bulkSetFlag('disk_email_monitor', false)} /></th>
+                <th style={{ width: 64, textAlign: 'center' }} title={t('computers.svcEmail.title')}>🔔 Služby<BulkToggle onAll={() => bulkSetFlag('service_email_monitor', true)} onNone={() => bulkSetFlag('service_email_monitor', false)} /></th>
                 <SortHeader<ComputerItem> col="name" label="Name" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="ou_path" label="OU path" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="fqdn" label="FQDN" sort={sort} toggle={toggle} />
@@ -467,6 +480,22 @@ function StatusChip({ label, count, active, color, onClick }: { label: string; c
     >
       {count} {label}
     </button>
+  );
+}
+
+// Tiny "✓ all / ✗ none" toggle shown in a checkbox column header — sets that
+// flag for all currently visible (filtered) rows.
+function BulkToggle({ onAll, onNone }: { onAll: () => void; onNone: () => void }) {
+  const btn: React.CSSProperties = {
+    background: 'transparent', border: '1px solid var(--border)', borderRadius: 3,
+    color: 'var(--text-dim)', fontSize: 10, lineHeight: 1, padding: '1px 4px',
+    cursor: 'pointer', fontFamily: 'inherit',
+  };
+  return (
+    <div style={{ display: 'flex', gap: 3, justifyContent: 'center', marginTop: 3 }} onClick={(e) => e.stopPropagation()}>
+      <button type="button" style={btn} title="All visible" onClick={onAll}>✓</button>
+      <button type="button" style={btn} title="None visible" onClick={onNone}>✗</button>
+    </div>
   );
 }
 
