@@ -36,8 +36,12 @@
 setlocal EnableExtensions
 
 :: API base URL used by launchers in token mode (auth-session redemption).
+:: When this installer is downloaded via GET /actions/install-handlers.cmd the
+:: server rewrites the line below to the URL the browser used, so no real
+:: endpoint is committed to the repo. The localhost default only applies if the
+:: committed file is run directly without going through the server.
 :: Override at install time: set ITD_API_BASE_OVERRIDE=https://itd.example.com
-set "ITD_API_BASE=http://10.8.2.213:4000"
+set "ITD_API_BASE=http://localhost:4000"
 if defined ITD_API_BASE_OVERRIDE set "ITD_API_BASE=%ITD_API_BASE_OVERRIDE%"
 
 set WITH_PSEXEC=0
