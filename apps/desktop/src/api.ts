@@ -196,6 +196,29 @@ export interface DiskSummary {
   warningPcs: number;
 }
 
+/**
+ * Disk-critical summary restricted to PCs the operator opted into email
+ * monitoring (computers.disk_email_monitor). Drives the Dashboard "monitored
+ * disks" tile and mirrors the server-side alert evaluation in services/alerts.ts.
+ */
+export function summarizeMonitoredDisks(
+  disks: DiskItem[],
+  computers: ComputerItem[],
+  t: DiskThresholds,
+): { monitoredPcs: number; criticalPcs: number; criticalDrives: number } {
+  const monitoredIds = new Set(computers.filter((c) => c.disk_email_monitor).map((c) => c.id));
+  let criticalDrives = 0;
+  const critPcs = new Set<number>();
+  for (const d of disks) {
+    if (!monitoredIds.has(d.computer_id)) continue;
+    if (evaluateDiskWithScope(d, t) === 'critical') {
+      criticalDrives++;
+      critPcs.add(d.computer_id);
+    }
+  }
+  return { monitoredPcs: monitoredIds.size, criticalPcs: critPcs.size, criticalDrives };
+}
+
 export function summarizeDisks(disks: DiskItem[], t: DiskThresholds): DiskSummary {
   let criticalDrives = 0;
   let warningDrives = 0;
@@ -238,6 +261,7 @@ export interface ComputerItem {
   last_seen: string | null;
   enabled: boolean;
   monitor_enabled: boolean;
+  disk_email_monitor?: boolean;
   excluded: boolean;
   last_collected_at?: string | null;
   last_error?: string | null;
@@ -378,6 +402,21 @@ export const api = {
     });
     if (!r.ok) throw new Error(`PATCH /computers/${id}/monitor → ${r.status}`);
     return r.json() as Promise<{ id: number; name: string; monitor_enabled: boolean }>;
+  },
+  setDiskEmailMonitor: async (id: number, enabled: boolean) => {
+    const r = await fetch(`${API_BASE}/computers/${id}/disk-email-monitor`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!r.ok) throw new Error(`PATCH /computers/${id}/disk-email-monitor → ${r.status}`);
+    return r.json() as Promise<{ id: number; name: string; disk_email_monitor: boolean }>;
+  },
+  sendDiskAlertTest: async () => {
+    const r = await fetch(`${API_BASE}/alerts/disk/test`, { method: 'POST' });
+    const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; critical?: number; monitoredPcs?: number };
+    if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/disk/test → ${r.status}`);
+    return body as { ok: true; recipients: number; critical: number; monitoredPcs: number };
   },
   disks: () => jget<{ items: DiskItem[] }>('/disks'),
   disksCollect: () => jpost<{ pcs: number; ok: number; fail: number; drives: number; durationMs: number }>('/disks/collect'),

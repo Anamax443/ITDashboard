@@ -567,7 +567,93 @@ export function SettingsPage() {
           </p>
         </Section>
 
+        <Section title={t('settings.section.diskAlerts')} description={t('settings.section.diskAlertsDesc')}>
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.diskAlertsEnabled')}
+              checked={value('alerts.disk.enabled', '0') === '1'}
+              onChange={(checked) => set('alerts.disk.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.diskAlertsFrequency')}>
+              <NumberInput
+                v={value('alerts.disk.frequency_hours', '24')}
+                onChange={(v) => set('alerts.disk.frequency_hours', v)}
+                suffix={t('settings.unit.hour24')}
+              />
+            </Field>
+          </FieldGroup>
+          <FieldGroup>
+            <Field label={t('settings.field.smtpHost')}>
+              <input
+                type="text"
+                value={value('alerts.smtp_host', '')}
+                onChange={(e) => set('alerts.smtp_host', e.target.value)}
+                placeholder="smtp.firma.local"
+                style={{ ...fieldStyle, minWidth: 220 }}
+              />
+            </Field>
+            <Field label={t('settings.field.smtpPort')}>
+              <NumberInput v={value('alerts.smtp_port', '25')} onChange={(v) => set('alerts.smtp_port', v)} />
+            </Field>
+            <Field label={t('settings.field.smtpFrom')}>
+              <input
+                type="text"
+                value={value('alerts.smtp_from', '')}
+                onChange={(e) => set('alerts.smtp_from', e.target.value)}
+                placeholder="itdashboard@firma.cz"
+                style={{ ...fieldStyle, minWidth: 220 }}
+              />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.recipients')}>
+            <textarea
+              value={value('alerts.recipients', '')}
+              onChange={(e) => set('alerts.recipients', e.target.value)}
+              placeholder={t('settings.field.recipientsPlaceholder')}
+              rows={3}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 8px 0', lineHeight: 1.5 }}>
+            {t('settings.field.diskAlertsHelp')}
+          </p>
+          <DiskAlertTestButton />
+        </Section>
+
       </div>
+    </div>
+  );
+}
+
+function DiskAlertTestButton() {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async () => {
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      const r = await api.sendDiskAlertTest();
+      setResult(t('settings.field.diskAlertsTestOk')
+        .replace('{recipients}', String(r.recipients))
+        .replace('{critical}', String(r.critical)));
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <button className="refresh-btn" onClick={send} disabled={busy}>
+        {busy ? t('settings.field.diskAlertsTesting') : t('settings.field.diskAlertsTest')}
+      </button>
+      {result && <span style={{ color: 'var(--ok)', fontSize: 12 }}>✓ {result}</span>}
+      {error && <span style={{ color: 'var(--critical)', fontSize: 12 }}>⚠ {error}</span>}
     </div>
   );
 }

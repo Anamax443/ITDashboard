@@ -194,6 +194,15 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     }
   };
 
+  const toggleDiskEmailMonitor = async (c: ComputerItem) => {
+    try {
+      await api.setDiskEmailMonitor(c.id, !c.disk_email_monitor);
+      onRefreshLocal();
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
   const bulkSetMonitor = async (monitor: boolean) => {
     // Apply to ALL currently visible (filtered) rows — incl. disabled,
     // because the operator's choice should persist if PC reactivates later.
@@ -326,6 +335,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                 <th style={{ width: 24 }}></th>
                 <th style={{ width: 70, textAlign: 'center' }} title="Collect events from this PC">Monitor</th>
                 <th style={{ width: 70, textAlign: 'center' }} title="Permanently exclude from all stats and views">Exclude</th>
+                <th style={{ width: 56, textAlign: 'center' }} title={t('computers.diskEmail.title')}>📧 Disk</th>
                 <SortHeader<ComputerItem> col="name" label="Name" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="ou_path" label="OU path" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="fqdn" label="FQDN" sort={sort} toggle={toggle} />
@@ -361,6 +371,15 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                       checked={c.excluded}
                       onChange={() => toggleExcluded(c)}
                       title={c.excluded ? 'Excluded — click to re-include in stats' : 'Click to exclude from all dashboards and stats'}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!c.disk_email_monitor}
+                      onChange={() => toggleDiskEmailMonitor(c)}
+                      title={t('computers.diskEmail.toggle')}
                       style={{ cursor: 'pointer' }}
                     />
                   </td>

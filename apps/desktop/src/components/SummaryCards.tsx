@@ -6,6 +6,8 @@ interface Props {
   summary: Summary | null;
   computers: ComputerItem[];
   diskSummary: DiskSummary | null;
+  monitoredDiskSummary?: { monitoredPcs: number; criticalPcs: number; criticalDrives: number } | null;
+  diskAlertsEnabled?: boolean;
   serviceProblems: ServiceProblem[];
   perfSummary: PerfSummary | null;
   inactiveStats: InactiveStats | null;
@@ -15,6 +17,7 @@ interface Props {
   onClickComputers?: () => void;
   onClickDiskCritical?: () => void;
   onClickDiskWarning?: () => void;
+  onClickMonitoredDisks?: () => void;
   onClickUnreachable?: () => void;
   onClickServices?: () => void;
   onClickPerf?: () => void;
@@ -22,9 +25,9 @@ interface Props {
 }
 
 export function SummaryCards({
-  summary, computers, diskSummary, serviceProblems, perfSummary, inactiveStats,
+  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, serviceProblems, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
-  onClickDiskCritical, onClickDiskWarning, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
+  onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
 }: Props) {
   const { t } = useI18n();
   const windowDays = summary?.window_days ?? 1;
@@ -47,8 +50,14 @@ export function SummaryCards({
       accessCount > 0 ? `${accessCount} auth` : null,
       unknownCount > 0 ? `${unknownCount} other` : null,
     ].filter(Boolean).join(' · ') || 'RPC fail / offline';
+  const mds = monitoredDiskSummary ?? { monitoredPcs: 0, criticalPcs: 0, criticalDrives: 0 };
+  const mdsSub = mds.monitoredPcs === 0
+    ? t('cards.diskMonitorNone')
+    : mds.criticalPcs > 0
+      ? `${mds.criticalDrives} ${t('cards.diskMonitorDrives')}${diskAlertsEnabled ? '' : ` · ${t('cards.diskMonitorOff')}`}`
+      : `${mds.monitoredPcs} ${t('cards.diskMonitorWatched')}${diskAlertsEnabled ? '' : ` · ${t('cards.diskMonitorOff')}`}`;
   return (
-    <div className="cards" style={{ gridTemplateColumns: 'repeat(10, 1fr)' }}>
+    <div className="cards" style={{ gridTemplateColumns: 'repeat(11, 1fr)' }}>
       <Card label={`${t('cards.critical')} (${windowLabel})`} value={summary?.critical_24h ?? '—'} kind="critical"
         onClick={summary && summary.critical_24h > 0 ? onClickCritical : undefined} />
       <Card label={`${t('cards.errors')} (${windowLabel})`} value={summary?.error_24h ?? '—'} kind="error"
@@ -75,6 +84,13 @@ export function SummaryCards({
         sub={diskSummary ? `${diskSummary.warningDrives} drives` : undefined}
         kind="warning"
         onClick={diskSummary && diskSummary.warningPcs > 0 ? onClickDiskWarning : undefined}
+      />
+      <Card
+        label={`📧 ${t('cards.diskMonitor')}`}
+        value={mds.monitoredPcs === 0 ? '—' : `${mds.criticalPcs}/${mds.monitoredPcs} PC`}
+        sub={mdsSub}
+        kind={mds.criticalPcs > 0 ? 'critical' : 'info'}
+        onClick={mds.criticalPcs > 0 ? onClickMonitoredDisks : undefined}
       />
       <Card
         label={t('cards.stoppedServices')}

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
 import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats } from './api.js';
-import { parseDiskThresholds, summarizeDisks } from './api.js';
+import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { EventsTable } from './components/EventsTable.js';
 import { TopEventIds } from './components/TopEventIds.js';
@@ -87,6 +87,8 @@ export function App() {
 
   const thresholds = parseDiskThresholds(settingsMap);
   const diskSummary = summarizeDisks(disks, thresholds);
+  const monitoredDiskSummary = summarizeMonitoredDisks(disks, computers, thresholds);
+  const diskAlertsEnabled = ['1', 'true', 'yes', 'on'].includes((settingsMap['alerts.disk.enabled'] ?? '').toLowerCase());
 
   const refreshComputers = useCallback(async () => {
     try {
@@ -220,9 +222,12 @@ export function App() {
             summary={summary}
             computers={computers}
             diskSummary={diskSummary}
+            monitoredDiskSummary={monitoredDiskSummary}
+            diskAlertsEnabled={diskAlertsEnabled}
             serviceProblems={serviceProblems}
             perfSummary={perfSummary}
             inactiveStats={inactiveStats}
+            onClickMonitoredDisks={() => { setComputersPreFilter('disk-critical'); setView('computers'); }}
             onClickServices={() => setView('services')}
             onClickPerf={() => setView('perf')}
             onClickCritical={() => { setFilterLevel('critical'); setFilterHours((summary?.window_days ?? 1) * 24); setView('events'); }}
