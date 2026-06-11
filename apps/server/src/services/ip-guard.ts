@@ -28,7 +28,7 @@ function ipv4ToInt(ip: string): number | null {
 }
 
 export function normalizeRequestIp(raw: string): string {
-  // Fastify on dual-stack sockets reports v4-mapped v6 like "::ffff:10.8.2.180"
+  // Fastify on dual-stack sockets reports v4-mapped v6 like "::ffff:10.0.0.5"
   if (raw.startsWith('::ffff:')) return raw.slice('::ffff:'.length);
   return raw;
 }

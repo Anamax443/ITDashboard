@@ -14,8 +14,8 @@ export interface ADComputer {
 
 /**
  * Converts AD DistinguishedName to a human-readable OU path.
- * e.g. "CN=PC1,OU=Notebooks,OU=Sales,DC=axinetwork,DC=loc"
- *   →  "axinetwork.loc/Sales/Notebooks"
+ * e.g. "CN=PC1,OU=Notebooks,OU=Sales,DC=corp,DC=local"
+ *   →  "corp.local/Sales/Notebooks"
  * The CN (computer name) is dropped — path describes the container only.
  */
 export function dnToOuPath(dn: string | null): string | null {

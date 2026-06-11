@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 
 /**
  * Wraps ActiveDirectory PowerShell module (Get-ADComputer, Get-ADUser, …).
- * Requires RSAT-AD-PowerShell installed on the API host (10.8.2.213).
+ * Requires RSAT-AD-PowerShell installed on the API host.
  */
 
 export interface ADComputer {

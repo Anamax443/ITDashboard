@@ -6,7 +6,10 @@ import { Client } from 'ldapts';
 // invalid credentials we stop immediately (no point retrying with the
 // same wrong password against another DC).
 const LDAP_URLS = (process.env.AD_LDAP_URL ?? '').split(',').map(s => s.trim()).filter(Boolean);
-const LDAP_DOMAIN = process.env.AD_LDAP_DOMAIN ?? 'AXINETWORK.LOC';
+// Default UPN suffix appended to bare usernames (e.g. "jnovak" -> "jnovak@<domain>").
+// Intentionally has NO hardcoded fallback so the repo carries no environment
+// specifics. If unset, operators must log in with a full UPN or DOMAIN\user.
+const LDAP_DOMAIN = (process.env.AD_LDAP_DOMAIN ?? '').trim();
 const LDAP_BASE_DN = process.env.AD_LDAP_BASE_DN ?? '';
 const LDAP_TIMEOUT_MS = Number(process.env.AD_LDAP_TIMEOUT_MS ?? 5000);
 const EDIT_GROUP = process.env.AD_EDIT_GROUP ?? '';
@@ -29,7 +32,9 @@ function normalizeUser(input: string): string {
   if (!t) return t;
   if (t.includes('\\')) return t;
   if (t.includes('@')) return t;
-  return `${t}@${LDAP_DOMAIN}`;
+  // No domain configured: pass the bare name through unchanged (operator is
+  // expected to supply a full UPN or DOMAIN\user in that case).
+  return LDAP_DOMAIN ? `${t}@${LDAP_DOMAIN}` : t;
 }
 
 async function checkEditGroupMembership(client: Client, canonicalUser: string): Promise<boolean> {
@@ -43,9 +48,15 @@ async function checkEditGroupMembership(client: Client, canonicalUser: string): 
   // 1.2.840.113556.1.4.1941) so nested group memberships are honored — a
   // user added to ITDashboard-Editors via an intermediate group still
   // resolves to ok.
-  const userFilterValue = canonicalUser.includes('@') ? canonicalUser : `${canonicalUser}@${LDAP_DOMAIN}`;
   const sam = canonicalUser.includes('\\') ? canonicalUser.split('\\')[1] : canonicalUser.split('@')[0];
-  const filter = `(&(objectCategory=person)(objectClass=user)(|(userPrincipalName=${userFilterValue})(sAMAccountName=${sam}))(memberOf:1.2.840.113556.1.4.1941:=${EDIT_GROUP}))`;
+  // Build a UPN to match on only when we actually have one — either the user
+  // typed a full UPN, or a domain suffix is configured. Without either, match
+  // on sAMAccountName alone rather than emitting an invalid "user@" filter.
+  const upn = canonicalUser.includes('@')
+    ? canonicalUser
+    : (LDAP_DOMAIN ? `${canonicalUser}@${LDAP_DOMAIN}` : null);
+  const idClause = upn ? `(|(userPrincipalName=${upn})(sAMAccountName=${sam}))` : `(sAMAccountName=${sam})`;
+  const filter = `(&(objectCategory=person)(objectClass=user)${idClause}(memberOf:1.2.840.113556.1.4.1941:=${EDIT_GROUP}))`;
   try {
     const { searchEntries } = await client.search(LDAP_BASE_DN, { scope: 'sub', filter, attributes: ['distinguishedName'], sizeLimit: 1 });
     return searchEntries.length > 0;
