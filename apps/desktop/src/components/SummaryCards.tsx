@@ -8,6 +8,8 @@ interface Props {
   diskSummary: DiskSummary | null;
   monitoredDiskSummary?: { monitoredPcs: number; criticalPcs: number; criticalDrives: number } | null;
   diskAlertsEnabled?: boolean;
+  monitoredServiceSummary?: { monitoredPcs: number; downServices: number; affectedPcs: number } | null;
+  serviceAlertsEnabled?: boolean;
   serviceProblems: ServiceProblem[];
   perfSummary: PerfSummary | null;
   inactiveStats: InactiveStats | null;
@@ -18,6 +20,7 @@ interface Props {
   onClickDiskCritical?: () => void;
   onClickDiskWarning?: () => void;
   onClickMonitoredDisks?: () => void;
+  onClickMonitoredServices?: () => void;
   onClickUnreachable?: () => void;
   onClickServices?: () => void;
   onClickPerf?: () => void;
@@ -25,9 +28,9 @@ interface Props {
 }
 
 export function SummaryCards({
-  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, serviceProblems, perfSummary, inactiveStats,
+  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
-  onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
+  onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
 }: Props) {
   const { t } = useI18n();
   const windowDays = summary?.window_days ?? 1;
@@ -56,8 +59,14 @@ export function SummaryCards({
     : mds.criticalPcs > 0
       ? `${mds.criticalDrives} ${t('cards.diskMonitorDrives')}${diskAlertsEnabled ? '' : ` · ${t('cards.diskMonitorOff')}`}`
       : `${mds.monitoredPcs} ${t('cards.diskMonitorWatched')}${diskAlertsEnabled ? '' : ` · ${t('cards.diskMonitorOff')}`}`;
+  const mss = monitoredServiceSummary ?? { monitoredPcs: 0, downServices: 0, affectedPcs: 0 };
+  const mssSub = mss.monitoredPcs === 0
+    ? t('cards.diskMonitorNone')
+    : mss.downServices > 0
+      ? `${mss.downServices} ${t('cards.svcMonitorDown')}${serviceAlertsEnabled ? '' : ` · ${t('cards.diskMonitorOff')}`}`
+      : `${mss.monitoredPcs} ${t('cards.diskMonitorWatched')}${serviceAlertsEnabled ? '' : ` · ${t('cards.diskMonitorOff')}`}`;
   return (
-    <div className="cards" style={{ gridTemplateColumns: 'repeat(11, 1fr)' }}>
+    <div className="cards" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
       <Card label={`${t('cards.critical')} (${windowLabel})`} value={summary?.critical_24h ?? '—'} kind="critical"
         onClick={summary && summary.critical_24h > 0 ? onClickCritical : undefined} />
       <Card label={`${t('cards.errors')} (${windowLabel})`} value={summary?.error_24h ?? '—'} kind="error"
@@ -91,6 +100,13 @@ export function SummaryCards({
         sub={mdsSub}
         kind={mds.criticalPcs > 0 ? 'critical' : 'info'}
         onClick={mds.monitoredPcs > 0 ? onClickMonitoredDisks : undefined}
+      />
+      <Card
+        label={`🔔 ${t('cards.svcMonitor')}`}
+        value={mss.monitoredPcs === 0 ? '—' : `${mss.affectedPcs}/${mss.monitoredPcs} PC`}
+        sub={mssSub}
+        kind={mss.downServices > 0 ? 'critical' : 'info'}
+        onClick={mss.monitoredPcs > 0 ? onClickMonitoredServices : undefined}
       />
       <Card
         label={t('cards.stoppedServices')}

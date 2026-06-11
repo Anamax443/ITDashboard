@@ -629,6 +629,53 @@ export function SettingsPage() {
           <DiskAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
         </Section>
 
+        <Section title={t('settings.section.svcAlerts')} description={t('settings.section.svcAlertsDesc')}>
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.svcAlertsEnabled')}
+              checked={value('alerts.services.enabled', '0') === '1'}
+              onChange={(checked) => set('alerts.services.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.svcDebounce')}>
+              <NumberInput v={value('alerts.services.debounce_minutes', '10')} onChange={(v) => set('alerts.services.debounce_minutes', v)} suffix={t('settings.unit.minutes')} />
+            </Field>
+            <Field label={t('settings.field.svcFrequency')}>
+              <NumberInput v={value('alerts.services.frequency_hours', '24')} onChange={(v) => set('alerts.services.frequency_hours', v)} suffix={t('settings.unit.hour24')} />
+            </Field>
+            <Field label={t('settings.field.svcMaintenance')}>
+              <input
+                type="text"
+                value={value('alerts.services.maintenance_window', '')}
+                onChange={(e) => set('alerts.services.maintenance_window', e.target.value)}
+                placeholder="02:00-04:00"
+                style={{ ...fieldStyle, minWidth: 130, fontFamily: 'Consolas, monospace' }}
+              />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.svcCritical')}>
+            <textarea
+              value={value('alerts.services.critical_names', '')}
+              onChange={(e) => set('alerts.services.critical_names', e.target.value)}
+              rows={2}
+              placeholder="NTDS, DNS, Kdc, Netlogon, W32Time, …"
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }}
+            />
+          </Field>
+          <Field label={t('settings.field.svcWhitelist')}>
+            <textarea
+              value={value('alerts.services.whitelist', '')}
+              onChange={(e) => set('alerts.services.whitelist', e.target.value)}
+              rows={2}
+              placeholder={t('settings.field.svcWhitelistPlaceholder')}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 8px 0', lineHeight: 1.5 }}>
+            {t('settings.field.svcAlertsHelp')}
+          </p>
+          <ServiceAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
+        </Section>
+
       </div>
     </div>
   );
@@ -653,6 +700,40 @@ function DiskAlertTestButton({ onSaveFirst, hasUnsaved }: { onSaveFirst: () => P
       setResult(t('settings.field.diskAlertsTestOk')
         .replace('{recipients}', String(r.recipients))
         .replace('{critical}', String(r.critical)));
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <button className="refresh-btn" onClick={send} disabled={busy}>
+        {busy ? t('settings.field.diskAlertsTesting') : t('settings.field.diskAlertsTest')}
+      </button>
+      {result && <span style={{ color: 'var(--ok)', fontSize: 12 }}>✓ {result}</span>}
+      {error && <span style={{ color: 'var(--critical)', fontSize: 12 }}>⚠ {error}</span>}
+    </div>
+  );
+}
+
+function ServiceAlertTestButton({ onSaveFirst, hasUnsaved }: { onSaveFirst: () => Promise<void>; hasUnsaved: boolean }) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async () => {
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      if (hasUnsaved) await onSaveFirst();
+      const r = await api.sendServiceAlertTest();
+      setResult(t('settings.field.svcAlertsTestOk')
+        .replace('{recipients}', String(r.recipients))
+        .replace('{down}', String(r.down)));
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
     } finally {

@@ -227,6 +227,44 @@ export function summarizeMonitoredDisks(
   return { monitoredPcs: scopeByPc.size, criticalPcs: critPcs.size, criticalDrives };
 }
 
+function svcGlob(p: string): RegExp {
+  return new RegExp('^' + p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i');
+}
+function svcNameList(raw: string | undefined): RegExp[] {
+  return (raw ?? '').split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean).map(svcGlob);
+}
+
+/**
+ * Critical-service outage summary restricted to PCs opted into service email
+ * monitoring. service_problems already holds only Auto + non-Running services;
+ * we keep those whose name/display matches the critical list and not the
+ * whitelist (mirrors the server alert eval). Drives the Dashboard tile.
+ */
+export function summarizeMonitoredServices(
+  problems: ServiceProblem[],
+  computers: ComputerItem[],
+  settings: Record<string, string>,
+): { monitoredPcs: number; downServices: number; affectedPcs: number } {
+  const monitoredIds = new Set(computers.filter((c) => c.service_email_monitor).map((c) => c.id));
+  const critical = svcNameList(settings['alerts.services.critical_names']);
+  const whitelist = svcNameList(settings['alerts.services.whitelist']);
+  if (critical.length === 0 || monitoredIds.size === 0) {
+    return { monitoredPcs: monitoredIds.size, downServices: 0, affectedPcs: 0 };
+  }
+  let downServices = 0;
+  const pcs = new Set<number>();
+  for (const p of problems) {
+    if (!monitoredIds.has(p.computer_id) || p.per_user_start) continue;
+    const nm = p.service_name;
+    const dn = p.display_name ?? '';
+    if (!critical.some((re) => re.test(nm) || (dn !== '' && re.test(dn)))) continue;
+    if (whitelist.length > 0 && whitelist.some((re) => re.test(nm) || (dn !== '' && re.test(dn)))) continue;
+    downServices++;
+    pcs.add(p.computer_id);
+  }
+  return { monitoredPcs: monitoredIds.size, downServices, affectedPcs: pcs.size };
+}
+
 export function summarizeDisks(disks: DiskItem[], t: DiskThresholds): DiskSummary {
   let criticalDrives = 0;
   let warningDrives = 0;
@@ -272,6 +310,7 @@ export interface ComputerItem {
   disk_email_monitor?: boolean;
   /** Per-PC drive-letter scope for disk email alerts (e.g. "C,F"). Empty = all drives. */
   disk_email_drives?: string;
+  service_email_monitor?: boolean;
   excluded: boolean;
   last_collected_at?: string | null;
   last_error?: string | null;
@@ -427,6 +466,21 @@ export const api = {
     const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; critical?: number; monitoredPcs?: number };
     if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/disk/test → ${r.status}`);
     return body as { ok: true; recipients: number; critical: number; monitoredPcs: number };
+  },
+  setServiceEmailMonitor: async (id: number, enabled: boolean) => {
+    const r = await fetch(`${API_BASE}/computers/${id}/service-email-monitor`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!r.ok) throw new Error(`PATCH /computers/${id}/service-email-monitor → ${r.status}`);
+    return r.json() as Promise<{ id: number; name: string; service_email_monitor: boolean }>;
+  },
+  sendServiceAlertTest: async () => {
+    const r = await fetch(`${API_BASE}/alerts/services/test`, { method: 'POST' });
+    const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; down?: number; monitoredPcs?: number };
+    if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/services/test → ${r.status}`);
+    return body as { ok: true; recipients: number; down: number; monitoredPcs: number };
   },
   disks: () => jget<{ items: DiskItem[] }>('/disks'),
   disksCollect: () => jpost<{ pcs: number; ok: number; fail: number; drives: number; durationMs: number }>('/disks/collect'),

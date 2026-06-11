@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
 import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats } from './api.js';
-import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks } from './api.js';
+import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { EventsTable } from './components/EventsTable.js';
 import { TopEventIds } from './components/TopEventIds.js';
@@ -48,7 +48,7 @@ export function App() {
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [inactiveStats, setInactiveStats] = useState<InactiveStats | null>(null);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
-  const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'disk-email' | 'failing' | 'inactive' | null>(null);
+  const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'failing' | 'inactive' | null>(null);
   const [computersSearchPrefill, setComputersSearchPrefill] = useState<string | null>(null);
 
   // Cross-tab jump: any tab that renders a computer name calls this to
@@ -89,6 +89,8 @@ export function App() {
   const diskSummary = summarizeDisks(disks, thresholds);
   const monitoredDiskSummary = summarizeMonitoredDisks(disks, computers, thresholds);
   const diskAlertsEnabled = ['1', 'true', 'yes', 'on'].includes((settingsMap['alerts.disk.enabled'] ?? '').toLowerCase());
+  const monitoredServiceSummary = summarizeMonitoredServices(serviceProblems, computers, settingsMap);
+  const serviceAlertsEnabled = ['1', 'true', 'yes', 'on'].includes((settingsMap['alerts.services.enabled'] ?? '').toLowerCase());
 
   const refreshComputers = useCallback(async () => {
     try {
@@ -224,10 +226,13 @@ export function App() {
             diskSummary={diskSummary}
             monitoredDiskSummary={monitoredDiskSummary}
             diskAlertsEnabled={diskAlertsEnabled}
+            monitoredServiceSummary={monitoredServiceSummary}
+            serviceAlertsEnabled={serviceAlertsEnabled}
             serviceProblems={serviceProblems}
             perfSummary={perfSummary}
             inactiveStats={inactiveStats}
             onClickMonitoredDisks={() => { setComputersPreFilter('disk-email'); setView('computers'); }}
+            onClickMonitoredServices={() => { setComputersPreFilter('service-email'); setView('computers'); }}
             onClickServices={() => setView('services')}
             onClickPerf={() => setView('perf')}
             onClickCritical={() => { setFilterLevel('critical'); setFilterHours((summary?.window_days ?? 1) * 24); setView('events'); }}

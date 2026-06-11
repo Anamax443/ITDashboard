@@ -10,7 +10,7 @@ import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { useI18n } from '../i18n.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
-export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed, inactiveThresholdDays, initialSearch, onSearchPrefillConsumed }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | 'disk-email' | 'failing' | 'inactive' | null; onFilterConsumed?: () => void; inactiveThresholdDays?: number; initialSearch?: string | null; onSearchPrefillConsumed?: () => void }) {
+export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed, inactiveThresholdDays, initialSearch, onSearchPrefillConsumed }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'failing' | 'inactive' | null; onFilterConsumed?: () => void; inactiveThresholdDays?: number; initialSearch?: string | null; onSearchPrefillConsumed?: () => void }) {
   const { t } = useI18n();
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
@@ -73,7 +73,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     }
   };
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'disabled' | 'monitored' | 'unmonitored' | 'failing' | 'disk-critical' | 'disk-warning' | 'disk-email' | 'excluded' | 'inactive'>('');
+  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'disabled' | 'monitored' | 'unmonitored' | 'failing' | 'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'excluded' | 'inactive'>('');
   const { sort, toggle } = useSort<ComputerItem>({ col: 'name', dir: 'asc' });
 
   const runSync = async () => {
@@ -121,6 +121,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     if (statusFilter === 'disk-critical' && worstDiskByComputer.get(c.id) !== 'critical') return false;
     if (statusFilter === 'disk-warning' && worstDiskByComputer.get(c.id) !== 'warning') return false;
     if (statusFilter === 'disk-email' && !c.disk_email_monitor) return false;
+    if (statusFilter === 'service-email' && !c.service_email_monitor) return false;
     if (statusFilter === 'inactive') {
       if (c.excluded) return false;
       const t = inactiveThresholdDays ?? 90;
@@ -195,6 +196,15 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     }
   };
 
+  const toggleServiceEmailMonitor = async (c: ComputerItem) => {
+    try {
+      await api.setServiceEmailMonitor(c.id, !c.service_email_monitor);
+      onRefreshLocal();
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
 
   const bulkSetMonitor = async (monitor: boolean) => {
     // Apply to ALL currently visible (filtered) rows — incl. disabled,
@@ -232,6 +242,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
           <StatusChip label="disk critical" count={Array.from(worstDiskByComputer.values()).filter((s) => s === 'critical').length} active={statusFilter === 'disk-critical'} color="var(--critical)" onClick={() => setStatusFilter(statusFilter === 'disk-critical' ? '' : 'disk-critical')} />
           <StatusChip label="disk warning" count={Array.from(worstDiskByComputer.values()).filter((s) => s === 'warning').length} active={statusFilter === 'disk-warning'} color="var(--warning)" onClick={() => setStatusFilter(statusFilter === 'disk-warning' ? '' : 'disk-warning')} />
           <StatusChip label="📧 disk" count={items.filter((c) => c.disk_email_monitor).length} active={statusFilter === 'disk-email'} color="var(--accent)" onClick={() => setStatusFilter(statusFilter === 'disk-email' ? '' : 'disk-email')} />
+          <StatusChip label="🔔 svc" count={items.filter((c) => c.service_email_monitor).length} active={statusFilter === 'service-email'} color="var(--accent)" onClick={() => setStatusFilter(statusFilter === 'service-email' ? '' : 'service-email')} />
           <StatusChip label={`inactive ${inactiveThreshold}d+`} count={inactiveCount} active={statusFilter === 'inactive'} color="var(--warning)" onClick={() => setStatusFilter(statusFilter === 'inactive' ? '' : 'inactive')} />
           <StatusChip label="disabled" count={disabled.length} active={statusFilter === 'disabled'} color="var(--text-dim)" onClick={() => setStatusFilter(statusFilter === 'disabled' ? '' : 'disabled')} />
           <StatusChip label="excluded" count={excludedCount} active={statusFilter === 'excluded'} color="var(--text-dim)" onClick={() => setStatusFilter(statusFilter === 'excluded' ? '' : 'excluded')} />
@@ -254,6 +265,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
             <option value="disk-critical">Disk critical</option>
             <option value="disk-warning">Disk warning</option>
             <option value="disk-email">📧 Disk monitored</option>
+            <option value="service-email">🔔 Service monitored</option>
             <option value="inactive">Inactive ({inactiveThreshold}d+)</option>
           </select>
           {(lastSync || lastSyncRun) && (
@@ -331,6 +343,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                 <th style={{ width: 70, textAlign: 'center' }} title="Collect events from this PC">Monitor</th>
                 <th style={{ width: 70, textAlign: 'center' }} title="Permanently exclude from all stats and views">Exclude</th>
                 <th style={{ width: 112, textAlign: 'center' }} title={t('computers.diskEmail.title')}>📧 Disk</th>
+                <th style={{ width: 64, textAlign: 'center' }} title={t('computers.svcEmail.title')}>🔔 Služby</th>
                 <SortHeader<ComputerItem> col="name" label="Name" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="ou_path" label="OU path" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="fqdn" label="FQDN" sort={sort} toggle={toggle} />
@@ -371,6 +384,15 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <DiskEmailCell c={c} onSaved={onRefreshLocal} onError={setError} />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!c.service_email_monitor}
+                      onChange={() => toggleServiceEmailMonitor(c)}
+                      title={t('computers.svcEmail.toggle')}
+                      style={{ cursor: 'pointer' }}
+                    />
                   </td>
                   <td style={{ fontWeight: 600 }}>
                     <span
