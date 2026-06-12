@@ -47,11 +47,14 @@ function icmpPing(host: string, timeoutMs: number): Promise<boolean> {
   });
 }
 
-interface Target { id: number; name: string; fqdn: string | null; }
+interface Target { id: number; name: string; fqdn: string | null; ip_address: string | null; reachable: boolean | null; }
 
 // Reachability is a cheap TCP connect, so we can fan out wide.
 const CONCURRENCY = 16;
 let runInFlight = false;
+// Last summary count we logged — used to suppress the repeated identical
+// "N/M on network" heartbeat when nothing changed between cycles.
+let lastReachableCount = -1;
 
 function parsePorts(raw: string | undefined): number[] {
   const ports = (raw ?? '')
@@ -67,7 +70,7 @@ function parsePorts(raw: string | undefined): number[] {
 async function listTargets(): Promise<Target[]> {
   const pool = await getPool();
   const r = await pool.request().query<Target>(`
-    SELECT id, name, fqdn
+    SELECT id, name, fqdn, ip_address, reachable
     FROM computers
     WHERE enabled = 1 AND excluded = 0
     ORDER BY name
@@ -164,6 +167,7 @@ export async function runReachabilityProbeOnce(): Promise<ReachabilityRunResult 
 
     let reachable = 0;
     let unreachable = 0;
+    let flips = 0;
     let idx = 0;
     const worker = async () => {
       while (idx < targets.length) {
@@ -171,7 +175,15 @@ export async function runReachabilityProbeOnce(): Promise<ReachabilityRunResult 
         if (!t) continue;
         try {
           const ok = await probeOne(t, ports, timeoutMs, pingFallback);
+          const prev = t.reachable == null ? null : Boolean(t.reachable);
           await persist(t.id, ok);
+          // Per-PC line only on a state CHANGE (name + IP + new state) — logging
+          // every PC each cycle would flood the activity log. First-time
+          // classification (prev === null) is silent.
+          if (prev !== null && prev !== ok) {
+            flips++;
+            logActivity(ok ? 'success' : 'warn', 'reachability', `${t.name} (${t.ip_address ?? 'no IP'}) → ${ok ? 'Active (on network)' : 'Offline'}`);
+          }
           if (ok) reachable++; else unreachable++;
         } catch {
           // A single PC's DB write failing shouldn't abort the whole sweep.
@@ -182,7 +194,12 @@ export async function runReachabilityProbeOnce(): Promise<ReachabilityRunResult 
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targets.length || 1) }, worker));
 
     const durationMs = Date.now() - t0;
-    logActivity('info', 'reachability', `Reachability probe: ${reachable}/${targets.length} on network (${(durationMs / 1000).toFixed(1)}s)`);
+    // Summary only when something moved (count changed or any PC flipped) — stops
+    // the identical "126/211 on network" line repeating every cycle.
+    if (reachable !== lastReachableCount || flips > 0) {
+      logActivity('info', 'reachability', `Reachability: ${reachable}/${targets.length} on network${flips > 0 ? `, ${flips} change(s)` : ''} (${(durationMs / 1000).toFixed(1)}s)`);
+    }
+    lastReachableCount = reachable;
     return { pcs: targets.length, reachable, unreachable, durationMs };
   } catch (err) {
     logActivity('error', 'reachability', `Reachability probe failed: ${String(err).split('\n')[0]}`);
