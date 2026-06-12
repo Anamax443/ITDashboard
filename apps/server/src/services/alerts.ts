@@ -416,12 +416,13 @@ async function loadDownServices(
     WHERE c.enabled = 1 AND c.${opts.gate} = 1
       AND sp.state <> 'Running' AND sp.per_user_start = 0
       ${opts.critical ? '' : `
-      -- Broad level mirrors the Services tab's default view ("⚠ Only ExitCode
-      -- <> 0"): alert only on real failures (non-zero exit). Graceful stops
-      -- (exit 0/NULL) — on-demand trigger/delayed services and benign Auto
-      -- drift like ShellHWDetection — are NOT alerted; they stay visible in the
-      -- Services tab when the operator clears that default filter.
-      AND sp.exit_code <> 0`}
+      -- Broad level = the collector's "real" set: an Auto service that should be
+      -- running but is Stopped (drift). Exit code is NOT a discriminator — most
+      -- stopped services report exit 0 (413 of 454 real problems fleet-wide), so
+      -- filtering on exit <> 0 would miss the vast majority of genuine drift.
+      -- Instead we drop the on-demand noise: trigger-start and delayed-start
+      -- services (legitimately idle), matching the Services tab's "real" count.
+      AND sp.trigger_start = 0 AND sp.delayed_start = 0`}
     ORDER BY c.name, sp.service_name
   `);
 
