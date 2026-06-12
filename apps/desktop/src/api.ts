@@ -253,6 +253,65 @@ export function isServiceWhitelisted(
   return whitelist.some((re) => re.test(name) || (dn !== '' && re.test(dn)));
 }
 
+// ── Operating-system breakdown ──────────────────────────────────────────────
+// Sentinels for buckets that need localized labels in the UI (everything else
+// is an English OS name that reads the same in both languages).
+export const OS_UNKNOWN = 'Unknown';
+export const OS_OTHER = 'Other';
+
+/**
+ * Normalize the free-text AD `OperatingSystem` string (the only OS field we
+ * have) into a small canonical bucket. The Dashboard OS chart AND the Computers
+ * OS filter both call this, so the segment counts and the drill-down list stay
+ * in sync. `Unknown` = no OS reported; `Other` = a string we don't bucket.
+ */
+export function osBucket(os: string | null | undefined): string {
+  const s = (os ?? '').trim();
+  if (!s) return OS_UNKNOWN;
+  const server = s.match(/windows server\s+(\d{4})(\s*r2)?/i);
+  if (server) return `Windows Server ${server[1]}${server[2] ? ' R2' : ''}`;
+  if (/windows server/i.test(s)) return 'Windows Server';
+  const client = s.match(/windows\s+(11|10|8\.1|8|7)\b/i);
+  if (client) return `Windows ${client[1]}`;
+  if (/windows\s+vista/i.test(s)) return 'Windows Vista';
+  if (/windows\s+xp/i.test(s)) return 'Windows XP';
+  return OS_OTHER;
+}
+
+/**
+ * A computer is "stale" (aspires to deactivation) when it is not excluded and
+ * has not been seen within the inactivity threshold — mirrors the `inactive`
+ * filter / Dashboard inactive card. Disabled machines are not in the OS chart
+ * scope, so this is only ever asked about enabled ones.
+ */
+export function isStaleComputer(c: ComputerItem, thresholdDays: number): boolean {
+  if (c.excluded) return false;
+  const cutoff = Date.now() - thresholdDays * 86400000;
+  const seenMs = c.last_seen ? new Date(c.last_seen).getTime() : null;
+  return seenMs === null || seenMs < cutoff;
+}
+
+export interface OsBucketStat { bucket: string; total: number; stale: number; live: number; }
+
+/**
+ * Per-OS counts over the live managed fleet (enabled, not excluded). `stale` is
+ * the subset past the inactivity threshold; `live` = total - stale.
+ */
+export function summarizeOs(computers: ComputerItem[], thresholdDays: number): OsBucketStat[] {
+  const map = new Map<string, { total: number; stale: number }>();
+  for (const c of computers) {
+    if (!c.enabled || c.excluded) continue;
+    const b = osBucket(c.os_version);
+    const e = map.get(b) ?? { total: 0, stale: 0 };
+    e.total++;
+    if (isStaleComputer(c, thresholdDays)) e.stale++;
+    map.set(b, e);
+  }
+  return Array.from(map.entries())
+    .map(([bucket, v]) => ({ bucket, total: v.total, stale: v.stale, live: v.total - v.stale }))
+    .sort((a, b) => b.total - a.total || a.bucket.localeCompare(b.bucket));
+}
+
 /**
  * Critical-service outage summary restricted to PCs opted into service email
  * monitoring. service_problems already holds only Auto + non-Running services;
