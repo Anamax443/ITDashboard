@@ -175,7 +175,10 @@ including overnight / weekends, while the heavier collectors stay windowed. The
 loop self-reschedules and re-reads the enable flag (`checks.run_reachability`) and
 the interval each cycle, so Settings changes apply without a restart. It was
 removed from the `checks-runner` CHECKS array. New **Settings** section
-"Dostupnost na síti (Status)" exposes the enable + interval (CS+EN).
+"Dostupnost na síti (Status)" exposes the enable, the ICMP-ping-fallback toggle,
+the interval, and a **"Spustit teď" / "Run now"** button (`POST /reachability/run`
+→ `runReachabilityProbeOnce`, returns `{pcs, reachable, unreachable, durationMs}`)
+for an on-demand probe (CS+EN).
 
 ### Faulty-PC / reinstall-candidate detection (commit `31347b0`)
 

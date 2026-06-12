@@ -537,6 +537,7 @@ export const api = {
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),
   collectorRunAll: () => jpost<CollectorRunAllResult>('/collector/run-all'),
+  reachabilityRun: () => jpost<{ pcs: number; reachable: number; unreachable: number; durationMs: number }>('/reachability/run'),
   collectorStop: () => jpost<{ stopped: boolean }>('/collector/stop'),
   activityLog: (limit = 200, sinceSeq?: number) => {
     const params = new URLSearchParams();

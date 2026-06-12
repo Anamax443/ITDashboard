@@ -315,6 +315,9 @@ const dict = {
     'settings.section.reachability': 'Dostupnost na síti (Status)',
     'settings.section.reachabilityDesc': 'Ověřuje stav počítačů (Active/Offline) vlastní sondou, NEZÁVISLE na hlavním scanu a jeho okně — takže Status se aktualizuje i přes noc a o víkendu. PC je dostupné, když odpoví cokoli z: TCP 135, TCP 445, nebo (zapnutý) ICMP ping — ping chytí stroje, co blokují RPC/SMB, ale žijí. Běží na svém intervalu (níže). Status: Active = teď na síti, Offline = nedostupné, Disabled = vypnuté v AD.',
     'settings.field.reachabilityInterval': 'Interval sondy',
+    'settings.reach.run': 'Spustit teď',
+    'settings.reach.running': 'Skenuji…',
+    'settings.reach.reachable': 'dostupných',
     'settings.check.adsync': 'AD sync (defaultně off v periodic)',
 
     'settings.thresholdMode.pct': 'Pouze procenta volného',
@@ -654,6 +657,9 @@ const dict = {
     'settings.section.reachability': 'Network reachability (Status)',
     'settings.section.reachabilityDesc': 'Verifies each PC\'s status (Active/Offline) with its own probe, INDEPENDENT of the main scan and its window — so Status stays fresh overnight and on weekends. A PC counts as reachable if ANY of these answers: TCP 135, TCP 445, or (if enabled) ICMP ping — ping catches hosts that block RPC/SMB but are alive. Runs on its own interval (below). Status: Active = on the network now, Offline = unreachable, Disabled = disabled in AD.',
     'settings.field.reachabilityInterval': 'Probe interval',
+    'settings.reach.run': 'Run now',
+    'settings.reach.running': 'Scanning…',
+    'settings.reach.reachable': 'on network',
     'settings.check.adsync': 'AD sync (off by default in periodic)',
 
     'settings.thresholdMode.pct': 'Percent free only',

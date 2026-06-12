@@ -295,10 +295,25 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reachRunning, setReachRunning] = useState(false);
+  const [reachResult, setReachResult] = useState<string | null>(null);
 
   useEffect(() => {
     api.settings().then((s) => setSettings(s)).catch((e) => setError(String(e)));
   }, []);
+
+  const runReachability = async () => {
+    setReachRunning(true);
+    setReachResult(null);
+    try {
+      const r = await api.reachabilityRun();
+      setReachResult(`${r.reachable}/${r.pcs} ${t('settings.reach.reachable')} (${(r.durationMs / 1000).toFixed(1)}s)`);
+    } catch (e) {
+      setReachResult(String(e));
+    } finally {
+      setReachRunning(false);
+    }
+  };
 
   const value = (key: string, def = '') => dirty[key] ?? settings[key] ?? def;
   const set = (key: string, v: string) => setDirty((d) => ({ ...d, [key]: v }));
@@ -422,6 +437,12 @@ export function SettingsPage() {
               />
             </Field>
           </FieldGroup>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
+            <button className="refresh-btn" onClick={runReachability} disabled={reachRunning}>
+              {reachRunning ? `… ${t('settings.reach.running')}` : `🔌 ${t('settings.reach.run')}`}
+            </button>
+            {reachResult && <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>{reachResult}</span>}
+          </div>
         </Section>
 
         <Section
