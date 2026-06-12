@@ -344,7 +344,7 @@ service restarts on new dist/, in-memory state cleared</div>
   <li><strong>Events timeline (24h)</strong> — stacked hourly bars (Critical/Error/Warning), SVG</li>
   <li><strong>Top noisy PCs (24h)</strong> — top 10 ranked, breakdown by level via colored progress bar</li>
   <li><strong>Top event IDs (24h)</strong> — top 15 event IDs by count, sortable</li>
-  <li><strong>Problem-PCs row</strong> — a second row of two tiles (red "Problem PCs" / amber "Watch") flagging PCs in trouble; clicking a tile expands an inline breakdown table (see below)</li>
+  <li><strong>Problem-PCs row</strong> — a second row with a single red "Problem PCs" tile flagging PCs in trouble; clicking it expands an inline breakdown table (see below)</li>
   <li><strong>Operating systems panel</strong> — horizontal OS breakdown chart over the live fleet, below the cards (see below)</li>
   <li><strong>Computers list</strong> — quick summary, no filters</li>
 </ul>
@@ -380,7 +380,7 @@ service restarts on new dist/, in-memory state cleared</div>
     <li>Plus a <strong>bonus</strong> for how many <strong>different</strong> errors and how many <strong>days</strong> had errors.</li>
   </ul>
   <ul>
-    <li>A PC scoring at/above the <strong>"Risk" threshold</strong> (default 600) lands in the red <strong>"Problem PCs"</strong> tile; at/above the <strong>"Watch" threshold</strong> (default 400) it lands in the amber one. (Thresholds are tunable and were calibrated against the live fleet.)</li>
+    <li>A PC scoring at/above the <strong>"Risk" threshold</strong> (default 600) is counted in the red <strong>"Problem PCs"</strong> tile. (The threshold is tunable and was calibrated against the live fleet; a lower "Watch" tier exists in the settings but is not shown as a tile.)</li>
     <li><strong>Click a tile</strong> → an inline <strong>breakdown table expands</strong> below it (it is hidden by default): score, critical/error/warning counts, number of error types and number of days with errors. Click the tile again or ✕ to collapse.</li>
     <li><strong>Click a row</strong> in that table to jump to the PC in the Computers tab.</li>
     <li>Everything — window, cap, thresholds — is tunable in <strong>Settings → "Problem PCs"</strong>.</li>
@@ -394,7 +394,7 @@ service restarts on new dist/, in-memory state cleared</div>
     <li>Plus <strong>bonus</strong> za počet <strong>různých</strong> chyb a počet <strong>dní</strong> s chybami.</li>
   </ul>
   <ul>
-    <li>PC se skóre ≥ práh <strong>„Riziko"</strong> (výchozí 600) padne do červené dlaždice <strong>„PC v problémech"</strong>; ≥ práh <strong>„Sledovat"</strong> (výchozí 400) do žluté. (Prahy jsou laditelné a byly doladěny dle živého fleetu.)</li>
+    <li>PC se skóre ≥ práh <strong>„Riziko"</strong> (výchozí 600) se počítá do červené dlaždice <strong>„PC v problémech"</strong>. (Práh je laditelný a byl doladěn dle živého fleetu; nižší tier „Sledovat" v nastavení existuje, ale nezobrazuje se jako dlaždice.)</li>
     <li><strong>Kliknutím na dlaždici</strong> → se pod ní <strong>rozbalí tabulka</strong> s rozpadem (defaultně skrytá): skóre, počty critical/error/warning, počet typů chyb a počet dní s chybami. Dalším klikem na dlaždici nebo ✕ ji sbalíte.</li>
     <li><strong>Kliknutím na řádek</strong> v té tabulce skočíte na to PC v záložce Počítače.</li>
     <li>Vše — okno, strop, prahy — se ladí v <strong>Nastavení → „PC v problémech"</strong>.</li>

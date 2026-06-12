@@ -202,13 +202,17 @@ seed so it won't clobber operator tuning) — live data showed active Win11 boxe
 carry a high event baseline, so 60/150 flagged ~42% of the fleet (96/228) as
 "risk"; 400/600 keeps "risk" to the worst ~10 and watch+risk to ~35.
 
-**Dashboard**: new component `HealthCards.tsx` renders a **second row of tiles**
-below `SummaryCards` — "🩺 PC v problémech" (risk count, red) and "Sledovat"
-(watch count, amber). The breakdown table (score + critical/error/warning +
-distinct error types + active days) is **hidden by default and expands inline
-only when a tile is clicked** (click again / ✕ to collapse) — the operator didn't
-want a permanent table on the dashboard. Each table row jumps to that PC in
-Computers. `Card` is now exported from `SummaryCards.tsx` for reuse.
+**Dashboard**: new component `HealthCards.tsx` renders a **single tile** in a
+second row below `SummaryCards` — "🩺 PC v problémech" (red, count of PCs at/above
+the risk threshold). (A second "Sledovat"/watch tile was added then removed at
+operator request — only the worst, risk-level boxes are surfaced; the endpoint
+still computes the watch tier but it's no longer shown.) The breakdown table
+(score + critical/error/warning + distinct error types + active days) is **hidden
+by default and expands inline only when the tile is clicked** (click again / ✕ to
+collapse) — the operator didn't want a permanent table on the dashboard. Each
+table row jumps to that PC in Computers. `Card` is now exported from
+`SummaryCards.tsx` for reuse. Cards were also shrunk ~12% (`.card` padding 16→13,
+`.value` 32→28, label 11→10, gap 12→10) — the top row read as oversized.
 
 > Naming note: the tile/feature was renamed from "Kandidáti na přeinstalaci"
 > (reinstall candidates) to "PC v problémech" (problem PCs) per operator

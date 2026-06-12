@@ -122,7 +122,7 @@
   <ul>
     <li>Nová druhá řada dlaždic + panel: skóruje PC podle kumulace kritických/chybových/varovných eventů za okno (výchozí 14 dní).</li>
     <li><strong>Tlumený mix:</strong> příspěvek každého typu eventu (provider+ID) zastropován (výchozí 20) — jeden ukecaný ovladač PC nepotopí; váženo critical×10 / error×3 / warning×1; bonus za počet různých chyb a počet dní s chybami.</li>
-    <li>Skóre ≥ „Riziko" (600) → červená dlaždice „PC v problémech", ≥ „Sledovat" (400) → žlutá (prahy doladěny dle živých dat, migrace 034). Klik na dlaždici rozbalí pod ní tabulku rozpadu (skóre/crit/err/warn/typy/dny, defaultně skrytá); klik na řádek skočí na PC.</li>
+    <li>Skóre ≥ „Riziko" (600, doladěno dle živých dat migrací 034) → červená dlaždice „PC v problémech". Klik na dlaždici rozbalí pod ní tabulku rozpadu (skóre/crit/err/warn/typy/dny, defaultně skrytá); klik na řádek skočí na PC.</li>
     <li>Endpoint <code>GET /events/pc-health</code>; <strong>migrace 033</strong> naseeduje laditelné prahy/váhy; nový blok v Nastavení.</li>
   </ul>
   <h2>Poslední změny (2026-06-11)</h2>

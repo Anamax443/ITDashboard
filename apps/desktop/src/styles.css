@@ -91,13 +91,13 @@ html, body, #root {
 .cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: 10px;
 }
 
 .card {
   background: var(--surface);
   border-radius: 8px;
-  padding: 16px;
+  padding: 13px;
   border-left: 4px solid var(--border);
 }
 
@@ -106,8 +106,8 @@ html, body, #root {
 .card.warning  { border-left-color: var(--warning); }
 .card.info     { border-left-color: var(--accent); }
 
-.card .label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-.card .value { font-size: 32px; font-weight: 700; margin-top: 4px; }
+.card .label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+.card .value { font-size: 28px; font-weight: 700; margin-top: 3px; }
 .card.critical .value { color: var(--critical); }
 .card.error    .value { color: var(--error); }
 .card.warning  .value { color: var(--warning); }
