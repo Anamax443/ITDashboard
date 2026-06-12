@@ -21,6 +21,7 @@ import { registerRetentionRoutes } from './routes/retention.js';
 import { registerAlertsRoutes } from './routes/alerts.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
+import { startReachabilitySchedule } from './services/reachability-collector.js';
 import { refreshIpGuard } from './services/ip-guard.js';
 import { startRetentionSchedule } from './services/retention-runner.js';
 
@@ -71,6 +72,7 @@ await refreshIpGuard('boot');
 
 app.listen({ port: PORT, host: BIND }).then(async () => {
   await startChecksSchedule();
+  await startReachabilitySchedule();
   await startRetentionSchedule();
 }).catch((err) => {
   app.log.error(err);

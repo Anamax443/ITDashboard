@@ -382,7 +382,7 @@ service restarts on new dist/, in-memory state cleared</div>
   <ul>
     <li>A PC scoring at/above the <strong>"Risk" threshold</strong> (default 600) is counted in the red <strong>"Problem PCs"</strong> tile. (The threshold is tunable and was calibrated against the live fleet; a lower "Watch" tier exists in the settings but is not shown as a tile.)</li>
     <li><strong>Click a tile</strong> → an inline <strong>breakdown table expands</strong> below it (it is hidden by default): score, critical/error/warning counts, number of error types and number of days with errors. Click the tile again or ✕ to collapse.</li>
-    <li><strong>Click a row</strong> in that table to jump to the PC in the Computers tab.</li>
+    <li>In the table the numbers are <strong>click-throughs to the Events tab</strong>: the <strong>score</strong> opens all error events for that PC over the window (and its tooltip explains how the score is computed); <strong>crit / err / warn</strong> open events for that PC filtered to that severity. The PC name jumps to the Computers tab.</li>
     <li>Everything — window, cap, thresholds — is tunable in <strong>Settings → "Problem PCs"</strong>.</li>
   </ul>
 </div>
@@ -396,7 +396,7 @@ service restarts on new dist/, in-memory state cleared</div>
   <ul>
     <li>PC se skóre ≥ práh <strong>„Riziko"</strong> (výchozí 600) se počítá do červené dlaždice <strong>„PC v problémech"</strong>. (Práh je laditelný a byl doladěn dle živého fleetu; nižší tier „Sledovat" v nastavení existuje, ale nezobrazuje se jako dlaždice.)</li>
     <li><strong>Kliknutím na dlaždici</strong> → se pod ní <strong>rozbalí tabulka</strong> s rozpadem (defaultně skrytá): skóre, počty critical/error/warning, počet typů chyb a počet dní s chybami. Dalším klikem na dlaždici nebo ✕ ji sbalíte.</li>
-    <li><strong>Kliknutím na řádek</strong> v té tabulce skočíte na to PC v záložce Počítače.</li>
+    <li>Čísla v tabulce jsou <strong>proklikatelná do záložky Události</strong>: <strong>skóre</strong> otevře všechny chybové události daného PC za okno (a tooltip vysvětlí, jak se skóre počítá); <strong>crit / err / warn</strong> otevřou události toho PC profiltrované na danou závažnost. Jméno PC skočí do záložky Počítače.</li>
     <li>Vše — okno, strop, prahy — se ladí v <strong>Nastavení → „PC v problémech"</strong>.</li>
   </ul>
 </div>
@@ -441,7 +441,7 @@ service restarts on new dist/, in-memory state cleared</div>
   </ul>
 </div>
 <div class="callout callout-info" data-lang="en">
-<strong>What "Status" means now — reachability probe</strong> — the Status column used to merely reflect whether event-log collection succeeded: it ran only on monitored PCs, bucketed errors crudely, and eventually "froze", so supposedly-unreachable machines could still show <em>Unknown</em> or a green <em>Active</em>. A standalone <strong>reachability probe</strong> now runs: for <strong>every</strong> enabled, non-excluded PC (regardless of monitoring) it does a plain TCP connect to port 135 (RPC), falling back to 445 (SMB) — it is <strong>not</strong> an ICMP ping (Windows Firewall blocks ping by default in a domain). The probe runs within the periodic-checks window (default Mon–Fri 06:00–18:00), so by default it isn't refreshed overnight or at weekends. A probe toggle was added in <strong>Settings</strong>.
+<strong>What "Status" means now — reachability probe</strong> — the Status column used to merely reflect whether event-log collection succeeded: it ran only on monitored PCs, bucketed errors crudely, and eventually "froze", so supposedly-unreachable machines could still show <em>Unknown</em> or a green <em>Active</em>. A standalone <strong>reachability probe</strong> now runs: for <strong>every</strong> enabled, non-excluded PC (regardless of monitoring) it does a plain TCP connect to port 135 (RPC), falling back to 445 (SMB) — it is <strong>not</strong> an ICMP ping (Windows Firewall blocks ping by default in a domain). The probe runs on its <strong>own interval</strong> (<code>reachability.interval_sec</code>, default 300 s), <strong>independent</strong> of the main scan and its window, so Status stays fresh 24/7 including overnight and weekends. Toggle + interval live in <strong>Settings → "Network reachability (Status)"</strong>.
 </div>
 <div data-lang="cs">
   <p>Kompletní inventář s operátorskými ovládacími prvky:</p>
@@ -462,7 +462,7 @@ service restarts on new dist/, in-memory state cleared</div>
   </ul>
 </div>
 <div class="callout callout-info" data-lang="cs">
-<strong>Co teď „Status" znamená — sonda dostupnosti</strong> — sloupec Status dřív jen odrážel, jestli se povedl sběr event-logu: běžel jen na monitorovaných strojích, hrubě škatulkoval chyby a po čase „zamrzl", takže „údajně nedostupné" stroje mohly stále ukazovat <em>Unknown</em> nebo zeleně <em>Active</em>. Nově běží samostatná <strong>sonda dostupnosti</strong>: na <strong>každý</strong> zapnutý a nevyřazený počítač (bez ohledu na monitoring) se udělá prostý TCP connect na port 135 (RPC), s fallbackem na 445 (SMB) — <strong>není</strong> to ICMP ping (ten Windows firewall v doméně defaultně blokuje). Sonda běží v okně periodických kontrol (defaultně po–pá 06:00–18:00), takže přes noc a o víkendu se v základním nastavení neobnovuje. V <strong>Nastavení</strong> přibyl přepínač sondy.
+<strong>Co teď „Status" znamená — sonda dostupnosti</strong> — sloupec Status dřív jen odrážel, jestli se povedl sběr event-logu: běžel jen na monitorovaných strojích, hrubě škatulkoval chyby a po čase „zamrzl", takže „údajně nedostupné" stroje mohly stále ukazovat <em>Unknown</em> nebo zeleně <em>Active</em>. Nově běží samostatná <strong>sonda dostupnosti</strong>: na <strong>každý</strong> zapnutý a nevyřazený počítač (bez ohledu na monitoring) se udělá prostý TCP connect na port 135 (RPC), s fallbackem na 445 (SMB) — <strong>není</strong> to ICMP ping (ten Windows firewall v doméně defaultně blokuje). Sonda běží na <strong>vlastním intervalu</strong> (<code>reachability.interval_sec</code>, defaultně 300 s), <strong>nezávisle</strong> na hlavním scanu a jeho okně, takže Status je čerstvý 24/7 včetně noci a víkendu. Přepínač + interval jsou v <strong>Nastavení → „Dostupnost na síti (Status)"</strong>.
 </div>
 
 <h2 id="pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></h2>

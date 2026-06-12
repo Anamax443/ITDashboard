@@ -260,7 +260,16 @@ export function App() {
             onClickUnreachable={() => { setComputersPreFilter('failing'); setView('computers'); }}
             onClickInactive={() => { setComputersPreFilter('inactive'); setView('computers'); }}
           />
-          <HealthCards data={pcHealth} onJumpToComputer={jumpToComputer} />
+          <HealthCards
+            data={pcHealth}
+            onJumpToComputer={jumpToComputer}
+            onOpenEvents={(computer, level) => {
+              setFilterComputer(computer);
+              setFilterLevel(level);
+              setFilterHours((pcHealth?.windowDays ?? 14) * 24);
+              setView('events');
+            }}
+          />
           <OsBreakdownChart
             items={computers}
             thresholdDays={inactiveStats?.thresholdDays ?? 90}

@@ -131,15 +131,20 @@ export async function registerEventsRoutes(app: FastifyInstance) {
     const cap = Math.max(1, Math.floor(num('faulty.signature_cap', 20)));
     const watch = num('faulty.threshold_watch', 400);
     const risk = num('faulty.threshold_risk', 600);
+    const wc = num('faulty.weight_critical', 10);
+    const we = num('faulty.weight_error', 3);
+    const ww = num('faulty.weight_warning', 1);
+    const wb = num('faulty.weight_breadth', 5);
+    const wp = num('faulty.weight_persistence', 3);
 
     const r = await pool.request()
       .input('days', windowDays)
       .input('cap', cap)
-      .input('wc', num('faulty.weight_critical', 10))
-      .input('we', num('faulty.weight_error', 3))
-      .input('ww', num('faulty.weight_warning', 1))
-      .input('wb', num('faulty.weight_breadth', 5))
-      .input('wp', num('faulty.weight_persistence', 3))
+      .input('wc', wc)
+      .input('we', we)
+      .input('ww', ww)
+      .input('wb', wb)
+      .input('wp', wp)
       .query(`
         WITH sig AS (
           SELECT computer_id, level, event_id, provider_name, COUNT(*) AS cnt
@@ -181,6 +186,12 @@ export async function registerEventsRoutes(app: FastifyInstance) {
       .map((row) => ({ ...row, level: row.score >= risk ? 'risk' : row.score >= watch ? 'watch' : 'ok' }))
       .filter((row) => row.level !== 'ok');
 
-    return { windowDays, thresholdWatch: watch, thresholdRisk: risk, items };
+    return {
+      windowDays,
+      thresholdWatch: watch,
+      thresholdRisk: risk,
+      scoring: { cap, weightCritical: wc, weightError: we, weightWarning: ww, weightBreadth: wb, weightPersistence: wp },
+      items,
+    };
   });
 }

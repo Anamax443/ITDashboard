@@ -165,10 +165,15 @@ back to the old failure cap only when reachability is unknown (probe disabled /
 not yet run). Reachability runs first in the cycle, so the value is fresh when
 the collectors query it.
 
-**Caveat:** the probe runs inside the periodic-checks window (`checks.days` /
-`checks.window_*`, default Mon–Fri 06:00–18:00), so in the default config Status
-is not refreshed overnight / weekends. Making it a window-independent fast timer
-is a possible follow-up.
+**Scheduling (updated):** the probe now runs on its **own standalone timer**
+(`startReachabilitySchedule` in `reachability-collector.ts`, started in
+`index.ts`), every `reachability.interval_sec` (default 300 s, migration 035),
+**independent of the periodic-checks window** — so Status stays fresh 24/7
+including overnight / weekends, while the heavier collectors stay windowed. The
+loop self-reschedules and re-reads the enable flag (`checks.run_reachability`) and
+the interval each cycle, so Settings changes apply without a restart. It was
+removed from the `checks-runner` CHECKS array. New **Settings** section
+"Dostupnost na síti (Status)" exposes the enable + interval (CS+EN).
 
 ### Faulty-PC / reinstall-candidate detection (commit `31347b0`)
 
@@ -209,8 +214,12 @@ operator request — only the worst, risk-level boxes are surfaced; the endpoint
 still computes the watch tier but it's no longer shown.) The breakdown table
 (score + critical/error/warning + distinct error types + active days) is **hidden
 by default and expands inline only when the tile is clicked** (click again / ✕ to
-collapse) — the operator didn't want a permanent table on the dashboard. Each
-table row jumps to that PC in Computers. `Card` is now exported from
+collapse) — the operator didn't want a permanent table on the dashboard. In the
+table: the **PC name** jumps to Computers; the **score** cell opens the Events tab
+filtered to that PC over the window (all levels) and its hover tooltip explains the
+formula (built from the live `scoring` params the endpoint now returns); the
+**crit / err / warn** cells open Events filtered to that PC **and** that level
+(`onOpenEvents(name, level)` → `setFilterComputer/Level/Hours` → Events view). `Card` is now exported from
 `SummaryCards.tsx` for reuse. Cards were also shrunk ~12% (`.card` padding 16→13,
 `.value` 32→28, label 11→10, gap 12→10) — the top row read as oversized.
 

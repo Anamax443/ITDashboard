@@ -260,7 +260,7 @@ Until this feature (2026-06-12, commit `a12ad36`) the Computers "Status" column 
 
 The key design split is that three previously-conflated signals are now distinct: **reachability** (live, this probe) vs **event-log collection health** (`last_status`) vs **AD inactivity** (`last_seen` / `inactive.threshold_days`). A box can be Active-but-"logs", reachable-but-AD-inactive, etc., and the UI no longer flattens those into one column.
 
-**Design caveat.** The probe runs **inside the periodic-checks window** (`checks.days` / window, default Mon–Fri 06:00–18:00), so in the default config reachability is **not** refreshed overnight or at weekends. Making it a window-independent timer (so presence stays fresh 24/7 while the heavier collectors stay windowed) is a possible follow-up.
+**Scheduling.** The probe runs on its **own standalone timer** (`startReachabilitySchedule` in `reachability-collector.ts`, kicked off in `index.ts`), every `reachability.interval_sec` (default 300 s, migration 035), **independent of the periodic-checks window** — so presence stays fresh 24/7 while the heavier collectors stay windowed. The self-rescheduling loop re-reads the enable flag (`checks.run_reachability`) and the interval each cycle, so Settings changes apply without a restart. It is therefore **not** a member of the `checks-runner` CHECKS array.
 
 ### Computers tab sorting (reliability)
 Sorting is locale-aware with numeric chunking, so IPs order naturally (`10.8.2.9` < `10.8.2.10`), hostnames order naturally (`PC2` < `PC10`), accented names collate correctly, and nulls sort last. The "Status" column sorts by the displayed reachability status, now derived from the live `computers.reachable` probe (see **### Live network reachability probe drives the Status column**) rather than the `enabled` flag. Closing the Per-PC Actions modal after a manual refresh re-syncs the list so the row reflects the latest scan.
@@ -389,5 +389,6 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 032_reachability | computers.reachable BIT + last_reachable_at + reach_checked_at (live TCP reachability probe) + checks.run_reachability (1) / reachability.ports (`135,445`) / reachability.timeout_ms (2000) settings seed |
 | 033_faulty_pc | faulty.* settings seed for reinstall-candidate scoring: window_days (14), signature_cap (20), weight_critical (10) / weight_error (3) / weight_warning (1), weight_breadth (5), weight_persistence (3), threshold_watch (60), threshold_risk (150) — consumed by `GET /events/pc-health` |
 | 034_faulty_thresholds | recalibrate faulty.threshold_watch → 400, faulty.threshold_risk → 600 (guarded to the 60/150 seed; live-tuned so "risk" is the worst ~10, not ~42% of the fleet) |
+| 035_reachability_interval | reachability.interval_sec (300) seed — the reachability/Status probe now runs on its own standalone timer, independent of the periodic-checks window |
 
 > `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).

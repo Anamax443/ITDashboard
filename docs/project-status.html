@@ -116,7 +116,7 @@
     <li><strong>Nová samostatná sonda dostupnosti:</strong> na každý zapnutý a nevyřazený počítač (nezávisle na monitoringu) TCP connect na port <code>135</code>, fallback <code>445</code> — ne ICMP ping (Windows firewall ho v doméně blokuje). Běží jako nový check v každém cyklu; ukládá <code>reachable</code> / <code>last_reachable_at</code> / <code>reach_checked_at</code> (<strong>migrace 032</strong>).</li>
     <li><strong>Status teď:</strong> Disabled = AD vypnutý; Active = teď na síti (+ drobná značka „logs ⚠" když běží, ale nejde přečíst event log); Offline = nedostupný.</li>
     <li>Přibyl filtr „offline" (chip + dropdown) a v Nastavení přepínač sondy.</li>
-    <li>Pozn.: sonda běží v okně periodických kontrol (default po–pá 06:00–18:00).</li>
+    <li>Sonda běží na vlastním intervalu (<code>reachability.interval_sec</code>, default 300 s, migrace 035), nezávisle na okně hlavního scanu — Status je čerstvý i přes noc/víkend. Nastavitelné v Nastavení → „Dostupnost na síti (Status)".</li>
   </ul>
   <p style="margin:8px 0 4px"><strong>Dashboard — PC v problémech (vytipování podle eventů)</strong> <span class="pill">31347b0</span></p>
   <ul>

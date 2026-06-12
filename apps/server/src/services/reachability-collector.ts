@@ -79,6 +79,44 @@ export interface ReachabilityRunResult {
   durationMs: number;
 }
 
+function boolSetting(v: string | undefined, fallback: boolean): boolean {
+  if (v == null || v === '') return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(v.toLowerCase());
+}
+
+let reachTimer: NodeJS.Timeout | null = null;
+let reachStopped = false;
+
+/**
+ * Standalone scheduler for the reachability (Status) probe — runs on its OWN
+ * cadence (`reachability.interval_sec`, default 300s), independent of the
+ * periodic-checks scan and its work-hours window, so Status never goes stale
+ * overnight / weekends. Each cycle re-reads the enable flag
+ * (`checks.run_reachability`) and the interval, so Settings changes take effect
+ * without a restart.
+ */
+export async function startReachabilitySchedule(): Promise<void> {
+  reachStopped = false;
+  if (reachTimer) { clearTimeout(reachTimer); reachTimer = null; }
+  const loop = async () => {
+    if (reachStopped) return;
+    let intervalSec = 300;
+    try {
+      const settings = await getAllSettings();
+      if (boolSetting(settings['checks.run_reachability'], true)) {
+        await runReachabilityProbeOnce();
+      }
+      const n = Number(settings['reachability.interval_sec']);
+      if (Number.isFinite(n) && n >= 30) intervalSec = Math.floor(n);
+    } catch (e) {
+      console.error('Reachability schedule error', e);
+    }
+    if (!reachStopped) reachTimer = setTimeout(loop, intervalSec * 1000);
+  };
+  loop().catch((e) => console.error('Reachability schedule error', e));
+  console.log('Reachability probe scheduled (independent of the checks window)');
+}
+
 /**
  * Probe every enabled, non-excluded PC once and record whether it is on the
  * network. Self-contained: never throws (a DB/probe error is logged and a

@@ -7,7 +7,6 @@ import type { TKey } from '../i18n.js';
 
 const PERIODIC_CHECKS: { key: string; tkey: TKey }[] = [
   { key: 'checks.run_adsync', tkey: 'settings.check.adsync' },
-  { key: 'checks.run_reachability', tkey: 'settings.check.reachability' },
   { key: 'checks.run_eventlog', tkey: 'settings.check.eventlog' },
   { key: 'checks.run_disk', tkey: 'settings.check.disk' },
   { key: 'checks.run_services', tkey: 'settings.check.services' },
@@ -397,6 +396,26 @@ export function SettingsPage() {
                 onChange={(checked) => set(check.key, String(checked))}
               />
             ))}
+          </FieldGroup>
+        </Section>
+
+        <Section
+          title={t('settings.section.reachability')}
+          description={t('settings.section.reachabilityDesc')}
+        >
+          <FieldGroup>
+            <CheckField
+              label={t('settings.check.reachability')}
+              checked={value('checks.run_reachability', 'true') === 'true'}
+              onChange={(checked) => set('checks.run_reachability', String(checked))}
+            />
+            <Field label={t('settings.field.reachabilityInterval')}>
+              <NumberInput
+                v={value('reachability.interval_sec', '300')}
+                onChange={(v) => set('reachability.interval_sec', v)}
+                suffix={t('settings.unit.seconds')}
+              />
+            </Field>
           </FieldGroup>
         </Section>
 

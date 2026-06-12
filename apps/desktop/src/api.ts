@@ -60,10 +60,19 @@ export interface PcHealth {
   score: number;
   level: 'watch' | 'risk';
 }
+export interface PcHealthScoring {
+  cap: number;
+  weightCritical: number;
+  weightError: number;
+  weightWarning: number;
+  weightBreadth: number;
+  weightPersistence: number;
+}
 export interface PcHealthResult {
   windowDays: number;
   thresholdWatch: number;
   thresholdRisk: number;
+  scoring: PcHealthScoring;
   items: PcHealth[];
 }
 
