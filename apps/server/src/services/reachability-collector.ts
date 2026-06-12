@@ -1,4 +1,5 @@
 import { Socket } from 'node:net';
+import { spawn } from 'node:child_process';
 import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
 import { getAllSettings } from './settings.js';
@@ -19,6 +20,30 @@ function tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolea
     socket.once('connect', () => { clearTimeout(t); done(true); });
     socket.once('error', () => { clearTimeout(t); done(false); });
     socket.connect(port, host);
+  });
+}
+
+// ICMP fallback via the Windows `ping.exe` (Node has no built-in ICMP; raw
+// sockets need privileges the service account lacks). Catches hosts that block
+// TCP 135/445 (hardened firewall) but still answer ping. We require `TTL=` in
+// the output — it appears only on a genuine echo reply and is NOT localized, so
+// this works on a Czech/any-locale Windows and rejects router-sourced
+// "Destination host unreachable" replies (which can still exit 0).
+function icmpPing(host: string, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let out = '';
+    let settled = false;
+    const done = (ok: boolean) => { if (!settled) { settled = true; resolve(ok); } };
+    try {
+      const proc = spawn('ping.exe', ['-n', '1', '-w', String(timeoutMs), host], { windowsHide: true });
+      proc.stdout?.on('data', (b) => (out += b.toString()));
+      proc.on('error', () => done(false));
+      proc.on('close', () => done(/TTL=/i.test(out)));
+      // Hard guard in case the process hangs.
+      setTimeout(() => { try { proc.kill(); } catch { /* ignore */ } done(false); }, timeoutMs + 1500);
+    } catch {
+      done(false);
+    }
   });
 }
 
@@ -50,11 +75,14 @@ async function listTargets(): Promise<Target[]> {
   return r.recordset;
 }
 
-async function probeOne(t: Target, ports: number[], timeoutMs: number): Promise<boolean> {
+async function probeOne(t: Target, ports: number[], timeoutMs: number, pingFallback: boolean): Promise<boolean> {
   const host = t.fqdn || t.name;
+  // Cheap TCP connects first; ICMP ping (spawns a process) only as a fallback
+  // for hosts that answer nothing on the TCP ports.
   for (const port of ports) {
     if (await tcpProbe(host, port, timeoutMs)) return true;
   }
+  if (pingFallback && await icmpPing(host, timeoutMs)) return true;
   return false;
 }
 
@@ -131,6 +159,7 @@ export async function runReachabilityProbeOnce(): Promise<ReachabilityRunResult 
     const settings = await getAllSettings();
     const ports = parsePorts(settings['reachability.ports']);
     const timeoutMs = Number(settings['reachability.timeout_ms'] ?? 2000) || 2000;
+    const pingFallback = boolSetting(settings['reachability.ping'], true);
     const targets = await listTargets();
 
     let reachable = 0;
@@ -141,7 +170,7 @@ export async function runReachabilityProbeOnce(): Promise<ReachabilityRunResult 
         const t = targets[idx++];
         if (!t) continue;
         try {
-          const ok = await probeOne(t, ports, timeoutMs);
+          const ok = await probeOne(t, ports, timeoutMs, pingFallback);
           await persist(t.id, ok);
           if (ok) reachable++; else unreachable++;
         } catch {

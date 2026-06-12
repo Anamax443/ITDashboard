@@ -409,6 +409,11 @@ export function SettingsPage() {
               checked={value('checks.run_reachability', 'true') === 'true'}
               onChange={(checked) => set('checks.run_reachability', String(checked))}
             />
+            <CheckField
+              label={t('settings.check.reachabilityPing')}
+              checked={value('reachability.ping', 'true') === 'true'}
+              onChange={(checked) => set('reachability.ping', String(checked))}
+            />
             <Field label={t('settings.field.reachabilityInterval')}>
               <NumberInput
                 v={value('reachability.interval_sec', '300')}

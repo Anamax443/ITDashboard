@@ -110,10 +110,12 @@ New **standalone reachability probe**
 - Probes **every `enabled = 1 AND excluded = 0` PC** — deliberately NOT gated by
   `monitor_enabled` or the failure cap, so even parked / unmonitored boxes get a
   live verdict.
-- A plain **TCP connect to port 135** (RPC endpoint mapper), falling back to
-  **445** (SMB). **Not ICMP ping** — Windows Firewall blocks ping by default in a
-  domain, so a TCP port is the reliable "is it on the network" signal. First port
-  that answers ⇒ reachable. Concurrency 16, self-contained (never throws).
+- Reachable if **any** of these answers: **TCP 135** (RPC endpoint mapper),
+  **TCP 445** (SMB), or an **ICMP ping fallback** (commit below, `reachability.ping`,
+  default on). TCP is tried first (cheap socket); ping (`ping.exe -n 1`, accepted
+  only if the output contains `TTL=` — a real echo reply, locale-independent) is a
+  fallback that catches hosts which block RPC/SMB but are alive. Concurrency 16,
+  self-contained (never throws).
 - Persists `reachable` (BIT), `last_reachable_at` (bumped only on success),
   `reach_checked_at`.
 - Wired into `checks-runner.ts` as a new `CHECKS` entry **`reachability`**

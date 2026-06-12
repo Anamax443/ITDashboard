@@ -113,7 +113,7 @@
   <p style="margin:8px 0 4px"><strong>Stav počítače = reálná dostupnost na síti</strong> <span class="pill">a12ad36</span></p>
   <ul>
     <li>Sloupec Status v Počítačích dřív jen odrážel úspěch event-log kolektoru (běžel jen na monitorovaných, hrubě klasifikoval, „zamrzal"), takže nedostupné stroje ukazovaly „Unknown" nebo zeleně „Active".</li>
-    <li><strong>Nová samostatná sonda dostupnosti:</strong> na každý zapnutý a nevyřazený počítač (nezávisle na monitoringu) TCP connect na port <code>135</code>, fallback <code>445</code> — ne ICMP ping (Windows firewall ho v doméně blokuje). Běží jako nový check v každém cyklu; ukládá <code>reachable</code> / <code>last_reachable_at</code> / <code>reach_checked_at</code> (<strong>migrace 032</strong>).</li>
+    <li><strong>Nová samostatná sonda dostupnosti:</strong> na každý zapnutý a nevyřazený počítač (nezávisle na monitoringu) — dostupné, když odpoví cokoli z: TCP <code>135</code>, TCP <code>445</code>, nebo <strong>ICMP ping</strong> fallback (<code>reachability.ping</code>, migrace 036) pro stroje, co blokují RPC/SMB, ale žijí. Ukládá <code>reachable</code> / <code>last_reachable_at</code> / <code>reach_checked_at</code> (<strong>migrace 032</strong>).</li>
     <li><strong>Status teď:</strong> Disabled = AD vypnutý; Active = teď na síti (+ drobná značka „logs ⚠" když běží, ale nejde přečíst event log); Offline = nedostupný.</li>
     <li>Přibyl filtr „offline" (chip + dropdown) a v Nastavení přepínač sondy.</li>
     <li>Sonda běží na vlastním intervalu (<code>reachability.interval_sec</code>, default 300 s, migrace 035), nezávisle na okně hlavního scanu — Status je čerstvý i přes noc/víkend. Nastavitelné v Nastavení → „Dostupnost na síti (Status)".</li>
