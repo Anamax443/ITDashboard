@@ -89,8 +89,9 @@ html, body, #root {
 }
 
 .cards {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
   gap: 10px;
 }
 
@@ -99,6 +100,12 @@ html, body, #root {
   border-radius: 8px;
   padding: 13px;
   border-left: 4px solid var(--border);
+  /* Same height (flex stretch), variable width: cards grow to fill the row but
+     a content-heavy value (e.g. "0/228 PC") widens its own card instead of
+     wrapping and dragging the whole row taller. */
+  flex: 1 1 auto;
+  min-width: 130px;
+  max-width: 240px;
 }
 
 .card.critical { border-left-color: var(--critical); }
@@ -107,7 +114,7 @@ html, body, #root {
 .card.info     { border-left-color: var(--accent); }
 
 .card .label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
-.card .value { font-size: 28px; font-weight: 700; margin-top: 3px; }
+.card .value { font-size: 28px; font-weight: 700; margin-top: 3px; white-space: nowrap; }
 .card.critical .value { color: var(--critical); }
 .card.error    .value { color: var(--error); }
 .card.warning  .value { color: var(--warning); }

@@ -23,7 +23,7 @@ export function HealthCards({ data, onJumpToComputer }: {
 
   return (
     <>
-      <div className="cards" style={{ gridTemplateColumns: 'repeat(12, 1fr)', marginTop: 10 }}>
+      <div className="cards" style={{ marginTop: 10 }}>
         <Card
           label={`🩺 ${t('health.reinstall')}`}
           value={risk.length}

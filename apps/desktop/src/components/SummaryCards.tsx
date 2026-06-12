@@ -73,7 +73,7 @@ export function SummaryCards({
       ? `${mss.downServices} ${t('cards.svcMonitorDown')}${serviceAlertsEnabled ? '' : ` · ${t('cards.diskMonitorOff')}`}`
       : `${mss.monitoredPcs} ${t('cards.diskMonitorWatched')}${serviceAlertsEnabled ? '' : ` · ${t('cards.diskMonitorOff')}`}`;
   return (
-    <div className="cards" style={{ gridTemplateColumns: 'repeat(12, 1fr)' }}>
+    <div className="cards">
       <Card label={`${t('cards.critical')} (${windowLabel})`} value={summary?.critical_24h ?? '—'} kind="critical"
         onClick={summary && summary.critical_24h > 0 ? onClickCritical : undefined} />
       <Card label={`${t('cards.errors')} (${windowLabel})`} value={summary?.error_24h ?? '—'} kind="error"
