@@ -647,8 +647,12 @@ export const api = {
     return body as { ok: true; recipients: number; down: number; monitoredPcs: number };
   },
   reportOverview: () => jget<OverviewReport>('/reports/overview'),
-  sendReportEmail: async () => {
-    const r = await fetch(`${API_BASE}/reports/email`, { method: 'POST' });
+  sendReportEmail: async (machines?: string[]) => {
+    const r = await fetch(`${API_BASE}/reports/email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(machines && machines.length ? { machines } : {}),
+    });
     const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; total?: number; offline?: number };
     if (!r.ok || body.ok === false) throw new Error(body.error || `POST /reports/email → ${r.status}`);
     return body as { ok: true; recipients: number; total: number; offline: number };

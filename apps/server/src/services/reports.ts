@@ -138,10 +138,9 @@ export function renderOverviewReport(rep: OverviewReport, dashboardUrl: string):
     lines.push(`  ${m.name}  ·  ${m.ip ?? '—'}  ·  ${m.kind === 'server' ? 'server' : 'PC'}  ·  offline ${fmtSince(m.lastReachableAt)}`);
   }
   lines.push('');
-  const servers = rep.machines.filter((m) => m.kind === 'server');
-  lines.push(`SERVERY (${servers.length}):`);
-  for (const m of servers) {
-    lines.push(`  ${m.name}  ·  ${m.ip ?? '—'}  ·  ${m.status}  ·  ${m.os ?? '—'}`);
+  lines.push(`STROJE (${rep.machines.length}):`);
+  for (const m of rep.machines) {
+    lines.push(`  ${m.name}  ·  ${m.ip ?? '—'}  ·  ${m.kind === 'server' ? 'server' : 'PC'}  ·  ${m.status}  ·  ${m.os ?? '—'}`);
   }
   const text = lines.join('\n');
 
@@ -156,9 +155,10 @@ export function renderOverviewReport(rep: OverviewReport, dashboardUrl: string):
     ? row(['<span style="color:#10b981">žádné offline stroje</span>', '', '', ''])
     : rep.offline.map((m) => row([escHtml(m.name), escHtml(m.ip ?? '—'), m.kind === 'server' ? 'server' : 'PC', `offline ${fmtSince(m.lastReachableAt)}`])).join('');
 
-  const serverRows = servers.map((m) => row([
+  const machineRows = rep.machines.map((m) => row([
     escHtml(m.name),
     escHtml(m.ip ?? '—'),
+    m.kind === 'server' ? 'server' : 'PC',
     `<span style="color:${m.status === 'offline' ? '#ef4444' : '#10b981'};font-weight:600">${m.status}</span>`,
     escHtml(m.os ?? '—'),
   ])).join('');
@@ -180,8 +180,8 @@ export function renderOverviewReport(rep: OverviewReport, dashboardUrl: string):
         <h3 style="font-size:13px;color:#111827;margin:14px 0 6px">Offline stroje (${rep.offline.length})</h3>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${row(['Stroj', 'IP', 'Typ', 'Offline'], true)}${offlineRows}</table>
 
-        <h3 style="font-size:13px;color:#111827;margin:18px 0 6px">Servery (${servers.length})</h3>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${row(['Stroj', 'IP', 'Stav', 'OS'], true)}${serverRows}</table>
+        <h3 style="font-size:13px;color:#111827;margin:18px 0 6px">Stroje (${rep.machines.length})</h3>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${row(['Stroj', 'IP', 'Typ', 'Stav', 'OS'], true)}${machineRows}</table>
 
         ${cta}
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid #eef0f2;font-size:12px;color:#9ca3af">
@@ -195,11 +195,37 @@ export function renderOverviewReport(rep: OverviewReport, dashboardUrl: string):
   return { subject, text, html };
 }
 
+// Narrow a report to a chosen set of machine names (from the Reporting tab's
+// checkboxes), recomputing totals so the email reflects exactly the selection.
+function filterReportToSelection(rep: OverviewReport, names: string[]): OverviewReport {
+  const wanted = new Set(names);
+  const machines = rep.machines.filter((m) => wanted.has(m.name));
+  const offline = machines.filter((m) => m.status === 'offline');
+  return {
+    generatedAt: rep.generatedAt,
+    totals: {
+      total: machines.length,
+      servers: machines.filter((m) => m.kind === 'server').length,
+      pcs: machines.filter((m) => m.kind === 'pc').length,
+      active: machines.filter((m) => m.status === 'active').length,
+      offline: offline.length,
+      disabled: 0,
+      monitored: machines.filter((m) => m.monitored).length,
+      failing: machines.filter((m) => m.consecutiveFailures > 0).length,
+    },
+    machines,
+    offline,
+  };
+}
+
 // On-demand send from the Reporting tab. Uses the reports recipient list,
-// falling back to the shared alerts.recipients when empty.
-export async function sendOverviewReportEmail(): Promise<{ recipients: number; total: number; offline: number }> {
+// falling back to the shared alerts.recipients when empty. When machineNames is
+// given, only those machines are included (the operator's checkbox selection).
+export async function sendOverviewReportEmail(machineNames?: string[]): Promise<{ recipients: number; total: number; offline: number }> {
   const settings = await getAllSettings();
-  const rep = await buildOverviewReport();
+  let rep = await buildOverviewReport();
+  if (machineNames && machineNames.length > 0) rep = filterReportToSelection(rep, machineNames);
+  if (rep.machines.length === 0) throw new Error('No machines selected for the report');
   const recipients = await sendMail(settings, renderOverviewReport(rep, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.reports.recipients');
   logActivity('info', 'reports', `Overview report email sent to ${recipients} recipient(s) — ${rep.totals.total} machine(s), ${rep.totals.offline} offline`);
   return { recipients, total: rep.totals.total, offline: rep.totals.offline };
