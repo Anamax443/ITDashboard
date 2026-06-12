@@ -416,11 +416,12 @@ async function loadDownServices(
     WHERE c.enabled = 1 AND c.${opts.gate} = 1
       AND sp.state <> 'Running' AND sp.per_user_start = 0
       ${opts.critical ? '' : `
-      -- Broad level: trigger-/delayed-start services that stopped gracefully
-      -- (exit 0) are on-demand and legitimately idle — same noise the Services
-      -- tab hides by default. Crashes (exit <> 0) still alert even for those.
-      AND NOT ((sp.trigger_start = 1 OR sp.delayed_start = 1)
-               AND (sp.exit_code = 0 OR sp.exit_code IS NULL))`}
+      -- Broad level mirrors the Services tab's default view ("⚠ Only ExitCode
+      -- <> 0"): alert only on real failures (non-zero exit). Graceful stops
+      -- (exit 0/NULL) — on-demand trigger/delayed services and benign Auto
+      -- drift like ShellHWDetection — are NOT alerted; they stay visible in the
+      -- Services tab when the operator clears that default filter.
+      AND sp.exit_code <> 0`}
     ORDER BY c.name, sp.service_name
   `);
 
