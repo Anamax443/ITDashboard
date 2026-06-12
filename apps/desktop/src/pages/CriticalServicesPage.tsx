@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { CriticalServiceStatus } from '../api.js';
-import { api, timeAgo } from '../api.js';
+import { api, timeAgo, serviceMatchesExceptions } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
@@ -8,6 +8,9 @@ import { useI18n } from '../i18n.js';
 
 const isRunning = (s: CriticalServiceStatus) => s.state === 'Running';
 const isStale = (s: CriticalServiceStatus) => s.reachable === false;
+// Per-PC exception: this critical service is deliberately ignored on this PC
+// (e.g. NTDS/Kdc on a demoted DC) — not a problem, not counted as "down".
+const isExcepted = (s: CriticalServiceStatus) => serviceMatchesExceptions(s.service_name, s.display_name, s.exceptions);
 
 export function CriticalServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: string) => void } = {}) {
   const { t } = useI18n();
@@ -26,12 +29,12 @@ export function CriticalServicesPage({ onJumpToComputer }: { onJumpToComputer?: 
 
   const machines = new Set(items.map((i) => i.computer_id)).size;
   const services = new Set(items.map((i) => i.service_name)).size;
-  const down = items.filter((i) => !isRunning(i));
+  const down = items.filter((i) => !isRunning(i) && !isExcepted(i));
   const downLive = down.filter((i) => !isStale(i));
   const staleCount = items.filter(isStale).length;
 
   const filtered = items.filter((s) => {
-    if (onlyDown && isRunning(s)) return false;
+    if (onlyDown && (isRunning(s) || isExcepted(s))) return false;
     if (search) {
       const q = search.toLowerCase();
       return s.service_name.toLowerCase().includes(q)
@@ -43,7 +46,9 @@ export function CriticalServicesPage({ onJumpToComputer }: { onJumpToComputer?: 
   });
   // Down-first, then by the active sort.
   const base = useSortedItems(filtered, sort);
-  const sorted = [...base].sort((a, b) => Number(isRunning(a)) - Number(isRunning(b)));
+  // Real problems first; running and excepted (deliberately ignored) sink down.
+  const ok = (s: CriticalServiceStatus) => isRunning(s) || isExcepted(s);
+  const sorted = [...base].sort((a, b) => Number(ok(a)) - Number(ok(b)));
 
   const exportColumns: ExportColumn<CriticalServiceStatus>[] = [
     { key: 'service_name', label: 'Service', get: (r) => r.service_name },
@@ -109,9 +114,15 @@ export function CriticalServicesPage({ onJumpToComputer }: { onJumpToComputer?: 
                   </td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11, fontFamily: 'Consolas, monospace' }}>{s.ip_address ?? '—'}</td>
                   <td>
-                    <span style={{ color: isRunning(s) ? 'var(--ok)' : 'var(--critical)', fontSize: 11, fontWeight: 700 }}>
-                      {isRunning(s) ? '● ' : '○ '}{s.state}
-                    </span>
+                    {!isRunning(s) && isExcepted(s) ? (
+                      <span style={{ color: 'var(--text-dim)', fontSize: 11 }} title={t('critsvc.exceptedTip')}>
+                        ○ {s.state} · {t('critsvc.excepted')}
+                      </span>
+                    ) : (
+                      <span style={{ color: isRunning(s) ? 'var(--ok)' : 'var(--critical)', fontSize: 11, fontWeight: 700 }}>
+                        {isRunning(s) ? '● ' : '○ '}{s.state}
+                      </span>
+                    )}
                   </td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{s.start_mode ?? '—'}</td>
                   <td style={{ color: isStale(s) ? 'var(--warning)' : 'var(--text-dim)', fontSize: 11 }} title={isStale(s) ? t('critsvc.staleTip') : ''}>

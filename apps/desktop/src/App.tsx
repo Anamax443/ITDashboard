@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
 import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus } from './api.js';
-import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices } from './api.js';
+import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { HealthCards } from './components/HealthCards.js';
 import { EventsTable } from './components/EventsTable.js';
@@ -110,9 +110,12 @@ export function App() {
   const monitoredServiceSummary = summarizeMonitoredServices(serviceProblems, computers, settingsMap);
   const serviceAlertsEnabled = ['1', 'true', 'yes', 'on'].includes((settingsMap['alerts.services.enabled'] ?? '').toLowerCase());
   // Critical-service summary for the dashboard tile: "down" = not Running on a
-  // machine that is currently reachable (offline machines hold a stale state).
+  // machine that is currently reachable (offline machines hold a stale state),
+  // excluding services in that PC's per-PC exception list (deliberately ignored).
   const critTotal = criticalServices.length;
-  const critDown = criticalServices.filter((c) => c.state !== 'Running' && c.reachable !== false).length;
+  const critDown = criticalServices.filter((c) =>
+    c.state !== 'Running' && c.reachable !== false
+    && !serviceMatchesExceptions(c.service_name, c.display_name, c.exceptions)).length;
 
   const refreshComputers = useCallback(async () => {
     try {

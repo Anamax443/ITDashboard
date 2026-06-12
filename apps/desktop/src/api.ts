@@ -105,6 +105,8 @@ export interface CriticalServiceStatus {
   state: string;
   start_mode: string | null;
   collected_at: string;
+  /** Per-PC critical-service ignore list (comma/newline, * ? wildcards). */
+  exceptions?: string | null;
 }
 
 export interface ServiceAggregate {
@@ -294,6 +296,19 @@ export function isServiceWhitelisted(
   if (whitelist.length === 0) return false;
   const dn = displayName ?? '';
   return whitelist.some((re) => re.test(name) || (dn !== '' && re.test(dn)));
+}
+
+/**
+ * Does a service match a per-PC ignore list (raw comma/newline string with
+ * * ? wildcards)? Same matching as the whitelist, used for per-PC critical /
+ * broad service exceptions.
+ */
+export function serviceMatchesExceptions(
+  name: string,
+  displayName: string | null | undefined,
+  rawExceptions: string | null | undefined,
+): boolean {
+  return isServiceWhitelisted(name, displayName, svcNameList(rawExceptions ?? ''));
 }
 
 // ── Operating-system breakdown ──────────────────────────────────────────────
