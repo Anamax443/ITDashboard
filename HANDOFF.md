@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-12 (whitelist view filter + OS breakdown chart + reachability probe + faulty-PC detection)
+Last updated: 2026-06-12 (whitelist view filter + OS tile + reachability probe + faulty-PC detection + critical-service status + eventlog %1 fix)
 
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in
@@ -243,6 +243,91 @@ eventů)" exposes window / cap / watch / risk; weights stay DB-tunable. CS+EN.
 Tuning note: 400/600 are live-tuned but still coarse — watch the panel for a week
 and nudge `faulty.threshold_*` (and the weights) so the "risk" tile holds the
 genuinely-sick boxes.
+
+### Critical-service status — real state in ANY state (commit `7ac0962`, migration 037)
+
+Operator: the configured critical services (`alerts.services.critical_names` —
+NTDS, DNS, Kdc, Netlogon, W32Time, VMTools, Veeam*, ekrn, DHCPServer,
+LanmanServer) were **invisible when Running** — the services collector only
+stored Auto + non-Running "problems", and `critical_names` was used only in the
+email-alert eval. So you couldn't confirm the critical services *actually run*.
+
+- **Collection**: `fetchServices()` (was `fetchProblems`) now does ONE
+  `Get-CimInstance Win32_Service` enumeration per PC in the same DCOM session and
+  derives two outputs: the Auto+non-Running problems (unchanged registry
+  TriggerInfo / DelayedAutoStart logic → `service_problems`) AND the configured
+  critical services matched by name/display `-like` against the patterns, **in any
+  state** → `replaceCritical()` → new table **`critical_service_status`**
+  (computer_id, service_name, display_name, state, start_mode, collected_at; PK
+  computer_id+service_name). Only services that EXIST on a box are stored
+  (DC-only services land only on DCs → servers vs PCs sorts itself out). Offline
+  boxes aren't rescanned, so rows persist as last-known (UI flags stale).
+  `refresh-single-pc` also populates it.
+- **Endpoint** `GET /services/critical` joins `computers` (reachable / ip_address
+  / os_version). Client: `CriticalServiceStatus` + `api.criticalServices()`, a new
+  **"Kritické služby" tab** (`CriticalServicesPage`, sortable service×machine table:
+  Running green / Stopped red, start mode, IP, last check; offline=amber/stale;
+  only-not-running filter + search + export; click computer → Computers), and a
+  **dashboard tile** "🛡 Kritické služby" (`SummaryCards` props
+  `criticalServicesDown`/`criticalServicesTotal`/`onClickCriticalServices`, red when
+  any down) → opens the tab.
+- **Verified live**: 438 instances / 9 services / 105 machines collected. ⚠️
+  **DCs are still blank** — `B-S-W-DC-01/02/03` fail the services CIM scan with
+  `New-CimSession : Access is denied`, so their NTDS/Kdc/DNS never get rows. The
+  service account needs **WMI/DCOM rights on the DCs** (same gap as disk/services
+  scans on hardened servers) — infrastructure, not code. The NTDS/Kdc/DHCPServer
+  shown "Stopped+Disabled" are on `DOMENA01` (a demoted/retired DC → legitimate).
+- Note: `Dnscache` was NOT in the live `critical_names` at the time (seed list
+  lacks it) — add it in Settings to track the DNS Client everywhere.
+
+### Eventlog collector — one bad event no longer drops the PC batch (commit `e6d5851`)
+
+`Get-WinEvent` throws "The description string for parameter reference (%1) could
+not be found" for events whose provider message template is missing; under
+`-ErrorAction Stop` that aborted the **whole** batch, so **NO events** were
+collected from ~16 PCs. Now `Get-WinEvent` uses `-ErrorAction SilentlyContinue
+-ErrorVariable gwErr`, the per-event `.Message` render is wrapped in try/catch
+with a raw `$_.Properties` fallback (`[unrendered] …`), and an empty result is
+only reported as a failure when `$gwErr` holds a real connection/access error
+(not "no events" or %1 noise). **Live: failures dropped 20 → 1, +16 PCs now
+collect** (and feed the problem-PC scoring, which previously saw them as 0).
+
+### OS breakdown is now an expandable tile (commit `1767c39`)
+
+`OsBreakdownChart` changed from an always-visible full-width panel to a
+second-row tile **"📊 Operační systémy"** (count of OS buckets) that toggles the
+bar chart inline on click — mirroring the problem-PCs tile. Segment drill-through
+to Computers unchanged.
+
+### Reachability — per-PC log, manual run, ping fallback (commits `03a9ad5`, `392bd6d`, `903ae07`)
+
+- **Per-PC logging** (`03a9ad5`): the activity log now logs each PC that **flips**
+  reachable with its **name + IP** ("PESEKJW11N (10.8.2.140) → Offline", warn down
+  / success up); first-time classification is silent; the summary line logs only
+  when the count changed (no more repeated identical heartbeat).
+- **Manual run** (`392bd6d`): Settings → "Dostupnost na síti (Status)" has a
+  **"Spustit teď"** button → `POST /reachability/run` (`runReachabilityProbeOnce`),
+  with result feedback.
+- **ICMP ping fallback** (`903ae07`, migration 036): a PC counts as reachable if
+  **any** of TCP 135 / TCP 445 / ICMP ping (`ping.exe -n 1`, accepted only on
+  `TTL=`) answers — catches hosts that block RPC/SMB but live. Toggle
+  `reachability.ping` (default on) + Settings checkbox.
+
+### Misc (commit `563a147`)
+
+TXT (Tab) export now prepends a UTF-8 BOM (CSV already did) so `→ / ✓ / —` don't
+render as `â` mojibake in an ANSI-default editor.
+
+## Still open (next thread)
+
+- **DC/server CIM perms** — grant `svc-itdashboard` WMI/DCOM rights on the DCs and
+  the "Access is denied" servers so disk / services / **critical services** can be
+  collected there. This is the blocker for seeing the real AD critical services.
+- **B) Reporting** — PC vs server split (derive from `os_version` "Server"),
+  include offline machines and the phase-2 port checks in a structured report.
+- **C) Per-agenda email recipients** — today all alerts share `alerts.recipients`;
+  add `alerts.disk.recipients` / `alerts.services.recipients` / `alerts.ports.recipients`
+  with fallback to the shared list, so different agendas go to different people.
 
 ## Config externalization (2026-06-11)
 

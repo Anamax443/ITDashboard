@@ -19,11 +19,12 @@
 - `contextIsolation: true`, `nodeIntegration: false` — renderer has no direct Node.js access.
 - Scripts don't execute locally — client calls `POST /scripts/:slug/run` and API spawns them on the server.
 
-6 navigation tabs:
-- **Dashboard** — collector status, summary cards (clickable drill-down), health cards (reinstall risk/watch tiles), timeline chart, top noisy PCs chart, top event IDs, computers summary
+7 navigation tabs:
+- **Dashboard** — collector status, summary cards (clickable drill-down, incl. a "Critical services" tile → opens the Critical Services tab), health cards (reinstall risk/watch tiles), an expandable "📊 Operating systems" OS-breakdown tile, timeline chart, top noisy PCs chart, top event IDs, computers summary
 - **Events** — full-width events table with search + filters (Computer, Source, Level, Time range)
 - **Computers** — inventory with status chips, monitor checkboxes, bulk all/none, AD sync, disk scan, sync history. The 📧 Disk / 🔔 Services / Exclude column headers each carry a "✓ all / ✗ none" control that sets that flag for all currently visible (filtered) rows in one shot, via `POST /computers/bulk-flag { ids, flag, value }` (server whitelists the `flag` column name).
 - **Services** — Auto + non-Running detection with policy/drift, by-PC + by-service views, GPO PS script export
+- **Critical Services** — sortable service×machine table of the configured critical services in their real state (Running/Stopped colour, offline machine = stale amber, "only not-running" filter); confirms the critical services actually run, not just flags stopped ones
 - **Perf** — Diagnostics-Performance channel: summary cards, top culprits, most-affected PCs, recent slow boot/shutdown/standby/resume events
 - **Activity** — terminal-style live log (filter, pause, copy)
 - **Settings** — periodic check frequency + enabled checks + disk thresholds (applied live, no restart)
@@ -36,6 +37,8 @@
   - `events` — list, summary, top-ids, timeline, top-computers, pc-health (reinstall-candidate scoring)
   - `computers` — list, sync, sync/last, sync/history, :id/monitor (PATCH), monitor/bulk (POST)
   - `collector` — status, run, stop
+  - `services` — problems list, critical (`GET /services/critical` — real state of configured critical services, joined to `computers`)
+  - `reachability` — `POST /reachability/run` (manual probe trigger, backs Settings "Run now")
   - `disks` — list, collect
   - `activity` — log
   - `settings` — get all, put bulk
@@ -46,7 +49,7 @@
   - **Reachability probe** — a standalone timer (independent of the checks window); marks every enabled, non-excluded PC reachable if any of TCP 135 / TCP 445 / ICMP ping answers, recording live network presence in `computers.reachable` independently of the data collectors. See **### Live network reachability probe drives the Status column**.
   - **Eventlog collector** — pulls Warning/Error/Critical events
   - **Disk + PC-info collector** — pulls Win32_LogicalDisk, Win32_ComputerSystem (current logged-in user), Win32_NetworkAdapterConfiguration (primary IPv4) via a single DCOM session. PC info populates `computers.current_user`, `current_user_seen_at`, `ip_address`, `pc_info_collected_at`. User is only overwritten when non-null (last-seen persists); IP is always overwritten.
-  - **Services collector** — checks Auto + non-running Windows services and drift policy
+  - **Services collector** — one `Get-CimInstance Win32_Service` enumeration per PC derives two outputs: Auto + non-running services (drift policy) and the configured critical services in any state (see **### Critical-service status collection**)
   - **Perf-events collector** — pulls slow boot/shutdown/standby/resume records from the `Microsoft-Windows-Diagnostics-Performance/Operational` channel; parses EventData XML for TotalTime / DegradationTime / culprit
   - **Retention purge** — `sp_purge_old_events @retention_days = 90` daily
 
@@ -58,6 +61,7 @@ Tables:
 - `disks` — per-drive snapshot (replaces row on each scan)
 - `perf_events` — slow boot/shutdown/standby/resume records with parsed culprit + total/degradation timings; dedupe on `(computer_id, time_created, event_id)`
 - `service_problems`, `service_policy` — services collector state + drift rules
+- `critical_service_status` — real state (any state, not just stopped) of the configured critical services per machine; `(computer_id, service_name)` PK, columns `service_name`, `display_name`, `state`, `start_mode`, `collected_at`. Populated from the same single Win32_Service enumeration as `service_problems`; consumed by `GET /services/critical`
 - `service_alert_state` — per-(PC, service) flapping-debounce state for critical-service email alerts (`first_down_at`); row cleared on service recovery
 - `port_check_state` — per-(PC, port) state for service port reachability checks: baseline `last_ok_at` (a port becomes alert-eligible only once it has answered) + flapping-debounce state; row cleared on port recovery
 - `settings` — key-value, edited via Settings tab
@@ -102,6 +106,19 @@ After fail-fast TCP probe, classify any PS failure by error message:
 - Otherwise → **unknown**
 
 Persisted in `computers.last_status`. UI shows breakdown in Dashboard Unreachable card subtitle + Status column in Computers tab.
+
+### Eventlog collector resilience to provider-template errors
+
+`Get-WinEvent` raises a `"%1 could not be found"` formatting error when an event references a provider whose message template is missing on the collecting host. Under `-ErrorAction Stop` that single bad event **aborted the whole PC batch**, so a run could collect **zero** events from ~16 PCs. The collector now:
+- runs `Get-WinEvent` with `-ErrorAction SilentlyContinue -ErrorVariable` (a per-event template failure no longer terminates the pipeline),
+- wraps the per-event `.Message` render in try/catch with a raw `$_.Properties` fallback, so an unformattable event still yields a usable row, and
+- treats an **empty result as a failure only when `$gwErr` holds a real connection/access error** — "no events" and the `%1` template noise are not failures.
+
+Effect: collector failures dropped from 20 → 1.
+
+### Reachability probe — per-PC state-change logging + manual run
+
+The reachability probe (see **### Live network reachability probe drives the Status column**) logs each PC that **flips** `reachable` with its name + IP (commit `03a9ad5`): warn on down, success on up. The first-ever observation is silent (no flip to report), and the run-summary line is emitted only when the reachable count actually changes — so a steady fleet produces no log churn. A manual run endpoint `POST /reachability/run` (commit `392bd6d`) is wired to a Settings **"Run now"** button so the operator can force an immediate probe outside the standalone timer.
 
 ### Operator monitor flag persists across AD sync
 `computers.monitor_enabled` is the operator's intent. AD sync explicitly does **not** touch this column on UPDATE — it only updates `fqdn`, `os_version`, `last_seen`, `enabled` (AD presence). When a PC is removed from AD it gets soft-disabled (`enabled = 0`) but its events stay. If it reappears, `enabled = 1` again and the original `monitor_enabled` state persists.
@@ -242,6 +259,22 @@ Checking the service's `Running` state only proves the service-control manager *
 
 **Implementation.** `evaluateAndSendPortAlerts` in `apps/server/src/services/alerts.ts` does the TCP probe, baseline learning, debounce / maintenance-window / throttle, and renders its own mobile-friendly report; it is hooked right after `evaluateAndSendServiceAlerts` in `runServicesScanOnce`. Route `POST /alerts/ports/test` runs a live probe (ignoring enable/throttle) to back the Settings test button.
 
+### Critical-service status collection
+
+Until this feature (2026-06-12, commit `7ac0962`, migration `037`) the services collector only ever *saw* problems: `fetchServices()` fetched `StartMode='Auto' AND State<>'Running'` and stored those in `service_problems`. A critical service that was **running** was therefore invisible to the tool — `alerts.services.critical_names` existed only inside the email-alert evaluator, so there was no way to confirm a configured critical service was actually *up*. The goal here is the inverse of problem-detection: **confirm the configured critical services actually RUN**, not just flag the stopped ones.
+
+**One enumeration, two outputs.** `fetchServices()` (`apps/server/src/services/services-collector.ts`) now runs a single `Get-CimInstance Win32_Service` enumeration per PC in the **same DCOM session** and derives two outputs from it:
+- the **Auto + non-`Running` problems** (unchanged — same registry TriggerInfo / DelayedAutoStart logic feeds `service_problems`), and
+- the **configured critical services** matched by `name`/`displayName` `-like` against the `alerts.services.critical_names` patterns, **in any state**.
+
+`replaceCritical()` stores the second set in the new `critical_service_status` table (`computer_id`, `service_name`, `display_name`, `state`, `start_mode`, `collected_at`; PK `(computer_id, service_name)`).
+
+**Only services that exist on a machine are stored.** A DC-only service like `NTDS` lands rows only on the DCs that actually run it, so "servers vs PCs" sorts itself out by presence — no separate role mapping needed. Offline machines are **not** rescanned, so their rows **persist as last-known (stale)** rather than vanishing. `refresh-single-pc` also populates the table, so a manual refresh updates one machine's critical-service rows.
+
+**Endpoint + client.** `GET /services/critical` joins `computers` (`reachable` / `ip_address` / `os_version`). The client adds a `CriticalServiceStatus` type + `api.criticalServices()`, a new **Critical Services** tab (sortable service×machine table; Running/Stopped colour; an offline machine renders its last-known state as **stale amber**; "only not-running" filter), and a Dashboard tile — `SummaryCards` gains props `criticalServicesDown` / `criticalServicesTotal` / `onClickCriticalServices` that open the tab.
+
+**Design caveat.** A host whose CIM scan fails (`New-CimSession: Access is denied` on hardened DCs/servers) yields **no rows** until the service account is granted WMI/DCOM rights there — the table reflects only machines the collector can actually enumerate, so an absent service×machine cell can mean "not present" *or* "couldn't scan that box". This is the usual **Observer, not executor** ambiguity: absence of signal is not proof of absence.
+
 ### Live network reachability probe drives the Status column
 
 Until this feature (2026-06-12, commit `a12ad36`) the Computers "Status" column was a **by-product of the event-log collector** rather than a measure of network presence. That coupling produced three wrong answers: the collector only ran on `enabled && monitor_enabled && !excluded` PCs (so anything unmonitored had no fresh status); failures were classified crudely from the PS error text (`offline` / `rpc_unavailable` / `access_denied` / `unknown`), so a perfectly reachable box whose event log simply couldn't be read showed **"Unknown"**; and — worst — once a PC passed the failure cap (`consecutive_failures >= MAX_FAILURES_BEFORE_SKIP`, at which point `listTargets` skips it) its status **froze**, so an AD-enabled box that was never successfully classified kept showing a green "Active" fallback forever. No live presence signal existed; there was no ICMP ping anywhere.
@@ -267,7 +300,7 @@ Sorting is locale-aware with numeric chunking, so IPs order naturally (`10.8.2.9
 
 ### Dashboard OS breakdown chart (live/stale split + drill-down)
 
-A homepage panel (`apps/desktop/src/components/OsBreakdownChart.tsx`, rendered after `SummaryCards` in `apps/desktop/src/App.tsx`) shows the fleet's OS distribution as one horizontal bar per OS bucket. It is **pure client-side aggregation over the already-loaded `computers` array** — no new endpoint, no DB column. Scope is the **live managed fleet**: `enabled && !excluded`.
+A homepage **second-row tile** (`apps/desktop/src/components/OsBreakdownChart.tsx`, rendered after `SummaryCards` in `apps/desktop/src/App.tsx`) shows the fleet's OS distribution as one horizontal bar per OS bucket. The tile ("📊 Operating systems", count of buckets) **toggles the bar chart inline on click** (local `open` state, mirroring `HealthCards`) — it is no longer an always-visible full-width panel. It is **pure client-side aggregation over the already-loaded `computers` array** — no new endpoint, no DB column. Scope is the **live managed fleet**: `enabled && !excluded`.
 
 **Normalizing the free-text OS column.** AD gives us a single free-text `os_version` string (the AD `OperatingSystem` attribute), which we never want to chart raw — too many near-duplicate spellings. `osBucket(os_version)` in `apps/desktop/src/api.ts` collapses it into a small canonical set: `Windows 11/10/8.1/8/7`, `Windows Server <year>[ R2]`, `Windows Vista`/`Windows XP`, a generic `Windows Server` fallback, `Other` for anything else, and `Unknown` for null/blank. `summarizeOs(computers, thresholdDays)` walks the scoped fleet and returns per-bucket `{ total, stale, live }`, sorted by size.
 
@@ -293,6 +326,10 @@ Final `score = weighted + signatures·@wb + active_days·@wp` where `@wb` is `fa
 **Migration `033_faulty_pc.sql`** seeds the settings: `faulty.window_days` (14), `faulty.signature_cap` (20), `faulty.weight_critical` (10) / `weight_error` (3) / `weight_warning` (1), `faulty.weight_breadth` (5), `faulty.weight_persistence` (3), `faulty.threshold_watch` (60), `faulty.threshold_risk` (150). **Migration `034_faulty_thresholds.sql`** then recalibrates the two thresholds to `watch=400` / `risk=600` (guarded to the 60/150 seed) — live data showed active Win11 boxes carry a high event baseline, so 60/150 flagged ~42% of the fleet; 400/600 keeps `risk` to the worst ~10.
 
 This stays on the right side of **Observer, not executor**: it ranks boxes for the operator's attention and drills into the inventory, it does not touch the target.
+
+### Export encoding — UTF-8 BOM on all text formats
+
+`ExportMenu` now prepends a **UTF-8 BOM** to its TXT/TSV output (commit `563a147`); CSV already carried one. Without the BOM, Excel and Notepad open the file in the legacy console codepage (Windows-1250 in this deployment) and mangle Czech diacritics — the same root cause the **### UTF-8 PowerShell output** decision addresses on the collector side, now closed on the download side too.
 
 ### Activity log is two-tier
 Live view: ring buffer of 500 entries, polled by dashboard every 2s. Lost on service restart. Persistent history: every `logActivity()` call is also fire-and-forget INSERT into `activity_log` table (`apps/server/src/services/activity-log.ts`). DB writes are intentionally not awaited so collector cadence isn't tied to DB latency; if persistence fails the live view is unaffected. The Activity tab has a Live/History mode toggle — History queries `activity_log` with filters (time range, level, source, message search) and supports pagination. Retention via `activity.retention_days` setting (default 30) and `sp_purge_old_activity` stored procedure.
@@ -391,5 +428,6 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 034_faulty_thresholds | recalibrate faulty.threshold_watch → 400, faulty.threshold_risk → 600 (guarded to the 60/150 seed; live-tuned so "risk" is the worst ~10, not ~42% of the fleet) |
 | 035_reachability_interval | reachability.interval_sec (300) seed — the reachability/Status probe now runs on its own standalone timer, independent of the periodic-checks window |
 | 036_reachability_ping | reachability.ping (1) seed — ICMP ping fallback so a host that blocks TCP 135/445 but answers ping still counts as reachable |
+| 037_critical_service_status | critical_service_status table (computer_id + service_name PK; service_name, display_name, state, start_mode, collected_at) — the real state of the configured critical services in **any** state, consumed by `GET /services/critical` |
 
 > `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).

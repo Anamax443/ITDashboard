@@ -94,8 +94,31 @@
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>.</p>
 
   <h2>Poslední změny (2026-06-12)</h2>
-  <p class="sub" style="margin:0 0 .75rem">Většinou klientské změny; zásahy do serveru a DB — <strong>migrace 032</strong> (sonda dostupnosti) a <strong>migrace 033</strong> (prahy/váhy skórování zdraví PC).</p>
-  <p style="margin:0 0 4px"><strong>Whitelist služeb jako globální filtr pohledu</strong> <span class="pill">848af42</span></p>
+  <p class="sub" style="margin:0 0 .75rem">Většinou klientské změny; zásahy do serveru a DB — <strong>migrace 032</strong> (sonda dostupnosti), <strong>migrace 033</strong> (prahy/váhy skórování zdraví PC) a <strong>migrace 037</strong> (stav kritických služeb).</p>
+  <p style="margin:0 0 4px"><strong>Kritické služby — reálný stav v jakémkoli stavu</strong> <span class="pill">7ac0962</span> <span class="pill">migrace 037</span></p>
+  <ul>
+    <li>Kolektor dřív ukládal jen <strong>zastavené</strong> Auto služby → běžící kritická služba byla neviditelná.</li>
+    <li>Teď sbírá nakonfigurované kritické služby (<code>NTDS</code>, <code>DNS</code>, <code>Kdc</code>, <code>Veeam</code>…) na všech strojích, kde existují, <strong>v jakémkoli stavu</strong> (jedno enumerování ve stejné CIM session). Nová tabulka <code>critical_service_status</code>.</li>
+    <li>Nová záložka <strong>„Kritické služby"</strong> — matice služba × stroj (Running/Stopped, offline stroje s posledním stavem, filtr/hledání/export) + dashboard dlaždice „🛡 Kritické služby" → proklik.</li>
+    <li>Endpoint <code>GET /services/critical</code>. Pozn.: zamčené DC/servery bez WMI/DCOM práv účtu nemají data.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>OS rozpad jako rozbalovací dlaždice</strong> <span class="pill">1767c39</span></p>
+  <ul>
+    <li>OS graf byl natrvalo zobrazený panel, teď je dlaždice „📊 Operační systémy", co se na klik rozbalí (jako „PC v problémech").</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Sběr eventů odolnější vůči „%1"</strong> <span class="pill">e6d5851</span></p>
+  <ul>
+    <li>Jeden event bez popisu (Get-WinEvent „%1 could not be found") už neshodí celou dávku z PC; dřív kvůli tomu ~16 PC nesbíralo žádné eventy (fail 20→1).</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Reachability — per-PC log + ruční spuštění</strong> <span class="pill">03a9ad5</span> <span class="pill">392bd6d</span></p>
+  <ul>
+    <li>Activity log loguje každý stroj, co se překlopí Active↔Offline, s názvem a IP; v Nastavení tlačítko „Spustit teď".</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Oprava TXT exportu</strong> <span class="pill">563a147</span></p>
+  <ul>
+    <li>TXT export má UTF-8 BOM, takže →/✓/— se v editoru nezobrazí jako „â".</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Whitelist služeb jako globální filtr pohledu</strong> <span class="pill">848af42</span></p>
   <ul>
     <li>Nastavení <code>alerts.services.whitelist</code> (dosud jen potlačovalo <strong>emailové</strong> alerty služeb) nyní funguje i jako globální filtr pohledu — skryje odpovídající služby z dashboardové dlaždice „Zastavené služby" (vždy) a ze záložky Služby přes nový přepínač <strong>„Skrýt whitelistované"</strong> (default ZAPNUTO).</li>
     <li>Přepínač zároveň odečte whitelistované služby z horních počítadel (celkem / crashe / drift / OK / nezařazené) v obou pohledech — By-PC i By-service.</li>

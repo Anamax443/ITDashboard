@@ -114,6 +114,7 @@ a.external { color: var(--accent); }
     <li><a href="#disk-alerts"><span data-lang="cs">Email alerty disků</span><span data-lang="en">Disk email alerts</span></a></li>
     <li><a href="#service-alerts"><span data-lang="cs">Email alerty služeb</span><span data-lang="en">Service email alerts</span></a></li>
     <li><a href="#services">Services collector + policy</a></li>
+    <li><a href="#critical-services"><span data-lang="cs">Kritické služby</span><span data-lang="en">Critical services</span></a></li>
     <li><a href="#perf">Perf events (Diagnostics-Performance)</a></li>
     <li><a href="#ad-sync">AD sync</a></li>
     <li><a href="#scripts">Script runner</a></li>
@@ -337,6 +338,7 @@ service restarts on new dist/, in-memory state cleared</div>
       <li>Disk critical (N PCs / M drives) → Computers tab with disk-critical filter</li>
       <li>Disk warning → Computers tab with disk-warning filter</li>
       <li>Stopped services (PCs affected) → Services tab. Services on the service alert whitelist (Settings → "Email alerts — services") are always excluded here — they do not count toward the PC count or the "N services" subtitle.</li>
+      <li>🛡 Critical services (count not-running on reachable machines, red when &gt; 0) → opens the new Critical services tab</li>
       <li>Slow boot/shutdown (7d, PCs affected) → Perf tab</li>
       <li>Computers (active/total) → Computers tab unfiltered</li>
     </ul>
@@ -345,13 +347,13 @@ service restarts on new dist/, in-memory state cleared</div>
   <li><strong>Top noisy PCs (24h)</strong> — top 10 ranked, breakdown by level via colored progress bar</li>
   <li><strong>Top event IDs (24h)</strong> — top 15 event IDs by count, sortable</li>
   <li><strong>Problem-PCs row</strong> — a second row with a single red "Problem PCs" tile flagging PCs in trouble; clicking it expands an inline breakdown table (see below)</li>
-  <li><strong>Operating systems panel</strong> — horizontal OS breakdown chart over the live fleet, below the cards (see below)</li>
+  <li><strong>Operating systems tile</strong> — a tile that <strong>expands the horizontal OS breakdown chart on click</strong> (like the "Problem PCs" tile), over the live fleet, rather than an always-visible panel (see below)</li>
   <li><strong>Computers list</strong> — quick summary, no filters</li>
 </ul>
 
-<h4><span data-lang="cs">Panel „Operační systémy"</span><span data-lang="en">"Operating systems" panel</span></h4>
+<h4><span data-lang="cs">Dlaždice „Operační systémy"</span><span data-lang="en">"Operating systems" tile</span></h4>
 <div data-lang="en">
-  <p>A panel below the cards on the homepage with <strong>one horizontal bar per OS</strong> over the live managed fleet (enabled, non-excluded computers only). The OS comes from the raw AD field and is normalized into buckets: Windows 11 / 10 / 8.1 / 8 / 7, Windows Server &lt;year&gt;[ R2], Vista / XP, generic Windows Server, else "Other"; empty = "Unknown".</p>
+  <p>This is now a <strong>tile</strong> below the cards on the homepage that <strong>expands a chart with one horizontal bar per OS on click</strong> (the same expand/collapse behaviour as the "Problem PCs" tile), rather than an always-visible panel. The chart covers the live managed fleet (enabled, non-excluded computers only). The OS comes from the raw AD field and is normalized into buckets: Windows 11 / 10 / 8.1 / 8 / 7, Windows Server &lt;year&gt;[ R2], Vista / XP, generic Windows Server, else "Other"; empty = "Unknown".</p>
   <ul>
     <li>Each bar splits into an <strong>active part</strong> and a hatched, dimmed <strong>"stale" part</strong> = machines not seen for a long time (older than the <code>inactive.threshold_days</code> threshold, default 90 days) that are neither excluded nor deactivated — effectively "aspiring" to deactivation.</li>
     <li><strong>Click the active part</strong> → drills into the Computers tab filtered to that OS and live machines only.</li>
@@ -361,7 +363,7 @@ service restarts on new dist/, in-memory state cleared</div>
   </ul>
 </div>
 <div data-lang="cs">
-  <p>Panel pod kartami na úvodní stránce s <strong>jedním vodorovným pruhem na operační systém</strong> přes živou spravovanou flotilu (jen zapnuté a nevyřazené počítače). OS se bere ze surového AD pole a normalizuje do skupin: Windows 11 / 10 / 8.1 / 8 / 7, Windows Server &lt;rok&gt;[ R2], Vista / XP, obecný Windows Server, jinak „Jiné"; prázdné = „Neznámé".</p>
+  <p>Nově je to <strong>dlaždice</strong> pod kartami na úvodní stránce, která <strong>kliknutím rozbalí graf s jedním vodorovným pruhem na operační systém</strong> (stejné chování rozbal/sbal jako dlaždice „PC v problémech"), místo trvale viditelného panelu. Graf pokrývá živou spravovanou flotilu (jen zapnuté a nevyřazené počítače). OS se bere ze surového AD pole a normalizuje do skupin: Windows 11 / 10 / 8.1 / 8 / 7, Windows Server &lt;rok&gt;[ R2], Vista / XP, obecný Windows Server, jinak „Jiné"; prázdné = „Neznámé".</p>
   <ul>
     <li>Každý pruh je rozdělen na <strong>aktivní část</strong> a šrafovanou ztlumenou <strong>„stale" část</strong> = stroje, které se dlouho nepřipojily (déle než práh <code>inactive.threshold_days</code>, výchozí 90 dní) a nejsou vyřazené ani deaktivované — fakticky „aspirují" na deaktivaci.</li>
     <li><strong>Kliknutím na aktivní část</strong> → prokliknete se do záložky Počítače filtrované na daný OS a jen živé stroje.</li>
@@ -441,7 +443,7 @@ service restarts on new dist/, in-memory state cleared</div>
   </ul>
 </div>
 <div class="callout callout-info" data-lang="en">
-<strong>What "Status" means now — reachability probe</strong> — the Status column used to merely reflect whether event-log collection succeeded: it ran only on monitored PCs, bucketed errors crudely, and eventually "froze", so supposedly-unreachable machines could still show <em>Unknown</em> or a green <em>Active</em>. A standalone <strong>reachability probe</strong> now runs: for <strong>every</strong> enabled, non-excluded PC (regardless of monitoring) a PC counts as reachable if <strong>any</strong> of these answers: TCP 135 (RPC), TCP 445 (SMB), or an <strong>ICMP ping fallback</strong> (on by default) — ping catches hosts that block RPC/SMB but are alive. The probe runs on its <strong>own interval</strong> (<code>reachability.interval_sec</code>, default 300 s), <strong>independent</strong> of the main scan and its window, so Status stays fresh 24/7 including overnight and weekends. Toggle + interval live in <strong>Settings → "Network reachability (Status)"</strong>.
+<strong>What "Status" means now — reachability probe</strong> — the Status column used to merely reflect whether event-log collection succeeded: it ran only on monitored PCs, bucketed errors crudely, and eventually "froze", so supposedly-unreachable machines could still show <em>Unknown</em> or a green <em>Active</em>. A standalone <strong>reachability probe</strong> now runs: for <strong>every</strong> enabled, non-excluded PC (regardless of monitoring) a PC counts as reachable if <strong>any</strong> of these answers: TCP 135 (RPC), TCP 445 (SMB), or an <strong>ICMP ping fallback</strong> (on by default) — ping catches hosts that block RPC/SMB but are alive. The probe runs on its <strong>own interval</strong> (<code>reachability.interval_sec</code>, default 300 s), <strong>independent</strong> of the main scan and its window, so Status stays fresh 24/7 including overnight and weekends. Every PC that <strong>flips Active↔Offline</strong> is now written to the <strong>activity log</strong> with its name and IP, so you get a running record of which machines went down or came back. Toggle + interval live in <strong>Settings → "Network reachability (Status)"</strong>, which also has a <strong>"Run now"</strong> button for an on-demand probe (no need to wait for the next interval).
 </div>
 <div data-lang="cs">
   <p>Kompletní inventář s operátorskými ovládacími prvky:</p>
@@ -462,7 +464,7 @@ service restarts on new dist/, in-memory state cleared</div>
   </ul>
 </div>
 <div class="callout callout-info" data-lang="cs">
-<strong>Co teď „Status" znamená — sonda dostupnosti</strong> — sloupec Status dřív jen odrážel, jestli se povedl sběr event-logu: běžel jen na monitorovaných strojích, hrubě škatulkoval chyby a po čase „zamrzl", takže „údajně nedostupné" stroje mohly stále ukazovat <em>Unknown</em> nebo zeleně <em>Active</em>. Nově běží samostatná <strong>sonda dostupnosti</strong>: každý zapnutý a nevyřazený počítač (bez ohledu na monitoring) je dostupný, když odpoví <strong>cokoli</strong> z: TCP 135 (RPC), TCP 445 (SMB), nebo <strong>ICMP ping</strong> fallback (defaultně zapnutý) — ping chytí stroje, co blokují RPC/SMB, ale žijí. Sonda běží na <strong>vlastním intervalu</strong> (<code>reachability.interval_sec</code>, defaultně 300 s), <strong>nezávisle</strong> na hlavním scanu a jeho okně, takže Status je čerstvý 24/7 včetně noci a víkendu. Přepínač + interval jsou v <strong>Nastavení → „Dostupnost na síti (Status)"</strong>.
+<strong>Co teď „Status" znamená — sonda dostupnosti</strong> — sloupec Status dřív jen odrážel, jestli se povedl sběr event-logu: běžel jen na monitorovaných strojích, hrubě škatulkoval chyby a po čase „zamrzl", takže „údajně nedostupné" stroje mohly stále ukazovat <em>Unknown</em> nebo zeleně <em>Active</em>. Nově běží samostatná <strong>sonda dostupnosti</strong>: každý zapnutý a nevyřazený počítač (bez ohledu na monitoring) je dostupný, když odpoví <strong>cokoli</strong> z: TCP 135 (RPC), TCP 445 (SMB), nebo <strong>ICMP ping</strong> fallback (defaultně zapnutý) — ping chytí stroje, co blokují RPC/SMB, ale žijí. Sonda běží na <strong>vlastním intervalu</strong> (<code>reachability.interval_sec</code>, defaultně 300 s), <strong>nezávisle</strong> na hlavním scanu a jeho okně, takže Status je čerstvý 24/7 včetně noci a víkendu. Každé PC, které <strong>přepne Active↔Offline</strong>, se nově zapisuje do <strong>activity logu</strong> s názvem a IP, takže máš průběžný záznam, které stroje spadly nebo se vrátily. Přepínač + interval jsou v <strong>Nastavení → „Dostupnost na síti (Status)"</strong>, kde je nově i tlačítko <strong>„Run now"</strong> pro sondu na vyžádání (nemusíš čekat na další interval).
 </div>
 
 <h2 id="pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></h2>
@@ -650,6 +652,13 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>Collected levels</td><td>Critical (1), Error (2), Warning (3)</td><td>—</td></tr>
   <tr><td>TCP probe timeout</td><td>2000ms</td><td>hardcoded</td></tr>
 </table>
+
+<div class="callout callout-info" data-lang="en">
+<strong>Resilient to "%1 could not be found" events</strong> — event collection is now more resilient: a single event with a missing description (the <code>"%1 could not be found"</code> rendering error) no longer drops the whole batch for that PC. Previously one such event left <strong>~16 PCs collecting no events at all</strong>; now the bad event is skipped and the rest of the batch is stored.
+</div>
+<div class="callout callout-info" data-lang="cs">
+<strong>Odolnost vůči eventům „%1 could not be found"</strong> — sběr eventů je odolnější: jeden event bez popisu (chyba renderování <code>„%1 could not be found"</code>) už neshodí celou dávku z daného PC. Dřív kvůli němu <strong>~16 PC nesbíralo žádné eventy</strong>; nově se vadný event přeskočí a zbytek dávky se uloží.
+</div>
 
 <div data-lang="en">
 <h3>How it reaches each PC</h3>
@@ -1080,6 +1089,34 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <li><strong>Ad-hoc run</strong> — PsExec / RDP to a single PC as admin, run the script</li>
 </ul>
 <p>Script iterates each policy pattern and calls <code>Set-Service -StartupType</code> for every matching local service. Idempotent and safe to re-run.</p>
+</div>
+
+<h2 id="critical-services"><span data-lang="cs">Kritické služby</span><span data-lang="en">Critical services</span></h2>
+<p>
+  <span data-lang="cs">Nová záložka <strong>„Kritické služby"</strong> ukazuje <strong>REÁLNÝ stav</strong> nakonfigurovaných kritických služeb (Nastavení → kritické služby: <code>NTDS</code>, <code>DNS</code>, <code>Kdc</code>, <code>Veeam</code>…) na <strong>všech strojích, kde existují</strong> — v <strong>JAKÉMKOLI stavu</strong>, ne jen když stojí. Dřív kolektor ukládal jen <em>zastavené</em> Auto služby, takže běžící kritická služba byla neviditelná; teď máš ověřeno, že fakt běží.</span>
+  <span data-lang="en">A new <strong>"Critical services"</strong> tab shows the <strong>REAL state</strong> of the configured critical services (Settings → critical services: <code>NTDS</code>, <code>DNS</code>, <code>Kdc</code>, <code>Veeam</code>…) on <strong>every machine where they exist</strong> — in <strong>ANY state</strong>, not just when stopped. Previously the collector stored only <em>stopped</em> Auto services, so a running critical service was invisible; now you can confirm they actually run.</span>
+</p>
+<div data-lang="en">
+  <ul>
+    <li>A <strong>service × machine table</strong>: <strong style="color: #15803d">Running</strong> shown green, anything else red, plus start mode, IP, and last check.</li>
+    <li><strong>Offline machines</strong> show their <strong>last-known state</strong> (amber), so you still have the most recent reading even when the box is unreachable.</li>
+    <li><strong>"Only not-running" filter</strong> + search + export.</li>
+  </ul>
+  <p>The dashboard has a <strong>"🛡 Critical services"</strong> tile — the count of services not-running on reachable machines, <strong>red when &gt; 0</strong> — that opens this tab.</p>
+</div>
+<div data-lang="cs">
+  <ul>
+    <li><strong>Tabulka služba × stroj</strong>: <strong style="color: #15803d">Running</strong> zeleně, jinak červeně, plus start mode, IP a poslední kontrola.</li>
+    <li><strong>Offline stroje</strong> ukazují svůj <strong>poslední známý stav</strong> (žlutě), takže máš poslední čtení i když stroj není dostupný.</li>
+    <li><strong>Filtr „jen mimo Running"</strong> + hledání + export.</li>
+  </ul>
+  <p>Na dashboardu je dlaždice <strong>„🛡 Kritické služby"</strong> — počet služeb mimo Running na dostupných strojích, <strong>červená když &gt; 0</strong> — která prokliká do této záložky.</p>
+</div>
+<div class="callout callout-warn" data-lang="en">
+  <strong>Note:</strong> machines whose services scan fails with <code>"Access is denied"</code> (hardened DCs / servers) have <strong>no data</strong> here until the service account is granted WMI/DCOM rights.
+</div>
+<div class="callout callout-warn" data-lang="cs">
+  <strong>Pozn.:</strong> stroje, kde sken služeb selže na <code>„Access is denied"</code> (utažené DC / servery), tu <strong>nemají data</strong>, dokud servisní účet nedostane WMI/DCOM práva.
 </div>
 
 <h2 id="perf"><span data-lang="cs">Perf events (Diagnostics-Performance)</span><span data-lang="en">Perf events (Diagnostics-Performance)</span></h2>
