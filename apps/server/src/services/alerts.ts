@@ -3,6 +3,14 @@ import { Socket } from 'node:net';
 import { getPool } from '../db/pool.js';
 import { getAllSettings, setSetting, type SettingsMap } from './settings.js';
 import { logActivity } from './activity-log.js';
+import {
+  type DriveScope, parseDriveScope, driveLetterOf, inScope, boolSetting, parseRecipients,
+  parseList, globToRegExp, matchesAny, inMaintenanceWindow, fmtDuration, fmtGb,
+  escHtml, FONT, subjectPrefix, shouldAlertNow,
+} from './alerts-util.js';
+
+// Re-exported so existing importers (reports.ts) keep working unchanged.
+export { escHtml, FONT, subjectPrefix } from './alerts-util.js';
 
 // Disk-critical email alerting. Operator opts a few "key" PCs into monitoring
 // (computers.disk_email_monitor); when a disk scan finds an in-scope drive on
@@ -21,47 +29,6 @@ export interface MonitoredCriticalDisk {
   freeGb: number;
 }
 
-type DriveScope =
-  | { kind: 'all' }
-  | { kind: 'include'; letters: Set<string> }
-  | { kind: 'exclude'; letters: Set<string> };
-
-// Mirrors apps/desktop/src/api.ts parseDriveScope so the email evaluation and
-// the dashboard agree on which drives count as critical.
-function parseDriveScope(raw: string | undefined, fallback: DriveScope): DriveScope {
-  if (raw == null) return fallback;
-  let trimmed = raw.trim();
-  if (trimmed === '' || trimmed === '*') return { kind: 'all' };
-  let exclude = false;
-  if (trimmed.startsWith('<>')) { exclude = true; trimmed = trimmed.slice(2).trim(); }
-  else if (trimmed.startsWith('!')) { exclude = true; trimmed = trimmed.slice(1).trim(); }
-  const letters = trimmed
-    .split(/[\s,;]+/)
-    .map((s) => s.trim().toUpperCase().replace(/:$/, '').slice(0, 1))
-    .filter((s) => /^[A-Z]$/.test(s));
-  if (letters.length === 0) return fallback;
-  return exclude
-    ? { kind: 'exclude', letters: new Set(letters) }
-    : { kind: 'include', letters: new Set(letters) };
-}
-
-function driveLetterOf(drive: string): string {
-  return (drive ?? '').toUpperCase().replace(/:$/, '').slice(0, 1);
-}
-
-function inScope(letter: string, scope: DriveScope): boolean {
-  if (scope.kind === 'all') return true;
-  if (scope.kind === 'include') return scope.letters.has(letter);
-  return !scope.letters.has(letter);
-}
-
-function boolSetting(value: string | undefined): boolean {
-  return ['1', 'true', 'yes', 'on'].includes((value ?? '').toLowerCase());
-}
-
-function parseRecipients(raw: string | undefined): string[] {
-  return (raw ?? '').split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
-}
 
 interface DiskRow {
   computer: string;
@@ -127,23 +94,6 @@ async function loadMonitoredCriticalDisks(settings: SettingsMap): Promise<Monito
   return out;
 }
 
-function fmtGb(bytes: number): string {
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
-
-export function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-export const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif";
-
-// Machine-readable subject prefix so a mail rule can auto-file reports:
-//   [OK] / [CHYBA]  = does this mail carry a problem? (filter target)
-//   [RUČNĚ]         = manually triggered (test / on-demand), absent = automatic
-// Always leads the subject, e.g. "[OK] [RUČNĚ] ITDashboard — …".
-export function subjectPrefix(hasProblems: boolean, manual: boolean): string {
-  return `${hasProblems ? '[CHYBA]' : '[OK]'}${manual ? ' [RUČNĚ]' : ''} `;
-}
 
 // One white card per critical disk. Pure table + inline styles so it renders in
 // Outlook / Gmail / mobile clients; cards are full-width blocks that stack
@@ -337,30 +287,6 @@ export async function sendDiskAlertTest(): Promise<{ recipients: number; critica
 // Critical-service email alerting
 // =====================================================================
 
-function globToRegExp(pattern: string): RegExp {
-  const re = '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$';
-  return new RegExp(re, 'i');
-}
-
-function matchesAny(name: string, patterns: RegExp[]): boolean {
-  return patterns.some((re) => re.test(name));
-}
-
-function parseList(raw: string | undefined): string[] {
-  return (raw ?? '').split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
-}
-
-// True when `now` (server local time) falls inside an "HH:MM-HH:MM" maintenance
-// window. Supports a window that crosses midnight (e.g. 22:00-04:00).
-function inMaintenanceWindow(raw: string | undefined, now: Date): boolean {
-  const m = (raw ?? '').trim().match(/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/);
-  if (!m) return false;
-  const start = Number(m[1]) * 60 + Number(m[2]);
-  const end = Number(m[3]) * 60 + Number(m[4]);
-  if (start === end) return false;
-  const cur = now.getHours() * 60 + now.getMinutes();
-  return start < end ? (cur >= start && cur < end) : (cur >= start || cur < end);
-}
 
 export interface DownCriticalService {
   computerId: number;
@@ -508,12 +434,7 @@ export async function evaluateAndSendServiceAlerts(): Promise<void> {
   const debounceMs = (Number(settings['alerts.services.debounce_minutes'] ?? 10) || 10) * 60_000;
   const freqMs = (Number(settings['alerts.services.frequency_hours'] ?? 24) || 24) * 3_600_000;
 
-  const toAlert = candidates.filter((c) => {
-    const downMs = now - (c.firstDownAt as Date).getTime();
-    if (downMs < debounceMs) return false; // still within debounce
-    if (c.lastSentAt && now - c.lastSentAt.getTime() < freqMs) return false; // throttled
-    return true;
-  });
+  const toAlert = candidates.filter((c) => shouldAlertNow(c.firstDownAt, c.lastSentAt, now, debounceMs, freqMs));
   if (toAlert.length === 0) return;
 
   try {
@@ -542,15 +463,6 @@ export async function sendServiceAlertTest(): Promise<{ recipients: number; down
   const pcs = new Set(candidates.map((c) => c.computer)).size;
   logActivity('info', 'alerts', `Service alert TEST email sent to ${recipients} recipient(s) (${candidates.length} service(s) down)`);
   return { recipients, down: candidates.length, monitoredPcs: pcs };
-}
-
-function fmtDuration(ms: number): string {
-  if (ms < 0) ms = 0;
-  const min = Math.floor(ms / 60_000);
-  if (min < 60) return `${min} min`;
-  const h = Math.floor(min / 60);
-  const rem = min % 60;
-  return rem === 0 ? `${h} h` : `${h} h ${rem} min`;
 }
 
 function serviceCard(c: DownCriticalService, now: number): string {
