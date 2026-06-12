@@ -78,16 +78,29 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $startTime = [DateTime]::Parse('${sinceIso}').ToUniversalTime()
 try {
-  Get-WinEvent -ComputerName '${name}' -FilterHashtable @{
+  # SilentlyContinue so a single un-renderable event ("The description string for
+  # parameter reference (%1) could not be found") does NOT abort the whole batch
+  # for the PC. Real connection/access failures stay terminating (caught below);
+  # benign "no matching events" and the formatting errors land in $gwErr.
+  $events = Get-WinEvent -ComputerName '${name}' -FilterHashtable @{
     LogName = 'System','Application'
     Level = 1,2,3
     StartTime = $startTime
-  } -MaxEvents ${MAX_EVENTS_PER_PC_PER_RUN} -ErrorAction Stop |
-    Select-Object @{n='TimeCreated';e={$_.TimeCreated.ToUniversalTime().ToString('o')}},
-      Id, Level, LogName, ProviderName, MachineName,
-      @{n='Message';e={$_.Message}},
-      @{n='TaskDisplayName';e={$_.TaskDisplayName}} |
-    ConvertTo-Json -Compress -Depth 4
+  } -MaxEvents ${MAX_EVENTS_PER_PC_PER_RUN} -ErrorAction SilentlyContinue -ErrorVariable gwErr
+  if (-not $events) {
+    # No events returned — only report it as a failure if $gwErr holds a REAL
+    # error (RPC / access / host), not just "no events" or the %1 formatting noise.
+    $real = $gwErr | Where-Object { $_.Exception.Message -notmatch 'No events were found' -and $_.Exception.Message -notmatch 'description string for parameter' }
+    if ($real) { throw $real[0] }
+    Write-Output '[]'
+  } else {
+    $events |
+      Select-Object @{n='TimeCreated';e={$_.TimeCreated.ToUniversalTime().ToString('o')}},
+        Id, Level, LogName, ProviderName, MachineName,
+        @{n='Message';e={ try { $_.Message } catch { try { '[unrendered] ' + (($_.Properties | ForEach-Object { $_.Value }) -join ' | ') } catch { '' } } }},
+        @{n='TaskDisplayName';e={ try { $_.TaskDisplayName } catch { '' } }} |
+      ConvertTo-Json -Compress -Depth 4
+  }
 } catch {
   if ($_.FullyQualifiedErrorId -match 'NoMatchingEventsFound' -or $_.Exception.Message -match 'No events were found') {
     Write-Output '[]'
