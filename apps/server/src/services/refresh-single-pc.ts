@@ -2,7 +2,7 @@ import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
 import { collectFromPC, insertEvents } from './eventlog-collector.js';
 import { fetchPcScan, upsertDisk, upsertPcInfo } from './disk-collector.js';
-import { fetchProblems, replaceProblems } from './services-collector.js';
+import { fetchServices, replaceProblems, replaceCritical } from './services-collector.js';
 import { fetchPerfEvents, insertPerfEvents } from './perf-collector.js';
 import { getSetting } from './settings.js';
 
@@ -66,9 +66,12 @@ export async function refreshSinglePc(computerId: number): Promise<SingleRefresh
     let svcDetail = '';
     let svcOk = false;
     try {
-      const services = await fetchProblems(target.name);
-      await replaceProblems(target.id, services);
-      svcDetail = `${services.length} problem service(s)`;
+      const critical = (await getSetting('alerts.services.critical_names').catch(() => undefined) ?? '')
+        .split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+      const scan = await fetchServices(target.name, critical);
+      await replaceProblems(target.id, scan.problems);
+      await replaceCritical(target.id, scan.critical);
+      svcDetail = `${scan.problems.length} problem service(s)`;
       svcOk = true;
     } catch (err) {
       svcDetail = String(err).split('\n')[0]?.slice(0, 200) ?? 'unknown';

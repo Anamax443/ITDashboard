@@ -32,6 +32,23 @@ interface RawService {
   ServiceSpecificExitCode: number | null;
 }
 
+interface RawCriticalService {
+  Name: string;
+  DisplayName: string | null;
+  State: string;
+  StartMode: string;
+}
+
+interface ScanResult {
+  problems: RawService[];
+  critical: RawCriticalService[];
+}
+
+// Build a PowerShell single-quoted string array literal, escaping quotes.
+function psArray(items: string[]): string {
+  return '@(' + items.map((s) => `'${s.replace(/'/g, "''")}'`).join(',') + ')';
+}
+
 // Per-user service instances have a LUID suffix that changes per user session,
 // e.g. CDPUserSvc_d666212, cbdhsvc_d666212, OneSyncSvc_d666212.
 // They're legitimately stopped when no user is logged on.
@@ -43,12 +60,14 @@ function isPerUserService(name: string): boolean {
 const CONCURRENCY = 5;
 let runInFlight = false;
 
-export async function fetchProblems(name: string): Promise<RawService[]> {
+export async function fetchServices(name: string, criticalPatterns: string[]): Promise<ScanResult> {
   const tcpOk = await tcpProbe(name, 135, 2000);
   if (!tcpOk) throw new Error('OFFLINE: TCP/135 unreachable');
 
-  // Read Win32_Service for Auto + non-running, then check each one's registry
-  // TriggerInfo and DelayedAutoStart flag to distinguish legitimate stopped states.
+  // One CIM enumeration of all services, then derive two outputs in the same
+  // DCOM session: the Auto + non-Running "problems" (with registry TriggerInfo /
+  // DelayedAutoStart checks), and the configured critical services in ANY state
+  // (matched by name/display against the patterns, so we can confirm they run).
   const ps = `
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -56,12 +75,13 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $opt = New-CimSessionOption -Protocol Dcom
 $session = New-CimSession -ComputerName '${name}' -SessionOption $opt -ErrorAction Stop
 try {
-  $svcs = Get-CimInstance -CimSession $session -ClassName Win32_Service -Filter "StartMode='Auto' AND State<>'Running'"
+  $all = Get-CimInstance -CimSession $session -ClassName Win32_Service
+  $svcs = $all | Where-Object { $_.StartMode -eq 'Auto' -and $_.State -ne 'Running' }
 
-  # For each, query registry remotely via WMI StdRegProv to check DelayedAutoStart + TriggerInfo
+  # For each problem, query registry remotely via WMI StdRegProv to check DelayedAutoStart + TriggerInfo
   $reg = Get-CimClass -CimSession $session -Namespace root\\default -ClassName StdRegProv -ErrorAction SilentlyContinue
 
-  $result = @()
+  $problems = @()
   foreach ($s in $svcs) {
     $path = "SYSTEM\\\\CurrentControlSet\\\\Services\\\\$($s.Name)"
     $delayed = $false
@@ -75,7 +95,7 @@ try {
         if ($t -and $t.sNames -and $t.sNames.Count -gt 0) { $trigger = $true }
       } catch { }
     }
-    $result += [pscustomobject]@{
+    $problems += [pscustomobject]@{
       Name = $s.Name
       DisplayName = $s.DisplayName
       StartMode = $s.StartMode
@@ -86,7 +106,19 @@ try {
       ServiceSpecificExitCode = $s.ServiceSpecificExitCode
     }
   }
-  $result | ConvertTo-Json -Compress -Depth 3
+
+  $critPatterns = ${psArray(criticalPatterns)}
+  $critical = @()
+  foreach ($s in $all) {
+    $nm = $s.Name; $dn = $s.DisplayName
+    $isCrit = $false
+    foreach ($p in $critPatterns) { if (($nm -like $p) -or ($dn -and ($dn -like $p))) { $isCrit = $true; break } }
+    if ($isCrit) {
+      $critical += [pscustomobject]@{ Name = $s.Name; DisplayName = $s.DisplayName; State = $s.State; StartMode = $s.StartMode }
+    }
+  }
+
+  [pscustomobject]@{ Problems = $problems; Critical = $critical } | ConvertTo-Json -Compress -Depth 4
 } finally {
   Remove-CimSession $session
 }
@@ -100,10 +132,11 @@ try {
     proc.on('close', (code) => {
       if (code !== 0) return reject(new Error(stderr.trim() || `exit ${code}`));
       const t = stdout.trim();
-      if (!t) return resolve([]);
+      if (!t) return resolve({ problems: [], critical: [] });
       try {
-        const parsed = JSON.parse(t) as RawService | RawService[];
-        resolve(Array.isArray(parsed) ? parsed : [parsed]);
+        const parsed = JSON.parse(t) as { Problems?: RawService | RawService[]; Critical?: RawCriticalService | RawCriticalService[] };
+        const asArr = <X,>(v: X | X[] | undefined): X[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
+        resolve({ problems: asArr(parsed.Problems), critical: asArr(parsed.Critical) });
       } catch (e) { reject(e); }
     });
   });
@@ -171,6 +204,27 @@ export async function replaceProblems(computerId: number, services: RawService[]
   }
 }
 
+export async function replaceCritical(computerId: number, services: RawCriticalService[]): Promise<void> {
+  const pool = await getPool();
+  await pool.request().input('cid', computerId).query(`DELETE FROM critical_service_status WHERE computer_id = @cid`);
+  for (const s of services) {
+    await pool.request()
+      .input('cid', computerId)
+      .input('name', s.Name)
+      .input('dn', s.DisplayName)
+      .input('st', s.State)
+      .input('sm', s.StartMode)
+      .query(`
+        INSERT INTO critical_service_status (computer_id, service_name, display_name, state, start_mode)
+        VALUES (@cid, @name, @dn, @st, @sm);
+      `);
+  }
+}
+
+function parseCriticalNames(raw: string | undefined): string[] {
+  return (raw ?? '').split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+}
+
 interface Target { id: number; name: string; }
 
 export async function runServicesScanOnce(): Promise<{ pcs: number; ok: number; fail: number; problems: number; durationMs: number } | null> {
@@ -179,6 +233,8 @@ export async function runServicesScanOnce(): Promise<{ pcs: number; ok: number; 
   const t0 = Date.now();
   try {
     const pool = await getPool();
+    const { getSetting } = await import('./settings.js');
+    const criticalPatterns = parseCriticalNames(await getSetting('alerts.services.critical_names').catch(() => undefined));
     const r = await pool.request().query<Target>(`
       SELECT id, name FROM computers
       -- Park on live reachability, not the frozen failure counter (see
@@ -193,9 +249,10 @@ export async function runServicesScanOnce(): Promise<{ pcs: number; ok: number; 
     for (let i = 0; i < targets.length; i += CONCURRENCY) {
       const batch = targets.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(batch.map(async (c) => {
-        const services = await fetchProblems(c.name);
-        await replaceProblems(c.id, services);
-        return services;
+        const scan = await fetchServices(c.name, criticalPatterns);
+        await replaceProblems(c.id, scan.problems);
+        await replaceCritical(c.id, scan.critical);
+        return scan.problems;
       }));
       for (let j = 0; j < results.length; j++) {
         const r2 = results[j]!;

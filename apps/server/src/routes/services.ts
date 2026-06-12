@@ -18,6 +18,22 @@ export async function registerServicesRoutes(app: FastifyInstance) {
     return { items: r.recordset };
   });
 
+  // Real state of the configured critical services on every machine where they
+  // exist, in ANY state. Joined with computer reachability/OS so the UI can flag
+  // offline (stale) machines and split servers from workstations.
+  app.get('/services/critical', async () => {
+    const pool = await getPool();
+    const r = await pool.request().query(`
+      SELECT cs.computer_id, c.name AS computer, c.ip_address, c.reachable, c.os_version,
+             cs.service_name, cs.display_name, cs.state, cs.start_mode, cs.collected_at
+      FROM critical_service_status cs
+      JOIN computers c ON c.id = cs.computer_id
+      WHERE c.enabled = 1 AND c.excluded = 0
+      ORDER BY cs.service_name, c.name
+    `);
+    return { items: r.recordset };
+  });
+
   app.get('/services/aggregate', async () => {
     const pool = await getPool();
     const r = await pool.request().query(`

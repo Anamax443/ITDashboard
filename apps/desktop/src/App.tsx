@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus } from './api.js';
 import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { HealthCards } from './components/HealthCards.js';
@@ -15,6 +15,7 @@ import { ActivityLog } from './components/ActivityLog.js';
 import { ComputersPage } from './pages/ComputersPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { ServicesPage } from './pages/ServicesPage.js';
+import { CriticalServicesPage } from './pages/CriticalServicesPage.js';
 import { PerfPage } from './pages/PerfPage.js';
 import { HelpBox } from './components/HelpBox.js';
 import { AccessDenied } from './components/AccessDenied.js';
@@ -23,7 +24,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'events' | 'computers' | 'services' | 'perf' | 'activity' | 'settings';
+type View = 'dashboard' | 'events' | 'computers' | 'services' | 'critsvc' | 'perf' | 'activity' | 'settings';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -47,6 +48,7 @@ export function App() {
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [disks, setDisks] = useState<DiskItem[]>([]);
   const [serviceProblems, setServiceProblems] = useState<ServiceProblem[]>([]);
+  const [criticalServices, setCriticalServices] = useState<CriticalServiceStatus[]>([]);
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [inactiveStats, setInactiveStats] = useState<InactiveStats | null>(null);
   const [pcHealth, setPcHealth] = useState<PcHealthResult | null>(null);
@@ -72,6 +74,7 @@ export function App() {
     api.version().then(setVersion).catch(() => {});
     api.disks().then((r) => setDisks(r.items)).catch(() => {});
     api.serviceProblems().then((r) => setServiceProblems(r.items)).catch(() => {});
+    api.criticalServices().then((r) => setCriticalServices(r.items)).catch(() => {});
     api.perfSummary(7).then(setPerfSummary).catch(() => {});
     api.inactiveStats().then(setInactiveStats).catch(() => {});
     api.pcHealth().then(setPcHealth).catch(() => {});
@@ -106,6 +109,10 @@ export function App() {
   const diskAlertsEnabled = ['1', 'true', 'yes', 'on'].includes((settingsMap['alerts.disk.enabled'] ?? '').toLowerCase());
   const monitoredServiceSummary = summarizeMonitoredServices(serviceProblems, computers, settingsMap);
   const serviceAlertsEnabled = ['1', 'true', 'yes', 'on'].includes((settingsMap['alerts.services.enabled'] ?? '').toLowerCase());
+  // Critical-service summary for the dashboard tile: "down" = not Running on a
+  // machine that is currently reachable (offline machines hold a stale state).
+  const critTotal = criticalServices.length;
+  const critDown = criticalServices.filter((c) => c.state !== 'Running' && c.reachable !== false).length;
 
   const refreshComputers = useCallback(async () => {
     try {
@@ -165,6 +172,7 @@ export function App() {
             <button className={view === 'events' ? 'active' : ''} onClick={() => setView('events')}>{t('nav.events')}</button>
             <button className={view === 'computers' ? 'active' : ''} onClick={() => setView('computers')}>{t('nav.computers')}</button>
             <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>{t('nav.services')}</button>
+            <button className={view === 'critsvc' ? 'active' : ''} onClick={() => setView('critsvc')}>{t('nav.critsvc')}</button>
             <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>{t('nav.perf')}</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>{t('nav.activity')}</button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>{t('nav.settings')}</button>
@@ -245,6 +253,9 @@ export function App() {
             serviceAlertsEnabled={serviceAlertsEnabled}
             serviceProblems={serviceProblems}
             settings={settingsMap}
+            criticalServicesDown={critDown}
+            criticalServicesTotal={critTotal}
+            onClickCriticalServices={() => setView('critsvc')}
             perfSummary={perfSummary}
             inactiveStats={inactiveStats}
             onClickMonitoredDisks={() => { setComputersPreFilter('disk-email'); setView('computers'); }}
@@ -307,6 +318,12 @@ export function App() {
       {view === 'services' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <ServicesPage onJumpToComputer={jumpToComputer} />
+        </div>
+      )}
+
+      {view === 'critsvc' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <CriticalServicesPage onJumpToComputer={jumpToComputer} />
         </div>
       )}
 

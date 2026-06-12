@@ -13,6 +13,9 @@ interface Props {
   serviceAlertsEnabled?: boolean;
   serviceProblems: ServiceProblem[];
   settings: Record<string, string>;
+  criticalServicesDown?: number;
+  criticalServicesTotal?: number;
+  onClickCriticalServices?: () => void;
   perfSummary: PerfSummary | null;
   inactiveStats: InactiveStats | null;
   onClickCritical?: () => void;
@@ -30,7 +33,7 @@ interface Props {
 }
 
 export function SummaryCards({
-  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, perfSummary, inactiveStats,
+  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
   onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
 }: Props) {
@@ -121,6 +124,13 @@ export function SummaryCards({
         sub={realServiceProblems.length > 0 ? `${realServiceProblems.length} service${realServiceProblems.length === 1 ? '' : 's'}` : 'all healthy'}
         kind="error"
         onClick={servicesPcsAffected > 0 ? onClickServices : undefined}
+      />
+      <Card
+        label={`🛡 ${t('cards.criticalSvc')}`}
+        value={criticalServicesDown}
+        sub={criticalServicesTotal > 0 ? `${criticalServicesTotal - criticalServicesDown}/${criticalServicesTotal} OK` : '—'}
+        kind={criticalServicesDown > 0 ? 'critical' : 'info'}
+        onClick={criticalServicesTotal > 0 ? onClickCriticalServices : undefined}
       />
       <Card
         label={t('cards.slowBootShutdown')}

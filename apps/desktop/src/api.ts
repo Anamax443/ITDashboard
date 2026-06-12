@@ -94,6 +94,19 @@ export interface ServiceProblem {
   service_specific_exit_code: number | null;
 }
 
+export interface CriticalServiceStatus {
+  computer_id: number;
+  computer: string;
+  ip_address: string | null;
+  reachable: boolean | null;
+  os_version: string | null;
+  service_name: string;
+  display_name: string | null;
+  state: string;
+  start_mode: string | null;
+  collected_at: string;
+}
+
 export interface ServiceAggregate {
   service_name: string;
   display_name: string | null;
@@ -607,6 +620,7 @@ export const api = {
   serviceProblems: () => jget<{ items: ServiceProblem[] }>('/services/problems'),
   servicesScan: () => jpost<{ pcs: number; ok: number; fail: number; problems: number; durationMs: number }>('/services/scan'),
   servicesAggregate: () => jget<{ items: ServiceAggregate[] }>('/services/aggregate'),
+  criticalServices: () => jget<{ items: CriticalServiceStatus[] }>('/services/critical'),
   servicesGpoScriptUrl: () => `${API_BASE}/services/gpo-script`,
   settings: () => jget<Record<string, string>>('/settings'),
   firewallWhitelist: () => jget<{ ips: string[] }>('/firewall/whitelist'),
