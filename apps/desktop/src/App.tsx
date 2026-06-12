@@ -229,6 +229,7 @@ export function App() {
             monitoredServiceSummary={monitoredServiceSummary}
             serviceAlertsEnabled={serviceAlertsEnabled}
             serviceProblems={serviceProblems}
+            settings={settingsMap}
             perfSummary={perfSummary}
             inactiveStats={inactiveStats}
             onClickMonitoredDisks={() => { setComputersPreFilter('disk-email'); setView('computers'); }}

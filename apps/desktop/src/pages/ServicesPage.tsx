@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { ServiceProblem, ServiceAggregate } from '../api.js';
-import { api, timeAgo } from '../api.js';
+import { api, timeAgo, serviceWhitelist, isServiceWhitelisted } from '../api.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 import { HelpBox } from '../components/HelpBox.js';
 import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
@@ -11,6 +11,7 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
   const [view, setView] = useState<'by-pc' | 'by-service'>('by-pc');
   const [items, setItems] = useState<ServiceProblem[]>([]);
   const [aggregate, setAggregate] = useState<ServiceAggregate[]>([]);
+  const [settings, setSettings] = useState<Record<string, string>>({});
   const [scanning, setScanning] = useState(false);
   const [lastResult, setLastResult] = useState<{ ok: number; fail: number; problems: number; durationMs: number } | null>(null);
   const [scanStartedAt, setScanStartedAt] = useState<Date | null>(null);
@@ -21,12 +22,14 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
   const [hidePerUser, setHidePerUser] = useState(true);
   const [hideCompliant, setHideCompliant] = useState(false);
   const [onlyNonzeroExit, setOnlyNonzeroExit] = useState(true);
+  const [hideWhitelisted, setHideWhitelisted] = useState(true);
   const { sort, toggle } = useSort<ServiceProblem>({ col: 'computer', dir: 'asc' });
   const { sort: aggSort, toggle: aggToggle } = useSort<ServiceAggregate>({ col: 'pc_count', dir: 'desc' });
 
   const refresh = () => {
     api.serviceProblems().then((r) => setItems(r.items)).catch((e) => setError(String(e)));
     api.servicesAggregate().then((r) => setAggregate(r.items)).catch(() => {});
+    api.settings().then(setSettings).catch(() => {});
   };
 
   useEffect(() => {
@@ -60,7 +63,15 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
     return () => clearInterval(t);
   }, [scanning, scanStartedAt]);
 
-  const filtered = items.filter((s) => {
+  // Globally-ignored services (alert whitelist, reused as a view filter). When
+  // "Hide whitelisted" is on (default), they drop out of BOTH the table and the
+  // top-line counts, so the numbers match the Dashboard tile.
+  const whitelist = serviceWhitelist(settings);
+  const visibleItems = hideWhitelisted
+    ? items.filter((s) => !isServiceWhitelisted(s.service_name, s.display_name, whitelist))
+    : items;
+
+  const filtered = visibleItems.filter((s) => {
     // Hide trigger-start ONLY when the service exited gracefully (exit_code = 0).
     // A trigger-start service that crashed (exit_code != 0) is a real failure
     // and must always surface regardless of this filter.
@@ -84,13 +95,13 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
   });
 
   const sorted = useSortedItems(filtered, sort);
-  const affectedPcs = new Set(items.map((i) => i.computer_id)).size;
+  const affectedPcs = new Set(visibleItems.map((i) => i.computer_id)).size;
 
-  const driftCount = items.filter((s) => s.is_compliant === false).length;
-  const compliantNoise = items.filter((s) => s.is_compliant === true).length;
-  const unclassified = items.filter((s) => s.is_compliant === null).length;
-  const crashCount = items.filter((s) => s.exit_code !== null && s.exit_code !== 0).length;
-  const gracefulCount = items.filter((s) => s.exit_code === 0).length;
+  const driftCount = visibleItems.filter((s) => s.is_compliant === false).length;
+  const compliantNoise = visibleItems.filter((s) => s.is_compliant === true).length;
+  const unclassified = visibleItems.filter((s) => s.is_compliant === null).length;
+  const crashCount = visibleItems.filter((s) => s.exit_code !== null && s.exit_code !== 0).length;
+  const gracefulCount = visibleItems.filter((s) => s.exit_code === 0).length;
 
   const exportFilterParts: string[] = [];
   if (search) exportFilterParts.push(`search="${search}"`);
@@ -99,6 +110,7 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
   if (hidePerUser) exportFilterParts.push('hide-per-user');
   if (hideCompliant) exportFilterParts.push('hide-compliant');
   if (onlyNonzeroExit) exportFilterParts.push('only-exitcode-nonzero');
+  if (hideWhitelisted) exportFilterParts.push('hide-whitelisted');
   const exportFilterSummary = exportFilterParts.join(' AND ');
   const exportColumns: ExportColumn<ServiceProblem>[] = [
     { key: 'computer', label: 'Computer', get: (r) => r.computer },
@@ -125,7 +137,7 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
         </HelpBox>
       </div>
       <div className="panel-header">
-        <h2>Stopped auto-services ({items.length} total · <span style={{ color: 'var(--critical)', fontWeight: 700 }}>⚠ {crashCount} crashes</span> · <span style={{ color: 'var(--text-dim)' }}>{gracefulCount} graceful</span> · <span style={{ color: 'var(--critical)' }}>{driftCount} drift</span> · <span style={{ color: 'var(--ok)' }}>{compliantNoise} OK</span> · <span style={{ color: 'var(--text-dim)' }}>{unclassified} unclassified</span> · {affectedPcs} PCs · {sorted.length} shown)</h2>
+        <h2>Stopped auto-services ({visibleItems.length} total · <span style={{ color: 'var(--critical)', fontWeight: 700 }}>⚠ {crashCount} crashes</span> · <span style={{ color: 'var(--text-dim)' }}>{gracefulCount} graceful</span> · <span style={{ color: 'var(--critical)' }}>{driftCount} drift</span> · <span style={{ color: 'var(--ok)' }}>{compliantNoise} OK</span> · <span style={{ color: 'var(--text-dim)' }}>{unclassified} unclassified</span> · {affectedPcs} PCs · {sorted.length} shown)</h2>
         <div className="panel-actions filters">
           <input
             type="text"
@@ -153,6 +165,10 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
           <label style={{ fontSize: 11, color: 'var(--critical)', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }} title="Show only services with a non-zero Win32 exit code (likely crashed, not a graceful trigger-start exit)">
             <input type="checkbox" checked={onlyNonzeroExit} onChange={(e) => setOnlyNonzeroExit(e.target.checked)} />
             ⚠ Only ExitCode != 0
+          </label>
+          <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }} title="Hide globally-ignored services (the alert whitelist in Settings — e.g. browser/Google updaters). When on, they are excluded from the counts too, matching the Dashboard tile.">
+            <input type="checkbox" checked={hideWhitelisted} onChange={(e) => setHideWhitelisted(e.target.checked)} />
+            Hide whitelisted
           </label>
           {scanning && (
             <span style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 600 }}>
@@ -188,7 +204,7 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
       </div>
       <div className="panel-body">
         {view === 'by-service' ? (
-          <ByServiceTable items={aggregate} sort={aggSort} toggle={aggToggle} search={search} hideCompliant={hideCompliant} hideTriggerStart={hideTriggerStart} hideDelayedStart={hideDelayedStart} hidePerUser={hidePerUser} />
+          <ByServiceTable items={aggregate} sort={aggSort} toggle={aggToggle} search={search} hideCompliant={hideCompliant} hideTriggerStart={hideTriggerStart} hideDelayedStart={hideDelayedStart} hidePerUser={hidePerUser} whitelist={hideWhitelisted ? whitelist : []} />
         ) : sorted.length === 0 ? (
           <div className="empty">
             {items.length === 0
@@ -252,7 +268,7 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
   );
 }
 
-function ByServiceTable({ items, sort, toggle, search, hideCompliant, hideTriggerStart, hideDelayedStart, hidePerUser }: {
+function ByServiceTable({ items, sort, toggle, search, hideCompliant, hideTriggerStart, hideDelayedStart, hidePerUser, whitelist }: {
   items: ServiceAggregate[];
   sort: { col: keyof ServiceAggregate; dir: 'asc' | 'desc' } | null;
   toggle: (col: keyof ServiceAggregate) => void;
@@ -261,8 +277,10 @@ function ByServiceTable({ items, sort, toggle, search, hideCompliant, hideTrigge
   hideTriggerStart: boolean;
   hideDelayedStart: boolean;
   hidePerUser: boolean;
+  whitelist: RegExp[];
 }) {
   const filtered = items.filter((s) => {
+    if (isServiceWhitelisted(s.service_name, s.display_name, whitelist)) return false;
     if (hideTriggerStart && s.trigger_start) return false;
     if (hideDelayedStart && s.delayed_start) return false;
     if (hidePerUser && s.per_user_start) return false;

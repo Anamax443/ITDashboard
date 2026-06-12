@@ -235,6 +235,25 @@ function svcNameList(raw: string | undefined): RegExp[] {
 }
 
 /**
+ * Globally-ignored services (the alert whitelist, reused as a view filter).
+ * A service whose name OR display name matches any pattern is treated as
+ * benign noise — excluded from the Dashboard "stopped services" tile and the
+ * Services tab counts. Empty whitelist → matches nothing.
+ */
+export function serviceWhitelist(settings: Record<string, string>): RegExp[] {
+  return svcNameList(settings['alerts.services.whitelist']);
+}
+export function isServiceWhitelisted(
+  name: string,
+  displayName: string | null | undefined,
+  whitelist: RegExp[],
+): boolean {
+  if (whitelist.length === 0) return false;
+  const dn = displayName ?? '';
+  return whitelist.some((re) => re.test(name) || (dn !== '' && re.test(dn)));
+}
+
+/**
  * Critical-service outage summary restricted to PCs opted into service email
  * monitoring. service_problems already holds only Auto + non-Running services;
  * we keep those whose name/display matches the critical list and not the

@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Summary, ComputerItem, DiskSummary, ServiceProblem, PerfSummary, InactiveStats } from '../api.js';
+import { serviceWhitelist, isServiceWhitelisted } from '../api.js';
 import { useI18n } from '../i18n.js';
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
   monitoredServiceSummary?: { monitoredPcs: number; downServices: number; affectedPcs: number } | null;
   serviceAlertsEnabled?: boolean;
   serviceProblems: ServiceProblem[];
+  settings: Record<string, string>;
   perfSummary: PerfSummary | null;
   inactiveStats: InactiveStats | null;
   onClickCritical?: () => void;
@@ -28,15 +30,20 @@ interface Props {
 }
 
 export function SummaryCards({
-  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, perfSummary, inactiveStats,
+  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
   onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
 }: Props) {
   const { t } = useI18n();
   const windowDays = summary?.window_days ?? 1;
   const windowLabel = windowDays === 1 ? '24h' : `${windowDays}d`;
-  // Service problems: count real (not trigger/delayed/per-user)
-  const realServiceProblems = serviceProblems.filter((s) => !s.trigger_start && !s.delayed_start && !s.per_user_start);
+  // Service problems: count real (not trigger/delayed/per-user) and not on the
+  // global ignore whitelist (e.g. browser/Google updaters that legitimately idle).
+  const svcWhitelist = serviceWhitelist(settings);
+  const realServiceProblems = serviceProblems.filter(
+    (s) => !s.trigger_start && !s.delayed_start && !s.per_user_start
+      && !isServiceWhitelisted(s.service_name, s.display_name, svcWhitelist),
+  );
   const servicesPcsAffected = new Set(realServiceProblems.map((s) => s.computer_id)).size;
   const enabledCount = computers.filter((c) => c.enabled).length;
   const total = computers.length;
