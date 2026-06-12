@@ -606,7 +606,7 @@ export function renderServiceAlert(downIn: DownCriticalService[], now: number, i
 
   const body = has
     ? down.map((c) => serviceCard(c, now)).join('')
-    : `<tr><td style="padding:4px 0 12px;font-size:14px;color:#374151;font-family:${FONT}">Všechny sledované kritické služby běží. 👍</td></tr>`;
+    : `<tr><td style="padding:4px 0 12px;font-size:14px;color:#374151;font-family:${FONT}">Všechny sledované služby běží. 👍</td></tr>`;
 
   const testBanner = isTest
     ? `<tr><td style="padding:0 0 14px"><div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:6px;padding:10px 14px;font-size:13px;font-family:${FONT}">ℹ️ Testovací zpráva spuštěná ručně z Nastavení.</div></td></tr>`
@@ -635,7 +635,8 @@ export function renderServiceAlert(downIn: DownCriticalService[], now: number, i
           </table>
           <div style="margin-top:8px;padding-top:14px;border-top:1px solid #eef0f2;font-size:12px;color:#9ca3af;font-family:${FONT};line-height:1.6">
             ${footerAddr}Vygenerováno ${generated} · ITDashboard automatický report.<br>
-            Sledovaná PC: záložka Počítače (🔔 Služby); seznam kritických služeb, debounce a okno údržby: Nastavení.
+            Karty „🛡 kritická služba" = klíčové služby ze seznamu kritických; „služba" = ostatní sledované (jen pády, exit ≠ 0).<br>
+            Sledování zapínáš v záložce Počítače (🔧 Služby / 🛡 Krit. služby). Per‑PC výjimky, seznam kritických služeb, debounce a okno údržby: Nastavení.
           </div>
         </td></tr>
       </table>
