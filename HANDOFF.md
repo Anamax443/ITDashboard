@@ -18,7 +18,7 @@ Last updated: 2026-06-12 (service whitelist as a global view filter + dashboard 
 - Runtime path on server: `C:\Apps\ITDashboard`
 - SQL server: `10.8.2.225`
 - Database: `ITDashboard`
-- Live commit: `0925d4d`
+- Live commit: `3f533cb`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
 
