@@ -220,7 +220,7 @@ export function App() {
       </div>
 
       {view === 'dashboard' && (
-        <>
+        <div className="dashboard-view">
           <HelpBox title={t('dashboard.help.title')}>
             <p>{t('dashboard.help.intro')}</p>
             <ul style={{ marginLeft: 16 }}>
@@ -269,7 +269,7 @@ export function App() {
               setView('computers');
             }}
           />
-        </>
+        </div>
       )}
 
       {view === 'events' && (

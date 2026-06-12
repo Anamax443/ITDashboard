@@ -47,6 +47,19 @@ html, body, #root {
   padding: 12px;
 }
 
+/* Dashboard content is a single grid item spanning the remaining height, with
+   its sections stacked top-down. This stops the `.app` 1fr row from stretching
+   one card/section to fill the viewport (which made the lone "problem PCs" tile
+   absurdly tall). */
+.dashboard-view {
+  grid-row: 2 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  min-height: 0;
+}
+
 .charts-row {
   display: grid;
   grid-template-columns: 2fr 1fr;
