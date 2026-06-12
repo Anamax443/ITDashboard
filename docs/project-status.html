@@ -94,7 +94,7 @@
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>.</p>
 
   <h2>Poslední změny (2026-06-12)</h2>
-  <p class="sub" style="margin:0 0 .75rem">Většinou klientské změny; jeden zásah do serveru a DB — <strong>migrace 032</strong> (sonda dostupnosti).</p>
+  <p class="sub" style="margin:0 0 .75rem">Většinou klientské změny; zásahy do serveru a DB — <strong>migrace 032</strong> (sonda dostupnosti) a <strong>migrace 033</strong> (prahy/váhy skórování zdraví PC).</p>
   <p style="margin:0 0 4px"><strong>Whitelist služeb jako globální filtr pohledu</strong> <span class="pill">848af42</span></p>
   <ul>
     <li>Nastavení <code>alerts.services.whitelist</code> (dosud jen potlačovalo <strong>emailové</strong> alerty služeb) nyní funguje i jako globální filtr pohledu — skryje odpovídající služby z dashboardové dlaždice „Zastavené služby" (vždy) a ze záložky Služby přes nový přepínač <strong>„Skrýt whitelistované"</strong> (default ZAPNUTO).</li>
@@ -117,6 +117,13 @@
     <li><strong>Status teď:</strong> Disabled = AD vypnutý; Active = teď na síti (+ drobná značka „logs ⚠" když běží, ale nejde přečíst event log); Offline = nedostupný.</li>
     <li>Přibyl filtr „offline" (chip + dropdown) a v Nastavení přepínač sondy.</li>
     <li>Pozn.: sonda běží v okně periodických kontrol (default po–pá 06:00–18:00).</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Dashboard — vytipování vadných PC (kandidáti na přeinstalaci)</strong> <span class="pill">31347b0</span></p>
+  <ul>
+    <li>Nová druhá řada dlaždic + panel: skóruje PC podle kumulace kritických/chybových/varovných eventů za okno (výchozí 14 dní).</li>
+    <li><strong>Tlumený mix:</strong> příspěvek každého typu eventu (provider+ID) zastropován (výchozí 20) — jeden ukecaný ovladač PC nepotopí; váženo critical×10 / error×3 / warning×1; bonus za počet různých chyb a počet dní s chybami.</li>
+    <li>Skóre ≥ „Riziko" (150) → červená dlaždice „Kandidáti na přeinstalaci", ≥ „Sledovat" (60) → žlutá. Klik na dlaždici prokliká do Počítačů na danou množinu (odstranitelný chip); panel nejhorších PC se skóre/počty/typy/dny, klik skočí na PC.</li>
+    <li>Endpoint <code>GET /events/pc-health</code>; <strong>migrace 033</strong> naseeduje laditelné prahy/váhy; nový blok v Nastavení.</li>
   </ul>
   <h2>Poslední změny (2026-06-11)</h2>
   <p style="margin:0 0 4px"><strong>Email alerty disků</strong></p>

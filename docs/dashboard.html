@@ -344,6 +344,7 @@ service restarts on new dist/, in-memory state cleared</div>
   <li><strong>Events timeline (24h)</strong> — stacked hourly bars (Critical/Error/Warning), SVG</li>
   <li><strong>Top noisy PCs (24h)</strong> — top 10 ranked, breakdown by level via colored progress bar</li>
   <li><strong>Top event IDs (24h)</strong> — top 15 event IDs by count, sortable</li>
+  <li><strong>Reinstall-candidates row</strong> — a second row of two tiles (red "Reinstall candidates" / amber "Watch") flagging PCs due for a reinstall, plus a worst-PCs panel below them (see below)</li>
   <li><strong>Operating systems panel</strong> — horizontal OS breakdown chart over the live fleet, below the cards (see below)</li>
   <li><strong>Computers list</strong> — quick summary, no filters</li>
 </ul>
@@ -367,6 +368,36 @@ service restarts on new dist/, in-memory state cleared</div>
     <li><strong>Kliknutím na stale část</strong> → záložka Počítače filtrovaná na daný OS a jen stale stroje.</li>
     <li>Aktivní filtr se v záložce Počítače ukáže jako <strong>odstranitelný chip</strong> (např. <code>OS: Windows 11 · stale ✕</code>).</li>
     <li>Počty v grafu a ve výsledném profiltrovaném seznamu vždy sedí.</li>
+  </ul>
+</div>
+
+<h4><span data-lang="cs">Vytipování vadných PC (kandidáti na přeinstalaci)</span><span data-lang="en">Faulty-PC detection (reinstall candidates)</span></h4>
+<div data-lang="en">
+  <p>A new <strong>second row of tiles</strong> on the homepage flags PCs that are <strong>"due for a reinstall"</strong> based on accumulated events. Each PC gets a <strong>"damped blend" score</strong> over a window (default 14 days, configurable):</p>
+  <ul>
+    <li>For each <strong>event type</strong> (provider + event ID) only up to a <strong>capped number of occurrences</strong> counts (default 20) — so one chatty driver can't sink a PC on its own.</li>
+    <li>Occurrences are <strong>weighted by severity</strong>: critical ×10, error ×3, warning ×1.</li>
+    <li>Plus a <strong>bonus</strong> for how many <strong>different</strong> errors and how many <strong>days</strong> had errors.</li>
+  </ul>
+  <ul>
+    <li>A PC scoring at/above the <strong>"Risk" threshold</strong> (150) lands in the red <strong>"Reinstall candidates"</strong> tile; at/above the <strong>"Watch" threshold</strong> (60) it lands in the amber one.</li>
+    <li><strong>Click a tile</strong> → drills into the Computers tab filtered to exactly that set of machines. The filter shows as a <strong>removable chip</strong>.</li>
+    <li>Below the tiles a <strong>panel lists the worst PCs</strong>: score, critical/error/warning counts, number of error types and number of days with errors. <strong>Click a row</strong> to jump to that PC.</li>
+    <li>Everything — window, cap, thresholds — is tunable in <strong>Settings → "Faulty PCs"</strong>.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p>Nová <strong>druhá řada dlaždic</strong> na úvodní stránce vytipuje počítače <strong>„zralé na přeinstalaci"</strong> podle kumulace eventů. Každé PC dostane <strong>skóre („tlumený mix")</strong> za okno (výchozí 14 dní, konfigurovatelné):</p>
+  <ul>
+    <li>Za každý <strong>typ eventu</strong> (provider + ID) se započítá nejvýš <strong>stropový počet výskytů</strong> (výchozí 20) — takže jeden ukecaný ovladač PC sám o sobě nepotopí.</li>
+    <li>Výskyty jsou <strong>váženy závažností</strong>: critical ×10, error ×3, warning ×1.</li>
+    <li>Plus <strong>bonus</strong> za počet <strong>různých</strong> chyb a počet <strong>dní</strong> s chybami.</li>
+  </ul>
+  <ul>
+    <li>PC se skóre ≥ práh <strong>„Riziko"</strong> (150) padne do červené dlaždice <strong>„Kandidáti na přeinstalaci"</strong>; ≥ práh <strong>„Sledovat"</strong> (60) do žluté.</li>
+    <li><strong>Kliknutím na dlaždici</strong> → prokliknete se do záložky Počítače profiltrované přesně na tu množinu strojů. Filtr se ukáže jako <strong>odstranitelný chip</strong>.</li>
+    <li>Pod dlaždicemi je <strong>panel s nejhoršími PC</strong>: skóre, počty critical/error/warning, počet typů chyb a počet dní s chybami. <strong>Kliknutím na řádek</strong> skočíte na to PC.</li>
+    <li>Vše — okno, strop, prahy — se ladí v <strong>Nastavení → „Vadné PC"</strong>.</li>
   </ul>
 </div>
 

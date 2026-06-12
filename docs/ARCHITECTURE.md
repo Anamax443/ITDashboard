@@ -20,7 +20,7 @@
 - Scripts don't execute locally — client calls `POST /scripts/:slug/run` and API spawns them on the server.
 
 6 navigation tabs:
-- **Dashboard** — collector status, summary cards (clickable drill-down), timeline chart, top noisy PCs chart, top event IDs, computers summary
+- **Dashboard** — collector status, summary cards (clickable drill-down), health cards (reinstall risk/watch tiles), timeline chart, top noisy PCs chart, top event IDs, computers summary
 - **Events** — full-width events table with search + filters (Computer, Source, Level, Time range)
 - **Computers** — inventory with status chips, monitor checkboxes, bulk all/none, AD sync, disk scan, sync history. The 📧 Disk / 🔔 Services / Exclude column headers each carry a "✓ all / ✗ none" control that sets that flag for all currently visible (filtered) rows in one shot, via `POST /computers/bulk-flag { ids, flag, value }` (server whitelists the `flag` column name).
 - **Services** — Auto + non-Running detection with policy/drift, by-PC + by-service views, GPO PS script export
@@ -33,7 +33,7 @@
 - Runs under a domain service account (suggested name `svc-itdashboard`).
 - Endpoints organised by feature (see `routes/*.ts`):
   - `health`, `version`, `docs`
-  - `events` — list, summary, top-ids, timeline, top-computers
+  - `events` — list, summary, top-ids, timeline, top-computers, pc-health (reinstall-candidate scoring)
   - `computers` — list, sync, sync/last, sync/history, :id/monitor (PATCH), monitor/bulk (POST)
   - `collector` — status, run, stop
   - `disks` — list, collect
@@ -275,6 +275,25 @@ A homepage panel (`apps/desktop/src/components/OsBreakdownChart.tsx`, rendered a
 
 **Drill-down into Computers.** Clicking a segment selects an OS drill-down filter (`{ bucket, staleness }`) that `App.tsx` passes to `ComputersPage` via `initialOsFilter`; the page consumes it into local `osFilter` state and applies it in the filter predicate, mirroring the chart's scope exactly — `enabled && !excluded && osBucket(c.os_version) === bucket && requested staleness`. It surfaces as a removable chip and is mutually exclusive with the status filter chips. Because the chart and the filter predicate both call `osBucket()` and `isStaleComputer()`, the segment count and the drilled-in list **agree by construction** — there is no separate query that could return a different number.
 
+### Faulty-PC / reinstall-candidate detection
+
+Surfaces **"reinstall candidates"** — PCs whose event log shows chronic, *broad*, *persistent* problem accumulation, the systemic-rot signature that a single noisy provider can't fake. The intent is a triage shortlist ("which boxes are sick enough that a reinstall is cheaper than chasing individual errors") rather than another per-event view. The heavy lifting is server-side: a new endpoint **`GET /events/pc-health`** (`apps/server/src/routes/events.ts`) reads every knob from `settings`, runs a single CTE query over the `events` table, scores and classifies each computer, and returns only the ones above the watch line — the client renders, it does not compute.
+
+**The scoring query (one CTE, three stages).** All within a `faulty.window_days` (default 14) lookback:
+- **`sig`** — `GROUP BY computer_id, level, event_id, provider_name` to get a per-*signature* count. A signature is one distinct (level, event id, provider) tuple on one PC.
+- **`agg`** — per computer, `SUM(min(cnt, @cap) × weight)` where `@cap` is `faulty.signature_cap` (default 20) and weight is `faulty.weight_critical` (level 1, default 10) / `faulty.weight_error` (level 2, default 3) / `faulty.weight_warning` (level 3, default 1). Also computes `signatures` = count of distinct level-1/2 signatures (breadth), plus the raw critical/error/warning totals for display.
+- **`dys`** — per computer, `COUNT(DISTINCT CAST(time_created AS DATE))` over level 1/2 events = `active_days` (persistence: how many separate days the box was throwing problems).
+
+Final `score = weighted + signatures·@wb + active_days·@wp` where `@wb` is `faulty.weight_breadth` (default 5) and `@wp` is `faulty.weight_persistence` (default 3). Scope is `enabled && !excluded`. Classification is **server-side**: `score >= faulty.threshold_risk` (default 150) → `'risk'`, `>= faulty.threshold_watch` (default 60) → `'watch'`, anything below is dropped. The response is `{ windowDays, thresholdWatch, thresholdRisk, items[] }`, sorted worst-first.
+
+**Why the per-signature cap is the whole idea.** The dedup pass only removes *exact* duplicates, so a single wedged driver emitting thousands of *distinct-timestamp* errors would otherwise dominate the score and flag an otherwise-healthy box. Capping each signature's contribution at `@cap` defangs the one-chatty-provider case, and then the breadth (`signatures`) and persistence (`active_days`) terms explicitly reward the opposite shape — **many different problems across many different days**, which is what "systemically sick, reinstall it" actually looks like. Weights stay DB-tunable (no Settings UI) precisely so the operator can retune the shape of "sick" without a redeploy; window / cap / thresholds are the knobs exposed in Settings.
+
+**Client — a second tile row + an ID drill-down.** `PcHealth` / `PcHealthResult` types and `api.pcHealth()` live in `apps/desktop/src/api.ts`. Because the 14-day `GROUP BY` is markedly heavier than the 30 s dashboard refresh, `App.tsx` fetches it on a **separate slow 5-minute interval** and re-pulls whenever any `faulty.*` setting changes. A new `apps/desktop/src/components/HealthCards.tsx` renders a **second row of summary tiles** (reinstall *risk* / *watch*) below `SummaryCards`, plus a candidates panel; the `Card` component is now **exported from `SummaryCards.tsx`** for reuse. Clicking a tile sets a new App-level `computersIdFilter` (`{ ids, label }`) passed to `ComputersPage` via `initialIdFilter`, consumed into local `idFilter` state and applied in the filter predicate (`c.id` ∈ the set). It surfaces as a removable chip and is **mutually exclusive** with the status / OS / search filters — the same drill-down pattern as the OS breakdown chart, but keyed on an explicit id set rather than a derived predicate (the server already decided who qualifies, so the client filters by identity, not by re-deriving the score). A new Settings block exposes window / cap / thresholds.
+
+**Migration `033_faulty_pc.sql`** seeds the settings: `faulty.window_days` (14), `faulty.signature_cap` (20), `faulty.weight_critical` (10) / `weight_error` (3) / `weight_warning` (1), `faulty.weight_breadth` (5), `faulty.weight_persistence` (3), `faulty.threshold_watch` (60), `faulty.threshold_risk` (150).
+
+This stays on the right side of **Observer, not executor**: it ranks boxes for the operator's attention and drills into the inventory, it does not touch the target.
+
 ### Activity log is two-tier
 Live view: ring buffer of 500 entries, polled by dashboard every 2s. Lost on service restart. Persistent history: every `logActivity()` call is also fire-and-forget INSERT into `activity_log` table (`apps/server/src/services/activity-log.ts`). DB writes are intentionally not awaited so collector cadence isn't tied to DB latency; if persistence fails the live view is unaffected. The Activity tab has a Live/History mode toggle — History queries `activity_log` with filters (time range, level, source, message search) and supports pagination. Retention via `activity.retention_days` setting (default 30) and `sp_purge_old_activity` stored procedure.
 
@@ -368,5 +387,6 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 030_service_email_alerts | computers.service_email_monitor BIT + service_alert_state table (per-(PC, service) `first_down_at` flapping-debounce state) + alerts.services.* settings seed (enabled, debounce_minutes, frequency_hours, maintenance_window, critical_names, whitelist) |
 | 031_service_port_checks | port_check_state table (per-(PC, port) baseline `last_ok_at` + flapping-debounce state) + alerts.services.port_checks_enabled / port_checks (seeded `LDAP:389,SMB:445,RDP:3389,Kerberos:88,DNS:53`) / port_timeout_ms (2000) settings seed |
 | 032_reachability | computers.reachable BIT + last_reachable_at + reach_checked_at (live TCP reachability probe) + checks.run_reachability (1) / reachability.ports (`135,445`) / reachability.timeout_ms (2000) settings seed |
+| 033_faulty_pc | faulty.* settings seed for reinstall-candidate scoring: window_days (14), signature_cap (20), weight_critical (10) / weight_error (3) / weight_warning (1), weight_breadth (5), weight_persistence (3), threshold_watch (60), threshold_risk (150) — consumed by `GET /events/pc-health` |
 
 > `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).

@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-12 (service whitelist view filter + dashboard OS breakdown chart + live reachability probe)
+Last updated: 2026-06-12 (whitelist view filter + OS breakdown chart + reachability probe + faulty-PC detection)
 
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in
@@ -169,6 +169,54 @@ the collectors query it.
 `checks.window_*`, default Mon–Fri 06:00–18:00), so in the default config Status
 is not refreshed overnight / weekends. Making it a window-independent fast timer
 is a possible follow-up.
+
+### Faulty-PC / reinstall-candidate detection (commit `31347b0`)
+
+Operator wanted the dashboard to **tip off which PCs are "due for a reinstall"**
+based on accumulated eventlog problems, as a second row of tiles.
+
+Naive volume is misleading — one chatty source (the Brother BrLog driver that
+spams ~1 event/sec is the canonical example; the dedup pass only removes EXACT
+duplicates, so distinct-timestamp spam survives) would flag a healthy box. So the
+score is a **damped blend** (`GET /events/pc-health` in `routes/events.ts`), over
+a window (default 14 d), per `enabled && !excluded` PC:
+
+- Per distinct **signature** (`provider_name + event_id + level`), occurrences are
+  **capped** at `faulty.signature_cap` (20) — a driver screaming 4000× counts as
+  20, not 4000.
+- Weighted by severity: critical ×10, error ×3, warning ×1
+  (`faulty.weight_critical/error/warning`).
+- **Breadth** bonus: number of distinct error/critical signatures ×
+  `faulty.weight_breadth` (5) — many DIFFERENT problems.
+- **Persistence** bonus: distinct days with errors × `faulty.weight_persistence`
+  (3) — problems across many DAYS.
+- `score = Σ min(cnt, cap)·weight + signatures·5 + active_days·3`. Classified
+  server-side: `>= faulty.threshold_risk` (150) → **risk** (reinstall candidate),
+  `>= faulty.threshold_watch` (60) → **watch**, else dropped. Returns worst-first.
+
+**Migration `033_faulty_pc`** seeds all nine knobs as settings (window / cap / the
+three severity weights / breadth / persistence / watch / risk) — fully tunable, no
+redeploy.
+
+**Dashboard**: new component `HealthCards.tsx` renders a **second row of tiles**
+below `SummaryCards` — "🩺 Kandidáti na přeinstalaci" (risk count, red) and
+"Sledovat" (watch count, amber) — plus a **candidates panel** listing the worst
+PCs with score + critical/error/warning + distinct error types + active days, each
+row clickable to jump to that PC. `Card` is now exported from `SummaryCards.tsx`
+for reuse.
+
+**Drill-down**: clicking a tile sets `App.computersIdFilter = { ids, label }`,
+passed to `ComputersPage` via `initialIdFilter` → consumed into local `idFilter`
+state → filter predicate keeps only `c.id ∈ ids`. Shown as a removable red chip
+("🩺 <label> (N)"); mutually exclusive with the status / OS / search filters.
+
+**Client cadence**: `api.pcHealth()` is fetched on its OWN slow 5-min interval (the
+14-day GROUP BY is heavier than the 30 s dashboard refresh) and re-pulled when any
+`faulty.*` setting changes. New **Settings** block "Vadné PC / kandidáti na
+přeinstalaci" exposes window / cap / watch / risk; weights stay DB-tunable. CS+EN.
+
+Tuning note: thresholds 60/150 are first guesses — watch the panel for a week and
+nudge `faulty.threshold_*` so the "risk" tile holds the genuinely-sick boxes.
 
 ## Config externalization (2026-06-11)
 
