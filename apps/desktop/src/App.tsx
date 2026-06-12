@@ -53,7 +53,6 @@ export function App() {
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
   const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'failing' | 'inactive' | null>(null);
   const [computersOsFilter, setComputersOsFilter] = useState<{ bucket: string; stale: boolean | null } | null>(null);
-  const [computersIdFilter, setComputersIdFilter] = useState<{ ids: number[]; label: string } | null>(null);
   const [computersSearchPrefill, setComputersSearchPrefill] = useState<string | null>(null);
 
   // Cross-tab jump: any tab that renders a computer name calls this to
@@ -261,11 +260,7 @@ export function App() {
             onClickUnreachable={() => { setComputersPreFilter('failing'); setView('computers'); }}
             onClickInactive={() => { setComputersPreFilter('inactive'); setView('computers'); }}
           />
-          <HealthCards
-            data={pcHealth}
-            onSelectCandidates={(ids, label) => { setComputersIdFilter({ ids, label }); setView('computers'); }}
-            onJumpToComputer={jumpToComputer}
-          />
+          <HealthCards data={pcHealth} onJumpToComputer={jumpToComputer} />
           <OsBreakdownChart
             items={computers}
             thresholdDays={inactiveStats?.thresholdDays ?? 90}
@@ -296,7 +291,7 @@ export function App() {
 
       {view === 'computers' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <ComputersPage items={computers} onRefreshLocal={refreshComputers} initialFilter={computersPreFilter} onFilterConsumed={() => setComputersPreFilter(null)} inactiveThresholdDays={inactiveStats?.thresholdDays} initialSearch={computersSearchPrefill} onSearchPrefillConsumed={() => setComputersSearchPrefill(null)} initialOsFilter={computersOsFilter} onOsFilterConsumed={() => setComputersOsFilter(null)} initialIdFilter={computersIdFilter} onIdFilterConsumed={() => setComputersIdFilter(null)} />
+          <ComputersPage items={computers} onRefreshLocal={refreshComputers} initialFilter={computersPreFilter} onFilterConsumed={() => setComputersPreFilter(null)} inactiveThresholdDays={inactiveStats?.thresholdDays} initialSearch={computersSearchPrefill} onSearchPrefillConsumed={() => setComputersSearchPrefill(null)} initialOsFilter={computersOsFilter} onOsFilterConsumed={() => setComputersOsFilter(null)} />
         </div>
       )}
 

@@ -203,21 +203,24 @@ carry a high event baseline, so 60/150 flagged ~42% of the fleet (96/228) as
 "risk"; 400/600 keeps "risk" to the worst ~10 and watch+risk to ~35.
 
 **Dashboard**: new component `HealthCards.tsx` renders a **second row of tiles**
-below `SummaryCards` — "🩺 Kandidáti na přeinstalaci" (risk count, red) and
-"Sledovat" (watch count, amber) — plus a **candidates panel** listing the worst
-PCs with score + critical/error/warning + distinct error types + active days, each
-row clickable to jump to that PC. `Card` is now exported from `SummaryCards.tsx`
-for reuse.
+below `SummaryCards` — "🩺 PC v problémech" (risk count, red) and "Sledovat"
+(watch count, amber). The breakdown table (score + critical/error/warning +
+distinct error types + active days) is **hidden by default and expands inline
+only when a tile is clicked** (click again / ✕ to collapse) — the operator didn't
+want a permanent table on the dashboard. Each table row jumps to that PC in
+Computers. `Card` is now exported from `SummaryCards.tsx` for reuse.
 
-**Drill-down**: clicking a tile sets `App.computersIdFilter = { ids, label }`,
-passed to `ComputersPage` via `initialIdFilter` → consumed into local `idFilter`
-state → filter predicate keeps only `c.id ∈ ids`. Shown as a removable red chip
-("🩺 <label> (N)"); mutually exclusive with the status / OS / search filters.
+> Naming note: the tile/feature was renamed from "Kandidáti na přeinstalaci"
+> (reinstall candidates) to "PC v problémech" (problem PCs) per operator
+> preference — these are PCs in trouble, not necessarily reinstall-bound. The
+> internal endpoint/setting names (`/events/pc-health`, `faulty.*`) are unchanged.
+> The earlier set-based "drill into the Computers tab" behaviour was dropped in
+> favour of the inline expand table.
 
 **Client cadence**: `api.pcHealth()` is fetched on its OWN slow 5-min interval (the
 14-day GROUP BY is heavier than the 30 s dashboard refresh) and re-pulled when any
-`faulty.*` setting changes. New **Settings** block "Vadné PC / kandidáti na
-přeinstalaci" exposes window / cap / watch / risk; weights stay DB-tunable. CS+EN.
+`faulty.*` setting changes. New **Settings** block "PC v problémech (skórování
+eventů)" exposes window / cap / watch / risk; weights stay DB-tunable. CS+EN.
 
 Tuning note: 400/600 are live-tuned but still coarse — watch the panel for a week
 and nudge `faulty.threshold_*` (and the weights) so the "risk" tile holds the

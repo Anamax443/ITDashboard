@@ -10,7 +10,7 @@ import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { useI18n } from '../i18n.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 
-export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed, inactiveThresholdDays, initialSearch, onSearchPrefillConsumed, initialOsFilter, onOsFilterConsumed, initialIdFilter, onIdFilterConsumed }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'failing' | 'inactive' | null; onFilterConsumed?: () => void; inactiveThresholdDays?: number; initialSearch?: string | null; onSearchPrefillConsumed?: () => void; initialOsFilter?: { bucket: string; stale: boolean | null } | null; onOsFilterConsumed?: () => void; initialIdFilter?: { ids: number[]; label: string } | null; onIdFilterConsumed?: () => void }) {
+export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterConsumed, inactiveThresholdDays, initialSearch, onSearchPrefillConsumed, initialOsFilter, onOsFilterConsumed }: { items: ComputerItem[]; onRefreshLocal: () => void; initialFilter?: 'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'failing' | 'inactive' | null; onFilterConsumed?: () => void; inactiveThresholdDays?: number; initialSearch?: string | null; onSearchPrefillConsumed?: () => void; initialOsFilter?: { bucket: string; stale: boolean | null } | null; onOsFilterConsumed?: () => void }) {
   const { t } = useI18n();
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
@@ -34,7 +34,6 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     if (initialFilter) {
       setStatusFilter(initialFilter);
       setOsFilter(null);
-      setIdFilter(null);
       onFilterConsumed?.();
     }
   }, [initialFilter, onFilterConsumed]);
@@ -46,7 +45,6 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
       // operator wants to see THIS PC regardless of its disk/inactive state.
       setStatusFilter('');
       setOsFilter(null);
-      setIdFilter(null);
       onSearchPrefillConsumed?.();
     }
   }, [initialSearch, onSearchPrefillConsumed]);
@@ -58,21 +56,9 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
       // numbers match the Dashboard chart segment that was clicked.
       setStatusFilter('');
       setSearch('');
-      setIdFilter(null);
       onOsFilterConsumed?.();
     }
   }, [initialOsFilter, onOsFilterConsumed]);
-
-  useEffect(() => {
-    if (initialIdFilter) {
-      setIdFilter(initialIdFilter);
-      // Explicit PC-set drill-down (e.g. reinstall candidates) owns the view.
-      setStatusFilter('');
-      setOsFilter(null);
-      setSearch('');
-      onIdFilterConsumed?.();
-    }
-  }, [initialIdFilter, onIdFilterConsumed]);
 
   const thresholds = parseDiskThresholds(diskSettings);
   const disksByComputer = new Map<number, DiskItem[]>();
@@ -104,13 +90,11 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
   // OS drill-down from the Dashboard chart: filter to one OS bucket, optionally
   // restricted to live (stale=false) or stale (stale=true) machines.
   const [osFilter, setOsFilter] = useState<{ bucket: string; stale: boolean | null } | null>(null);
-  // Drill-down to an explicit PC set (e.g. reinstall candidates from the Dashboard).
-  const [idFilter, setIdFilter] = useState<{ ids: number[]; label: string } | null>(null);
 
-  // Status chips and the OS / id drill-downs are mutually exclusive: picking a
-  // status chip clears them so filters never silently stack.
+  // Status chips and the OS drill-down are mutually exclusive: picking a status
+  // chip clears the OS filter so the two never silently stack.
   useEffect(() => {
-    if (statusFilter !== '') { setOsFilter(null); setIdFilter(null); }
+    if (statusFilter !== '') setOsFilter(null);
   }, [statusFilter]);
   const { sort, toggle } = useSort<ComputerItem>({ col: 'name', dir: 'asc' });
 
@@ -149,8 +133,6 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
 
   const osThreshold = inactiveThresholdDays ?? 90;
   const filtered = items.filter((c) => {
-    // Explicit PC-set drill-down (reinstall candidates etc.).
-    if (idFilter && !idFilter.ids.includes(c.id)) return false;
     // OS drill-down from the Dashboard chart. Mirror the chart scope exactly:
     // live managed fleet only (enabled, not excluded), same OS bucket, and the
     // requested staleness (null = both live and stale).
@@ -308,16 +290,6 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
             >
               {t('os.filterLabel')}: {osFilter.bucket === OS_UNKNOWN ? t('os.unknown') : osFilter.bucket === OS_OTHER ? t('os.other') : osFilter.bucket}
               {osFilter.stale !== null && <span style={{ opacity: 0.85, fontWeight: 600 }}>· {osFilter.stale ? t('os.stale') : t('os.live')}</span>}
-              <span style={{ opacity: 0.9 }}>✕</span>
-            </span>
-          )}
-          {idFilter && (
-            <span
-              onClick={() => setIdFilter(null)}
-              title={t('os.clickFilter')}
-              style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: 'var(--critical)', color: '#fff' }}
-            >
-              🩺 {idFilter.label} ({idFilter.ids.length})
               <span style={{ opacity: 0.9 }}>✕</span>
             </span>
           )}

@@ -1,28 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { PcHealthResult } from '../api.js';
 import { Card } from './SummaryCards.js';
 import { useI18n } from '../i18n.js';
 
 /**
- * Second row of dashboard tiles: "faulty PC / reinstall candidate" detection.
- * Ranks PCs by a damped-blend eventlog score (see GET /events/pc-health) so a
- * single chatty source can't flag a healthy box. Two tiles (reinstall risk /
- * watch) drill into the Computers tab filtered to that PC set; a panel lists the
- * worst PCs with their score breakdown, each row jumps to that PC.
+ * Second row of dashboard tiles: "problem PCs" detection. Ranks PCs by a
+ * damped-blend eventlog score (see GET /events/pc-health) so a single chatty
+ * source can't flag a healthy box. Two tiles (problem / watch). The breakdown
+ * table (score · crit · err · warn · types · days) is hidden by default and
+ * expands inline only when a tile is clicked; each row jumps to that PC.
  */
-export function HealthCards({ data, onSelectCandidates, onJumpToComputer }: {
+export function HealthCards({ data, onJumpToComputer }: {
   data: PcHealthResult | null;
-  onSelectCandidates: (ids: number[], label: string) => void;
   onJumpToComputer?: (name: string) => void;
 }) {
   const { t } = useI18n();
+  const [open, setOpen] = useState<null | 'risk' | 'watch'>(null);
   if (!data) return null;
 
   const risk = data.items.filter((i) => i.level === 'risk');
   const watch = data.items.filter((i) => i.level === 'watch');
   const win = `${data.windowDays} d`;
-  const riskLabel = `${t('health.reinstall')} (${win})`;
-  const watchLabel = `${t('health.watch')} (${win})`;
+  const toggle = (which: 'risk' | 'watch') => setOpen((o) => (o === which ? null : which));
+  const shown = open === 'risk' ? risk : open === 'watch' ? watch : [];
+  const title = open === 'risk' ? t('health.reinstall') : t('health.watch');
 
   return (
     <>
@@ -32,26 +33,27 @@ export function HealthCards({ data, onSelectCandidates, onJumpToComputer }: {
           value={risk.length}
           sub={`${t('health.score')} ≥ ${data.thresholdRisk} · ${win}`}
           kind="critical"
-          onClick={risk.length > 0 ? () => onSelectCandidates(risk.map((i) => i.computer_id), riskLabel) : undefined}
+          onClick={risk.length > 0 ? () => toggle('risk') : undefined}
         />
         <Card
           label={t('health.watch')}
           value={watch.length}
           sub={`${t('health.score')} ≥ ${data.thresholdWatch} · ${win}`}
           kind="warning"
-          onClick={watch.length > 0 ? () => onSelectCandidates(watch.map((i) => i.computer_id), watchLabel) : undefined}
+          onClick={watch.length > 0 ? () => toggle('watch') : undefined}
         />
       </div>
 
-      {data.items.length > 0 && (
+      {open && shown.length > 0 && (
         <div className="panel" style={{ gridColumn: '1 / -1', marginTop: 12 }}>
           <div className="panel-header">
             <h2>
-              🩺 {t('health.reinstall')}{' '}
+              🩺 {title}{' '}
               <span style={{ color: 'var(--text-dim)', fontSize: 12, fontWeight: 400 }}>
-                ({data.items.length} · {win})
+                ({shown.length} · {win})
               </span>
             </h2>
+            <button className="refresh-btn" onClick={() => setOpen(null)} title={t('health.collapse')}>✕</button>
           </div>
           <div className="panel-body">
             <table>
@@ -67,7 +69,7 @@ export function HealthCards({ data, onSelectCandidates, onJumpToComputer }: {
                 </tr>
               </thead>
               <tbody>
-                {data.items.slice(0, 20).map((i) => (
+                {shown.map((i) => (
                   <tr key={i.computer_id}>
                     <td style={{ fontWeight: 600 }}>
                       {onJumpToComputer ? (
