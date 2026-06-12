@@ -445,10 +445,10 @@ export function SettingsPage() {
               <NumberInput v={value('faulty.signature_cap', '20')} onChange={(v) => set('faulty.signature_cap', v)} />
             </Field>
             <Field label={t('settings.field.faultyWatch')}>
-              <NumberInput v={value('faulty.threshold_watch', '60')} onChange={(v) => set('faulty.threshold_watch', v)} />
+              <NumberInput v={value('faulty.threshold_watch', '400')} onChange={(v) => set('faulty.threshold_watch', v)} />
             </Field>
             <Field label={t('settings.field.faultyRisk')}>
-              <NumberInput v={value('faulty.threshold_risk', '150')} onChange={(v) => set('faulty.threshold_risk', v)} />
+              <NumberInput v={value('faulty.threshold_risk', '600')} onChange={(v) => set('faulty.threshold_risk', v)} />
             </Field>
           </FieldGroup>
         </Section>

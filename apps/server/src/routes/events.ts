@@ -129,8 +129,8 @@ export async function registerEventsRoutes(app: FastifyInstance) {
     };
     const windowDays = Math.min(90, Math.max(1, Math.floor(num('faulty.window_days', 14))));
     const cap = Math.max(1, Math.floor(num('faulty.signature_cap', 20)));
-    const watch = num('faulty.threshold_watch', 60);
-    const risk = num('faulty.threshold_risk', 150);
+    const watch = num('faulty.threshold_watch', 400);
+    const risk = num('faulty.threshold_risk', 600);
 
     const r = await pool.request()
       .input('days', windowDays)

@@ -191,12 +191,16 @@ a window (default 14 d), per `enabled && !excluded` PC:
 - **Persistence** bonus: distinct days with errors × `faulty.weight_persistence`
   (3) — problems across many DAYS.
 - `score = Σ min(cnt, cap)·weight + signatures·5 + active_days·3`. Classified
-  server-side: `>= faulty.threshold_risk` (150) → **risk** (reinstall candidate),
-  `>= faulty.threshold_watch` (60) → **watch**, else dropped. Returns worst-first.
+  server-side: `>= faulty.threshold_risk` (600) → **risk** (reinstall candidate),
+  `>= faulty.threshold_watch` (400) → **watch**, else dropped. Returns worst-first.
 
 **Migration `033_faulty_pc`** seeds all nine knobs as settings (window / cap / the
 three severity weights / breadth / persistence / watch / risk) — fully tunable, no
-redeploy.
+redeploy. **Migration `034_faulty_thresholds`** then recalibrated the two
+thresholds from the 60/150 first guess to **watch=400 / risk=600** (guarded to the
+seed so it won't clobber operator tuning) — live data showed active Win11 boxes
+carry a high event baseline, so 60/150 flagged ~42% of the fleet (96/228) as
+"risk"; 400/600 keeps "risk" to the worst ~10 and watch+risk to ~35.
 
 **Dashboard**: new component `HealthCards.tsx` renders a **second row of tiles**
 below `SummaryCards` — "🩺 Kandidáti na přeinstalaci" (risk count, red) and
@@ -215,8 +219,9 @@ state → filter predicate keeps only `c.id ∈ ids`. Shown as a removable red c
 `faulty.*` setting changes. New **Settings** block "Vadné PC / kandidáti na
 přeinstalaci" exposes window / cap / watch / risk; weights stay DB-tunable. CS+EN.
 
-Tuning note: thresholds 60/150 are first guesses — watch the panel for a week and
-nudge `faulty.threshold_*` so the "risk" tile holds the genuinely-sick boxes.
+Tuning note: 400/600 are live-tuned but still coarse — watch the panel for a week
+and nudge `faulty.threshold_*` (and the weights) so the "risk" tile holds the
+genuinely-sick boxes.
 
 ## Config externalization (2026-06-11)
 
