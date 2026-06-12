@@ -137,6 +137,14 @@ export function escHtml(s: string): string {
 
 export const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif";
 
+// Machine-readable subject prefix so a mail rule can auto-file reports:
+//   [OK] / [CHYBA]  = does this mail carry a problem? (filter target)
+//   [RUČNĚ]         = manually triggered (test / on-demand), absent = automatic
+// Always leads the subject, e.g. "[OK] [RUČNĚ] ITDashboard — …".
+export function subjectPrefix(hasProblems: boolean, manual: boolean): string {
+  return `${hasProblems ? '[CHYBA]' : '[OK]'}${manual ? ' [RUČNĚ]' : ''} `;
+}
+
 // One white card per critical disk. Pure table + inline styles so it renders in
 // Outlook / Gmail / mobile clients; cards are full-width blocks that stack
 // vertically, so they stay readable on a phone. A two-cell bar visualises usage
@@ -171,8 +179,8 @@ function diskCard(c: MonitoredCriticalDisk): string {
 
 export function renderDiskAlert(critical: MonitoredCriticalDisk[], isTest: boolean, dashboardUrl: string): { subject: string; text: string; html: string } {
   const pcs = new Set(critical.map((c) => c.computer)).size;
-  const prefix = isTest ? '[TEST] ' : '';
   const has = critical.length > 0;
+  const prefix = subjectPrefix(has, isTest);
   const subject = has
     ? `${prefix}ITDashboard — kritický stav disků (${critical.length} na ${pcs} PC)`
     : `${prefix}ITDashboard — test disk alertu (žádný kritický disk)`;
@@ -561,8 +569,8 @@ export function renderServiceAlert(downIn: DownCriticalService[], now: number, i
   const down = [...downIn].sort((a, b) => Number(b.critical) - Number(a.critical));
   const pcs = new Set(down.map((c) => c.computer)).size;
   const critN = down.filter((c) => c.critical).length;
-  const prefix = isTest ? '[TEST] ' : '';
   const has = down.length > 0;
+  const prefix = subjectPrefix(has, isTest);
   const subject = has
     ? `${prefix}ITDashboard — služby mimo provoz (${down.length} na ${pcs} PC${critN > 0 ? `, z toho ${critN} kritických` : ''})`
     : `${prefix}ITDashboard — test service alertu (žádná služba mimo provoz)`;
@@ -808,8 +816,8 @@ function portCard(c: PortDown, now: number): string {
 
 export function renderPortAlert(down: PortDown[], now: number, isTest: boolean, dashboardUrl: string): { subject: string; text: string; html: string } {
   const pcs = new Set(down.map((c) => c.computer)).size;
-  const prefix = isTest ? '[TEST] ' : '';
   const has = down.length > 0;
+  const prefix = subjectPrefix(has, isTest);
   const subject = has
     ? `${prefix}ITDashboard — port služby nedostupný (${down.length} na ${pcs} PC)`
     : `${prefix}ITDashboard — test port checku (vše dostupné)`;

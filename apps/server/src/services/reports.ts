@@ -9,7 +9,7 @@
 import { getPool } from '../db/pool.js';
 import { getAllSettings } from './settings.js';
 import { logActivity } from './activity-log.js';
-import { sendMail, escHtml, FONT } from './alerts.js';
+import { sendMail, escHtml, FONT, subjectPrefix } from './alerts.js';
 
 export type MachineKind = 'server' | 'pc';
 export type MachineStatus = 'active' | 'offline' | 'disabled';
@@ -126,15 +126,20 @@ function fmtSince(iso: string | null): string {
 
 // Plain-text + HTML render of the overview. Test mode only adds a banner so the
 // operator can tell a manual send apart from a scheduled one.
-export function renderOverviewReport(rep: OverviewReport, dashboardUrl: string): { subject: string; text: string; html: string } {
+export function renderOverviewReport(rep: OverviewReport, dashboardUrl: string, manual: boolean): { subject: string; text: string; html: string } {
   const t = rep.totals;
   const generated = new Date(rep.generatedAt).toLocaleString('cs-CZ');
-  const subject = `ITDashboard — přehled: ${t.total} strojů (${t.servers} srv / ${t.pcs} PC), ${t.offline} offline`;
+  // The overview carries a problem when machines are offline or collection fails.
+  const problems = t.offline > 0 || t.failing > 0;
+  const subject = `${subjectPrefix(problems, manual)}ITDashboard — přehled: ${t.total} strojů (${t.servers} srv / ${t.pcs} PC), ${t.offline} offline`;
 
   // --- text ---
   const lines: string[] = [];
   lines.push(`ITDashboard — strukturovaný přehled`);
-  lines.push(`Vygenerováno: ${generated}`);
+  lines.push(problems
+    ? `STAV: ⛔ Zjištěny problémy (${t.offline} offline, ${t.failing} se selhávajícím sběrem)`
+    : `STAV: ✅ Bez problémů`);
+  lines.push(`Vygenerováno: ${generated}${manual ? ' (ruční odeslání)' : ''}`);
   lines.push('');
   lines.push(`Stroje (aktivní evidence): ${t.total}  ·  servery ${t.servers}  ·  PC ${t.pcs}`);
   lines.push(`Online ${t.active}  ·  offline ${t.offline}  ·  zakázané ${t.disabled}  ·  monitorované ${t.monitored}  ·  sběr selhává ${t.failing}`);
@@ -175,11 +180,17 @@ export function renderOverviewReport(rep: OverviewReport, dashboardUrl: string):
     ? `<div style="margin:18px 0 4px"><a href="${escHtml(dashboardUrl)}" style="background:#2563eb;color:#fff;text-decoration:none;padding:9px 18px;border-radius:6px;font-size:13px;font-family:${FONT}">Otevřít ITDashboard →</a></div>`
     : '';
 
+  // Colour banner mirroring the subject state so the mail reads at a glance.
+  const banner = problems
+    ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:6px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px">⛔ Zjištěny problémy — ${t.offline} offline · ${t.failing} se selhávajícím sběrem</div>`
+    : `<div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;border-radius:6px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px">✅ Bez problémů — všechny sledované stroje online, sběr v pořádku</div>`;
+
   const html = `<!doctype html><html><body style="margin:0;background:#f4f5f7;padding:20px;font-family:${FONT}">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
     <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%">
       <tr><td style="background:#111827;border-radius:10px 10px 0 0;padding:16px 20px;color:#fff;font-size:16px;font-weight:600">📋 ITDashboard — strukturovaný přehled</td></tr>
       <tr><td style="background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 10px 10px;padding:18px 20px">
+        ${banner}
         <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:6px">
           <tr>${stat('stroje', t.total)}${stat('servery', t.servers)}${stat('PC', t.pcs)}${stat('offline', t.offline, t.offline > 0 ? '#ef4444' : '#10b981')}${stat('sběr selhává', t.failing, t.failing > 0 ? '#f59e0b' : '#111827')}</tr>
         </table>
@@ -193,7 +204,7 @@ export function renderOverviewReport(rep: OverviewReport, dashboardUrl: string):
 
         ${cta}
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid #eef0f2;font-size:12px;color:#9ca3af">
-          Vygenerováno ${escHtml(generated)} · ITDashboard automatický report.
+          Vygenerováno ${escHtml(generated)} · ITDashboard ${manual ? 'report (ruční odeslání)' : 'automatický report'}.
         </div>
       </td></tr>
     </table>
@@ -219,7 +230,7 @@ export async function sendOverviewReportEmail(machineNames?: string[]): Promise<
   let rep = await buildOverviewReport();
   if (machineNames && machineNames.length > 0) rep = filterReportToSelection(rep, machineNames);
   if (rep.machines.length === 0) throw new Error('No machines selected for the report');
-  const recipients = await sendMail(settings, renderOverviewReport(rep, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.reports.recipients');
+  const recipients = await sendMail(settings, renderOverviewReport(rep, (settings['alerts.dashboard_url'] ?? '').trim(), true), 'alerts.reports.recipients');
   logActivity('info', 'reports', `Overview report email sent to ${recipients} recipient(s) — ${rep.totals.total} machine(s), ${rep.totals.offline} offline`);
   return { recipients, total: rep.totals.total, offline: rep.totals.offline };
 }
