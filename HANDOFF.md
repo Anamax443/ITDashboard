@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-12 (service whitelist as a global view filter + dashboard OS breakdown chart)
+Last updated: 2026-06-12 (service whitelist view filter + dashboard OS breakdown chart + live reachability probe)
 
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in
@@ -89,6 +89,70 @@ New homepage panel **"Operační systémy" / "Operating systems"**
 Possible follow-ups: extra OS buckets if AD carries non-Windows or unusual
 edition strings (they fall into `Other` today); an optional "include disabled"
 toggle if the operator ever wants deactivated machines in the chart.
+
+### Live network reachability probe drives the Status column (commit `a12ad36`)
+
+Operator flagged that the Computers **Status** column was unreliable: boxes
+unseen for months showed a green **"Active"**, and clearly-offline boxes showed
+**"? Unknown"** — sometimes next to an OFFLINE-looking error. Root cause: Status
+was a **by-product of the event-log collector**, not a liveness check. The
+collector runs only on `enabled = 1 AND monitor_enabled = 1 AND excluded = 0 AND
+consecutive_failures < cap`, classifies failures crudely
+(offline / rpc_unavailable / access_denied / unknown), and **freezes** once a PC
+passes the failure cap (it's skipped, so `last_status`/`last_error` stop
+updating). So a reachable box whose event log we can't read showed "Unknown",
+and an AD-enabled box never classified showed the green "Active" **fallback**.
+There was **no ping** anywhere.
+
+New **standalone reachability probe**
+(`apps/server/src/services/reachability-collector.ts`):
+
+- Probes **every `enabled = 1 AND excluded = 0` PC** — deliberately NOT gated by
+  `monitor_enabled` or the failure cap, so even parked / unmonitored boxes get a
+  live verdict.
+- A plain **TCP connect to port 135** (RPC endpoint mapper), falling back to
+  **445** (SMB). **Not ICMP ping** — Windows Firewall blocks ping by default in a
+  domain, so a TCP port is the reliable "is it on the network" signal. First port
+  that answers ⇒ reachable. Concurrency 16, self-contained (never throws).
+- Persists `reachable` (BIT), `last_reachable_at` (bumped only on success),
+  `reach_checked_at`.
+- Wired into `checks-runner.ts` as a new `CHECKS` entry **`reachability`**
+  (`settingKey checks.run_reachability`, default **on**), ordered **after adsync,
+  before eventlog**, so Status reflects current reachability regardless of whether
+  the other collectors succeed. `refresh-single-pc` also sets `reachable = 1` on a
+  successful single-PC refresh.
+- **Migration `032_reachability`**: adds the three columns + seeds
+  `checks.run_reachability='1'`, `reachability.ports='135,445'`,
+  `reachability.timeout_ms='2000'`.
+
+**Status column redefined** to the operator's model
+(`apps/desktop/src/pages/ComputersPage.tsx`):
+
+- `!enabled` → **Disabled** (AD account disabled).
+- `reachable === true` → **● Active** (on the network now). A secondary dim
+  **"· ⚠ logs"** marker sits next to it when the box is up but the event-log
+  collector is failing (`last_status` access_denied / rpc_unavailable / unknown,
+  or `consecutive_failures > 0`) — tooltip shows `last_error`. This is the
+  BERANVW11 case: reachable but unreadable.
+- `reachable === false` → **○ Offline** (powered off / disconnected); tooltip
+  shows "Last on network: …".
+- `reachable == null` (not probed yet, transitional) → falls back to the old
+  `last_status` chain with a neutral **"— not probed"** instead of the misleading
+  green Active.
+
+Also: new **`offline`** filter (status chip + dropdown option, =
+`enabled && !excluded && reachable === false`), a **Settings** toggle for the
+probe (`settings.check.reachability`, CS+EN), and `reachable` /
+`last_reachable_at` / `reach_checked_at` on `ComputerItem` + `GET /computers`.
+
+Three signals are now distinct: **reachability** (live, this probe) vs **event-log
+collection health** (`last_status`) vs **AD inactivity** (`last_seen` /
+`inactive.threshold_days`).
+
+**Caveat:** the probe runs inside the periodic-checks window (`checks.days` /
+`checks.window_*`, default Mon–Fri 06:00–18:00), so in the default config Status
+is not refreshed overnight / weekends. Making it a window-independent fast timer
+is a possible follow-up.
 
 ## Config externalization (2026-06-11)
 
@@ -1031,7 +1095,10 @@ still returns the fallback text.
 - The workflow mirrors source, installs dependencies, typechecks, builds server + browser UI, applies migrations, then restarts `ITDashboardAPI`.
 
 Important:
-- Push to `main` requires explicit operator authorization: `Autorizuj push do main`
+- Push to `main` does **not** require per-push authorization anymore (operator revoked
+  that rule on 2026-06-12). Push once the work is complete and locally verified
+  (server `npm run typecheck` + desktop `npm run build`); always report the commit
+  hash and watch the deploy (`gh run watch`).
 - After every commit, report the commit hash in chat.
 - Local branch may be `scaffold/initial`; push explicitly with `git push origin HEAD:main`.
 

@@ -41,8 +41,9 @@
   - `settings` — get all, put bulk
   - `scripts` — list (run endpoint pending)
 - Background tasks:
-  - **Periodic checks scheduler** — every `checks.interval_sec` (default 900) within `checks.days` + `checks.window_start/end` runs selected checks from Settings: eventlog, disk, services, perf, adsync (adsync default OFF in periodic)
+  - **Periodic checks scheduler** — every `checks.interval_sec` (default 900) within `checks.days` + `checks.window_start/end` runs selected checks from Settings: eventlog, disk, services, perf, adsync, reachability (adsync default OFF in periodic)
   - **AD sync** — registered as the first check; `Get-ADComputer -Filter *` + MERGE. Default off in periodic, forced on by "Run all". New PCs default to `monitor_enabled = adsync.default_monitor_enabled` (default `true`)
+  - **Reachability probe** — runs after AD sync and before the eventlog collector; TCP-connects every enabled, non-excluded PC (port 135, fallback 445) to record live network presence in `computers.reachable` independently of the data collectors. See **### Live network reachability probe drives the Status column**.
   - **Eventlog collector** — pulls Warning/Error/Critical events
   - **Disk + PC-info collector** — pulls Win32_LogicalDisk, Win32_ComputerSystem (current logged-in user), Win32_NetworkAdapterConfiguration (primary IPv4) via a single DCOM session. PC info populates `computers.current_user`, `current_user_seen_at`, `ip_address`, `pc_info_collected_at`. User is only overwritten when non-null (last-seen persists); IP is always overwritten.
   - **Services collector** — checks Auto + non-running Windows services and drift policy
@@ -51,7 +52,7 @@
 
 ### Database (MSSQL on the SQL host — `SQL_HOST` / `SQL_INSTANCE`, DB `SQL_DATABASE`)
 Tables:
-- `computers` — name, fqdn, os_version, last_seen, enabled (AD presence), monitor_enabled (operator intent), last_collected_at, last_error, consecutive_failures, distinguished_name, ou_path, last_status, `disk_email_monitor` (per-PC opt-in to disk-critical email alerts) + `disk_email_drives` (optional per-PC drive-letter scope), `service_email_monitor` (per-PC opt-in to critical-service email alerts)
+- `computers` — name, fqdn, os_version, last_seen, enabled (AD presence), monitor_enabled (operator intent), last_collected_at, last_error, consecutive_failures, distinguished_name, ou_path, last_status, `reachable` (live TCP reachability, set by the reachability probe) + `last_reachable_at` (last successful connect) + `reach_checked_at` (last probe attempt), `disk_email_monitor` (per-PC opt-in to disk-critical email alerts) + `disk_email_drives` (optional per-PC drive-letter scope), `service_email_monitor` (per-PC opt-in to critical-service email alerts)
 - `events` — raw events with unique idx `(computer_id, event_id, log_name, time_created)` for idempotency
 - `event_daily_agg` — daily aggregates per (computer, log_name, event_id, level), kept forever
 - `disks` — per-drive snapshot (replaces row on each scan)
@@ -108,7 +109,7 @@ Persisted in `computers.last_status`. UI shows breakdown in Dashboard Unreachabl
 On INSERT (newly discovered PC), AD sync applies `adsync.default_monitor_enabled` (default `true`). The previous column-level `DEFAULT 1` is preserved as a safety net, but the value is now explicit per the setting so an operator can flip the default to "off" if they want new PCs to require explicit opt-in.
 
 ### Settings live-reschedule
-`checks.interval_sec` causes immediate scheduler reschedule on save — no service restart. The day/time window and check enable flags (`checks.run_eventlog`, `checks.run_disk`, `checks.run_services`, `checks.run_perf`, `checks.run_adsync`) are read on every scheduled run, so toggles apply to the next cycle.
+`checks.interval_sec` causes immediate scheduler reschedule on save — no service restart. The day/time window and check enable flags (`checks.run_eventlog`, `checks.run_disk`, `checks.run_services`, `checks.run_perf`, `checks.run_adsync`, `checks.run_reachability`) are read on every scheduled run, so toggles apply to the next cycle.
 
 ### AD sync in checks runner
 AD sync is registered as the first check in the registry. Order matters: if a periodic run includes both `adsync` and the data collectors, AD sync runs first so subsequent collectors operate on fresh inventory in the same cycle. By default `checks.run_adsync = false` (fleet-wide MERGE every 15 min is wasteful), but `runAllChecksOnce` (manual "Run all") forces all checks on regardless of selection — so clicking "Run all" always pulls a fresh AD view before the data collectors.
@@ -241,8 +242,28 @@ Checking the service's `Running` state only proves the service-control manager *
 
 **Implementation.** `evaluateAndSendPortAlerts` in `apps/server/src/services/alerts.ts` does the TCP probe, baseline learning, debounce / maintenance-window / throttle, and renders its own mobile-friendly report; it is hooked right after `evaluateAndSendServiceAlerts` in `runServicesScanOnce`. Route `POST /alerts/ports/test` runs a live probe (ignoring enable/throttle) to back the Settings test button.
 
+### Live network reachability probe drives the Status column
+
+Until this feature (2026-06-12, commit `a12ad36`) the Computers "Status" column was a **by-product of the event-log collector** rather than a measure of network presence. That coupling produced three wrong answers: the collector only ran on `enabled && monitor_enabled && !excluded` PCs (so anything unmonitored had no fresh status); failures were classified crudely from the PS error text (`offline` / `rpc_unavailable` / `access_denied` / `unknown`), so a perfectly reachable box whose event log simply couldn't be read showed **"Unknown"**; and — worst — once a PC passed the failure cap (`consecutive_failures >= MAX_FAILURES_BEFORE_SKIP`, at which point `listTargets` skips it) its status **froze**, so an AD-enabled box that was never successfully classified kept showing a green "Active" fallback forever. No live presence signal existed; there was no ICMP ping anywhere.
+
+**New collector — decoupled from event-log health.** `runReachabilityProbeOnce()` in `apps/server/src/services/reachability-collector.ts` lists **every `enabled && !excluded` computer** — deliberately **not** gated by `monitor_enabled` and **not** subject to the failure cap, so it sees PCs the event-log collector has given up on. Each is probed by a **TCP connect** to port 135 (RPC endpoint mapper) with a 445 (SMB) fallback — **not ICMP**, because a domain's Windows Firewall blocks ping by default while leaving these RPC/SMB ports open. Concurrency is 16. The probe is self-contained: it never throws, and returns `null` only if a run is already in flight. It persists `reachable` (BIT), `last_reachable_at` (bumped **only** on a successful connect, so it preserves "last seen alive" across later failures), and `reach_checked_at` (every attempt).
+
+**Wiring into the checks runner.** Registered in `apps/server/src/services/checks-runner.ts` as a new `CHECKS` entry `'reachability'` (`settingKey` `checks.run_reachability`, `defaultEnabled true`), ordered **after `adsync` and before `eventlog`** so the Status reflects current reachability regardless of whether the data collectors succeed in the same cycle. `RunChecksResult` / `CheckSelection` are extended for it and `loadSelection` picks it up automatically, so the Settings "enabled checks" toggle works with no extra plumbing. `refresh-single-pc` also sets `reachable = 1` on a successful single-PC refresh (a successful collect implies the box answered).
+
+**Migration `032_reachability.sql`** adds the three columns and seeds `checks.run_reachability = '1'`, `reachability.ports = '135,445'`, and `reachability.timeout_ms = '2000'`.
+
+**Client — the Status cell is redefined.** `GET /computers` returns the new columns; `ComputerItem` (`apps/desktop/src/api.ts`) gains `reachable` / `last_reachable_at` / `reach_checked_at`. The ComputersPage Status cell now reads from live reachability rather than collector health:
+- **Disabled** — not `enabled` in AD.
+- **Active** — `reachable` now true, with a secondary **"logs"** marker when event-log collection is unhealthy (derived from `last_status` ∈ `access_denied | rpc_unavailable | unknown`, or `consecutive_failures > 0`). The box is up; its log path may not be.
+- **Offline** — `reachable` is false. A new `'offline'` status filter selects `enabled && !excluded && reachable === false`.
+- **— not probed** — `reachable` is `null`, a transitional state before the first probe has run.
+
+The key design split is that three previously-conflated signals are now distinct: **reachability** (live, this probe) vs **event-log collection health** (`last_status`) vs **AD inactivity** (`last_seen` / `inactive.threshold_days`). A box can be Active-but-"logs", reachable-but-AD-inactive, etc., and the UI no longer flattens those into one column.
+
+**Design caveat.** The probe runs **inside the periodic-checks window** (`checks.days` / window, default Mon–Fri 06:00–18:00), so in the default config reachability is **not** refreshed overnight or at weekends. Making it a window-independent timer (so presence stays fresh 24/7 while the heavier collectors stay windowed) is a possible follow-up.
+
 ### Computers tab sorting (reliability)
-Sorting is locale-aware with numeric chunking, so IPs order naturally (`10.8.2.9` < `10.8.2.10`), hostnames order naturally (`PC2` < `PC10`), accented names collate correctly, and nulls sort last. The "Status" column sorts by the displayed reachability status (`computers.last_status`), not the `enabled` flag. Closing the Per-PC Actions modal after a manual refresh re-syncs the list so the row reflects the latest scan.
+Sorting is locale-aware with numeric chunking, so IPs order naturally (`10.8.2.9` < `10.8.2.10`), hostnames order naturally (`PC2` < `PC10`), accented names collate correctly, and nulls sort last. The "Status" column sorts by the displayed reachability status, now derived from the live `computers.reachable` probe (see **### Live network reachability probe drives the Status column**) rather than the `enabled` flag. Closing the Per-PC Actions modal after a manual refresh re-syncs the list so the row reflects the latest scan.
 
 ### Dashboard OS breakdown chart (live/stale split + drill-down)
 
@@ -346,5 +367,6 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 029_disk_email_drives | computers.disk_email_drives NVARCHAR(64) — per-PC drive-letter scope |
 | 030_service_email_alerts | computers.service_email_monitor BIT + service_alert_state table (per-(PC, service) `first_down_at` flapping-debounce state) + alerts.services.* settings seed (enabled, debounce_minutes, frequency_hours, maintenance_window, critical_names, whitelist) |
 | 031_service_port_checks | port_check_state table (per-(PC, port) baseline `last_ok_at` + flapping-debounce state) + alerts.services.port_checks_enabled / port_checks (seeded `LDAP:389,SMB:445,RDP:3389,Kerberos:88,DNS:53`) / port_timeout_ms (2000) settings seed |
+| 032_reachability | computers.reachable BIT + last_reachable_at + reach_checked_at (live TCP reachability probe) + checks.run_reachability (1) / reachability.ports (`135,445`) / reachability.timeout_ms (2000) settings seed |
 
 > `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).

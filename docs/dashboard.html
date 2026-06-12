@@ -394,7 +394,7 @@ service restarts on new dist/, in-memory state cleared</div>
 <div data-lang="en">
   <p>Complete inventory with operator controls:</p>
   <ul>
-    <li><strong>Status chips in header</strong> — clickable filter pills: <em>active</em>, <em>monitored</em>, <em>unmonitored</em>, <em>failing</em>, <em>disk critical</em>, <em>disk warning</em>, <em>disabled</em></li>
+    <li><strong>Status chips in header</strong> — clickable filter pills: <em>active</em>, <em>offline</em>, <em>monitored</em>, <em>unmonitored</em>, <em>failing</em>, <em>disk critical</em>, <em>disk warning</em>, <em>disabled</em></li>
     <li><strong>OS drill-down chip</strong> — clicking a bar in the Dashboard "Operating systems" panel opens this tab pre-filtered to that OS (and to live or stale machines). The filter shows as a <strong>removable chip</strong> like <code>OS: Windows 11 · stale ✕</code>; click the ✕ to clear it and return to the full list.</li>
     <li>Search across name / FQDN / OS / OU path / IP / current user</li>
     <li>Status dropdown filter (mirror of chips)</li>
@@ -405,14 +405,17 @@ service restarts on new dist/, in-memory state cleared</div>
     <li><strong>🩺 Scan disks</strong> — manual disk space scan; status feedback inline (Scanning…, then OK/fail/drives count)</li>
     <li><strong>History</strong> — expands to show last 20 AD sync runs</li>
     <li>Disks column — colored progress bars per drive, status by current thresholds</li>
-    <li>Status column — Online / Offline / RPC fail / Access denied / Disabled</li>
+    <li><strong>Status column — live network reachability</strong> — <em>Disabled</em> = AD account disabled · <em>Active</em> = reachable on the network now (a small <code>logs ⚠</code> marker may sit next to it when the box is up but its event log can't be read) · <em>Offline</em> = not reachable (powered off / disconnected) · <code>— not probed</code> = neutral state shown until the first probe runs after a deploy. The new <em>offline</em> filter (chip + dropdown) selects machines in this state.</li>
     <li>Last collected / Last error columns</li>
   </ul>
+</div>
+<div class="callout callout-info" data-lang="en">
+<strong>What "Status" means now — reachability probe</strong> — the Status column used to merely reflect whether event-log collection succeeded: it ran only on monitored PCs, bucketed errors crudely, and eventually "froze", so supposedly-unreachable machines could still show <em>Unknown</em> or a green <em>Active</em>. A standalone <strong>reachability probe</strong> now runs: for <strong>every</strong> enabled, non-excluded PC (regardless of monitoring) it does a plain TCP connect to port 135 (RPC), falling back to 445 (SMB) — it is <strong>not</strong> an ICMP ping (Windows Firewall blocks ping by default in a domain). The probe runs within the periodic-checks window (default Mon–Fri 06:00–18:00), so by default it isn't refreshed overnight or at weekends. A probe toggle was added in <strong>Settings</strong>.
 </div>
 <div data-lang="cs">
   <p>Kompletní inventář s operátorskými ovládacími prvky:</p>
   <ul>
-    <li><strong>Status chips v hlavičce</strong> — klikatelné filtr pills: <em>active</em>, <em>monitored</em>, <em>unmonitored</em>, <em>failing</em>, <em>disk critical</em>, <em>disk warning</em>, <em>disabled</em></li>
+    <li><strong>Status chips v hlavičce</strong> — klikatelné filtr pills: <em>active</em>, <em>offline</em>, <em>monitored</em>, <em>unmonitored</em>, <em>failing</em>, <em>disk critical</em>, <em>disk warning</em>, <em>disabled</em></li>
     <li><strong>OS drill-down chip</strong> — kliknutí na pruh v dashboard panelu „Operační systémy" otevře tuto záložku přednastavenou na daný OS (a na živé nebo stale stroje). Filtr se ukáže jako <strong>odstranitelný chip</strong> typu <code>OS: Windows 11 · stale ✕</code>; kliknutím na ✕ ho zrušíš a vrátíš se na plný seznam.</li>
     <li>Vyhledávání napříč name / FQDN / OS / OU path / IP / aktuální user</li>
     <li>Status dropdown filtr (zrcadlo chips)</li>
@@ -423,9 +426,12 @@ service restarts on new dist/, in-memory state cleared</div>
     <li><strong>🩺 Scan disks</strong> — manuální disk space scan; status feedback inline (Scanning…, pak OK/fail/drives count)</li>
     <li><strong>History</strong> — rozbalí posledních 20 AD sync runs</li>
     <li>Disks sloupec — barevné progress bary per drive, status podle aktuálních thresholds</li>
-    <li>Status sloupec — Online / Offline / RPC fail / Access denied / Disabled</li>
+    <li><strong>Status sloupec — živá dostupnost na síti</strong> — <em>Disabled</em> = účet v AD vypnutý · <em>Active</em> = teď dostupný na síti (vedle může být drobná značka <code>logs ⚠</code>, když stroj běží, ale nejde mu přečíst event log) · <em>Offline</em> = nedostupný (vypnutý / odpojený) · <code>— not probed</code> = neutrální stav zobrazený do první sondy po nasazení. Nový filtr <em>offline</em> (chip i v rozbalovátku) vybírá stroje v tomto stavu.</li>
     <li>Sloupce Last collected / Last error</li>
   </ul>
+</div>
+<div class="callout callout-info" data-lang="cs">
+<strong>Co teď „Status" znamená — sonda dostupnosti</strong> — sloupec Status dřív jen odrážel, jestli se povedl sběr event-logu: běžel jen na monitorovaných strojích, hrubě škatulkoval chyby a po čase „zamrzl", takže „údajně nedostupné" stroje mohly stále ukazovat <em>Unknown</em> nebo zeleně <em>Active</em>. Nově běží samostatná <strong>sonda dostupnosti</strong>: na <strong>každý</strong> zapnutý a nevyřazený počítač (bez ohledu na monitoring) se udělá prostý TCP connect na port 135 (RPC), s fallbackem na 445 (SMB) — <strong>není</strong> to ICMP ping (ten Windows firewall v doméně defaultně blokuje). Sonda běží v okně periodických kontrol (defaultně po–pá 06:00–18:00), takže přes noc a o víkendu se v základním nastavení neobnovuje. V <strong>Nastavení</strong> přibyl přepínač sondy.
 </div>
 
 <h2 id="pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></h2>
