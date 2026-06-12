@@ -36,7 +36,9 @@ function toTSV<T>(rows: T[], columns: ExportColumn<T>[]): string {
       return v == null ? '' : String(v).replace(/[\t\r\n]+/g, ' ');
     }).join('\t'),
   );
-  return [header, ...lines].join('\r\n');
+  // UTF-8 BOM so editors auto-detect UTF-8 (otherwise an ANSI-default editor on
+  // Czech Windows shows →/✓/— as mojibake like "â").
+  return '﻿' + [header, ...lines].join('\r\n');
 }
 
 function htmlEscape(s: string): string {
