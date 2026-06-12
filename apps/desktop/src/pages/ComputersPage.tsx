@@ -363,6 +363,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
           <button className="refresh-btn" onClick={runSync} disabled={syncing} style={{ minWidth: 130 }}>
             {syncing ? 'Syncing…' : '↻ Sync from AD'}
           </button>
+          <ReportEmailButton names={sorted.map((c) => c.name)} />
           <ExportMenu rows={sorted} columns={exportColumns} title="ITDashboard — Počítače" filterSummary={filterSummary} filenameBase="computers" />
         </div>
       </div>
@@ -548,6 +549,36 @@ function StatusChip({ label, count, active, color, onClick }: { label: string; c
     >
       {count} {label}
     </button>
+  );
+}
+
+// Emails the structured fleet report (PC vs servers, offline, collection health)
+// for exactly the currently visible (filtered) rows — same "applies to what you
+// see" model as the bulk toggles. Recipients come from Settings → Email
+// reporting (falling back to the shared list).
+function ReportEmailButton({ names }: { names: string[] }) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const send = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api.sendReportEmail(names);
+      setMsg(t('computers.reportSent', { recipients: r.recipients, total: r.total, offline: r.offline }));
+      setTimeout(() => setMsg(null), 8000);
+    } catch (e) {
+      setMsg('⚠ ' + String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <button className="refresh-btn" onClick={send} disabled={busy || names.length === 0} title={t('computers.reportEmailHint')}>
+        {busy ? '…' : `✉ ${t('computers.reportEmail')} (${names.length})`}
+      </button>
+      {msg && <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>{msg}</span>}
+    </>
   );
 }
 
