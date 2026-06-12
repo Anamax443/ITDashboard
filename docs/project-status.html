@@ -93,7 +93,46 @@
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>.</p>
 
-  <h2>Poslední změny (2026-06-12)</h2>
+  <h2>Poslední změny (2026-06-12) — emailing, dvouúrovňové služby, testy</h2>
+  <p class="sub" style="margin:0 0 .75rem">Přepracování emailových reportů a monitoringu služeb; první automatizované testy jako deploy gate. Zásahy do DB — <strong>migrace 038–040</strong>. Živý commit <span class="pill">b7e03e2</span>.</p>
+  <p style="margin:0 0 4px"><strong>Příjemci emailů per-agenda + samostatná SMTP sekce</strong> <span class="pill">b7e03e2</span></p>
+  <ul>
+    <li>Příjemce lze nastavit zvlášť pro každou agendu (disky / služby / porty / report) s <strong>fallbackem na sdílený seznam</strong>, když konkrétní agenda nemá vlastní příjemce.</li>
+    <li>Samostatná sekce <strong>Email / SMTP</strong> v Nastavení — SMTP relay, odesílatel a sdílení nastavení vyčleněno z jednotlivých agend.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Strukturovaný report přehledu flotily na vyžádání</strong> <span class="pill">b7e03e2</span></p>
+  <ul>
+    <li>Tlačítko „Odeslat report" v záložce Počítače pošle emailem strukturovaný přehled <strong>pro aktuálně vyfiltrované stroje</strong> — rozpad PC vs. servery, offline stroje a stav sběru dat (collection health).</li>
+    <li>Report obsahuje stavový banner shrnující celkový stav.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Strojově čitelné předměty emailů</strong> <span class="pill">b7e03e2</span></p>
+  <ul>
+    <li>Předmět nese <code>[OK]</code>/<code>[CHYBA]</code> (stav problému) + <code>[RUČNĚ]</code> (ruční vs. automatické odeslání) — poštovní pravidlo si tak může čisté reporty samo zařadit.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Dvouúrovňový monitoring služeb + výjimky per-PC</strong> <span class="pill">b7e03e2</span> <span class="pill">migrace 038–040</span></p>
+  <ul>
+    <li>Dvě úrovně: široká <strong>„Služby"</strong> + <strong>„Critical services"</strong>, každá s per-PC opt-inem a per-PC seznamem výjimek (ignore list).</li>
+    <li>Široká úroveň reportuje skutečný drift Auto-služeb a vynechává služby spouštěné on-demand triggerem / se zpožděným startem; <strong>exit code se nepoužívá jako rozlišovací kritérium</strong>.</li>
+    <li>Záložka Critical services + dashboardová dlaždice teď respektují per-PC výjimky — vyjmuté služby jsou zobrazeny zešedle a nezapočítávají se.</li>
+    <li>Čísla na dashboardové dlaždici se barví podle závažnosti (zelená při nule, červená/oranžová při problému).</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Oprava filtrů záložky Služby</strong> <span class="pill">b7e03e2</span></p>
+  <ul>
+    <li>Filtry teď berou null <code>exit_code</code> jako bezproblémové ukončení; výchozí „Jen ExitCode != 0" vypnuto.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>První automatizované testy jako deploy gate</strong> <span class="pill">b7e03e2</span></p>
+  <ul>
+    <li>První testovací sady (Vitest, <strong>54 případů</strong> napříč desktopem + serverem) zapojené do CI jako deploy gate — odpověď na výtku „žádné testy" z oponentury.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Dokumentace — oponentura</strong> <span class="pill">b7e03e2</span></p>
+  <ul>
+    <li>Přidán <code>docs/oponentura.md</code> (~90stránkový český technicko-akademický review/obhajobový dokument).</li>
+  </ul>
+  <div class="note">
+    <strong>Stále otevřené:</strong> delegace CIM na DC/serverech selhává s „Access is denied" — infrastrukturní blocker (práva účtu, ne kód).
+  </div>
+
+  <h2>Poslední změny (2026-06-12) — dostupnost, kritické služby, skórování</h2>
   <p class="sub" style="margin:0 0 .75rem">Většinou klientské změny; zásahy do serveru a DB — <strong>migrace 032</strong> (sonda dostupnosti), <strong>migrace 033</strong> (prahy/váhy skórování zdraví PC) a <strong>migrace 037</strong> (stav kritických služeb).</p>
   <p style="margin:0 0 4px"><strong>Kritické služby — reálný stav v jakémkoli stavu</strong> <span class="pill">7ac0962</span> <span class="pill">migrace 037</span></p>
   <ul>

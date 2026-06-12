@@ -22,12 +22,12 @@
 7 navigation tabs:
 - **Dashboard** — collector status, summary cards (clickable drill-down, incl. a "Critical services" tile → opens the Critical Services tab), health cards (reinstall risk/watch tiles), an expandable "📊 Operating systems" OS-breakdown tile, timeline chart, top noisy PCs chart, top event IDs, computers summary
 - **Events** — full-width events table with search + filters (Computer, Source, Level, Time range)
-- **Computers** — inventory with status chips, monitor checkboxes, bulk all/none, AD sync, disk scan, sync history. The 📧 Disk / 🔔 Services / Exclude column headers each carry a "✓ all / ✗ none" control that sets that flag for all currently visible (filtered) rows in one shot, via `POST /computers/bulk-flag { ids, flag, value }` (server whitelists the `flag` column name).
-- **Services** — Auto + non-Running detection with policy/drift, by-PC + by-service views, GPO PS script export
+- **Computers** — inventory with status chips, monitor checkboxes, bulk all/none, AD sync, disk scan, sync history. The 📧 Disk / 🔔 Services / 🛡 Critical services / Exclude column headers each carry a "✓ all / ✗ none" control that sets that flag for all currently visible (filtered) rows in one shot, via `POST /computers/bulk-flag { ids, flag, value }` (server whitelists the `flag` column name). An **"✉ Email report"** toolbar button emails a fleet-overview report scoped to the **currently visible (filtered)** machines — same "applies to what you see" model as the bulk toggles (see **### Structured fleet overview report + on-demand email**)
+- **Services** — Auto + non-Running detection with policy/drift, by-PC + by-service views, GPO PS script export. The default "Only ExitCode != 0" filter is **off** and exit-code classification goes through the shared `isServiceCrash` predicate so the tab matches the dashboard tile + the broad alert (see **### Services tab — exit-code-agnostic drift, shared `isServiceCrash`**)
 - **Critical Services** — sortable service×machine table of the configured critical services in their real state (Running/Stopped colour, offline machine = stale amber, "only not-running" filter); confirms the critical services actually run, not just flags stopped ones
 - **Perf** — Diagnostics-Performance channel: summary cards, top culprits, most-affected PCs, recent slow boot/shutdown/standby/resume events
 - **Activity** — terminal-style live log (filter, pause, copy)
-- **Settings** — periodic check frequency + enabled checks + disk thresholds (applied live, no restart)
+- **Settings** — periodic check frequency + enabled checks + disk thresholds (applied live, no restart). Email config is restructured into a standalone **"Email setup (SMTP)"** section holding the shared relay/From/recipients/dashboard URL; each agenda below (disk / services / ports / reports) carries only its own enable/throttle + an optional per-agenda recipient-override field (see **### Per-agenda email recipients with shared fallback**)
 
 ### API + collectors (`apps/server`)
 - Fastify + TypeScript, runs as Windows Service `ITDashboardAPI` (NSSM) on the API host.
@@ -37,7 +37,8 @@
   - `events` — list, summary, top-ids, timeline, top-computers, pc-health (reinstall-candidate scoring)
   - `computers` — list, sync, sync/last, sync/history, :id/monitor (PATCH), monitor/bulk (POST)
   - `collector` — status, run, stop
-  - `services` — problems list, critical (`GET /services/critical` — real state of configured critical services, joined to `computers`)
+  - `services` — problems list, critical (`GET /services/critical` — real state of configured critical services, joined to `computers`; the response now also carries each PC's `critical_service_exceptions` so the tab/tile honour the same per-PC excepted-service list the email does)
+  - `reports` — `GET /reports/overview` (structured fleet-overview JSON, no live probing) + `POST /reports/email` (`{ machines?: string[] }`, on-demand overview email); both share one generator so UI and email never drift
   - `reachability` — `POST /reachability/run` (manual probe trigger, backs Settings "Run now")
   - `disks` — list, collect
   - `activity` — log
@@ -55,7 +56,7 @@
 
 ### Database (MSSQL on the SQL host — `SQL_HOST` / `SQL_INSTANCE`, DB `SQL_DATABASE`)
 Tables:
-- `computers` — name, fqdn, os_version, last_seen, enabled (AD presence), monitor_enabled (operator intent), last_collected_at, last_error, consecutive_failures, distinguished_name, ou_path, last_status, `reachable` (live TCP reachability, set by the reachability probe) + `last_reachable_at` (last successful connect) + `reach_checked_at` (last probe attempt), `disk_email_monitor` (per-PC opt-in to disk-critical email alerts) + `disk_email_drives` (optional per-PC drive-letter scope), `service_email_monitor` (per-PC opt-in to critical-service email alerts)
+- `computers` — name, fqdn, os_version, last_seen, enabled (AD presence), monitor_enabled (operator intent), last_collected_at, last_error, consecutive_failures, distinguished_name, ou_path, last_status, `reachable` (live TCP reachability, set by the reachability probe) + `last_reachable_at` (last successful connect) + `reach_checked_at` (last probe attempt), `disk_email_monitor` (per-PC opt-in to disk-critical email alerts) + `disk_email_drives` (optional per-PC drive-letter scope), `service_monitor` (per-PC opt-in to the **broad** "every Auto service not Running" email level) + `service_exceptions` (per-PC ignore-list for the broad level), `service_email_monitor` (per-PC opt-in to the **critical** service email level) + `critical_service_exceptions` (per-PC ignore-list for the critical level) — see **### Two-level service monitoring with per-PC exceptions**
 - `events` — raw events with unique idx `(computer_id, event_id, log_name, time_created)` for idempotency
 - `event_daily_agg` — daily aggregates per (computer, log_name, event_id, level), kept forever
 - `disks` — per-drive snapshot (replaces row on each scan)
@@ -199,7 +200,7 @@ A few "key" PCs can be opted into disk-critical email alerting — the operator 
 
 **Throttle (edge + reminder).** At most one mail per `alerts.disk.frequency_hours` (default 24) while at least one monitored disk stays critical. First detection sends immediately, resends at the cadence while still critical, and clearing the condition resets the throttle (stored in `alerts.disk.last_sent_at`) so the next incident alerts promptly rather than waiting out a stale window.
 
-**Transport.** nodemailer to an internal SMTP relay (`alerts.smtp_host`/`alerts.smtp_port`, default port 25), opportunistic TLS with cert validation disabled (internal self-signed relays), no client auth assumed. Sender is `alerts.smtp_from`, recipients are `alerts.recipients` (comma/newline list).
+**Transport.** nodemailer to an internal SMTP relay (`alerts.smtp_host`/`alerts.smtp_port`, default port 25), opportunistic TLS with cert validation disabled (internal self-signed relays), no client auth assumed. Sender is `alerts.smtp_from`, recipients default to `alerts.recipients` (comma/newline list). As of 2026-06-12 each agenda may override recipients via its own key with fallback to this shared list — see **### Per-agenda email recipients with shared fallback**.
 
 **Mail transport reality — Microsoft 365 Direct Send.** In the reference deployment the `axima.cz` mail domain is hosted on Microsoft 365 (no on-prem Exchange/relay), so ITDashboard sends via O365 **Direct Send**: host `axima-cz.mail.protection.outlook.com`, port **25**, STARTTLS, **no authentication** (sender identity is established by the sending IP / SPF), From an `@axima.cz` address. Direct Send delivers **only to your own domain** — external recipients require authenticated submission. SMTP port landscape for portability: **25** = Direct Send / MX (no auth, own-domain only); **587** = SMTP AUTH client submission (login + app password, any recipient); **465** = SMTPS implicit TLS (legacy). Deliverability note: if mail from the API host is quarantined, add the host's public/NAT IP to the domain SPF record.
 
@@ -218,7 +219,7 @@ The email is a responsive **600px table-based HTML layout** (Outlook / Gmail / m
 
 ### Critical-service email alerting (per-PC, opt-in)
 
-Built as a direct mirror of disk alerting (2026-06-11), for the small set of servers where a stopped service is an incident, not a footnote. The operator ticks key servers in the Computers tab (new "🔔 Services" column); a status chip + a "service monitored" filter list which PCs are opted in. Opt-in is stored per-PC in `computers.service_email_monitor`. Same rationale as disk alerts: alerting on every monitored PC would be noise, so the model is "a handful of PCs that matter get email, everything else stays on the dashboard". It shares the transport, sender, recipients and dashboard URL with disk alerts (see **Disk email alerting** above) — only the evaluation logic and flapping guard are new.
+Built as a direct mirror of disk alerting (2026-06-11), for the small set of servers where a stopped service is an incident, not a footnote. The operator ticks key servers in the Computers tab; a status chip + a "service monitored" filter list which PCs are opted in. Opt-in is stored per-PC in `computers.service_email_monitor`. (As of 2026-06-12 / migration 040 this is the **critical** level of a two-level model — a broad "every Auto service not Running" level was added alongside it; see **### Two-level service monitoring with per-PC exceptions**.) Same rationale as disk alerts: alerting on every monitored PC would be noise, so the model is "a handful of PCs that matter get email, everything else stays on the dashboard". It shares the transport, sender, recipients and dashboard URL with disk alerts (see **Disk email alerting** above) — only the evaluation logic and flapping guard are new.
 
 **What counts as critical.** A configurable list `alerts.services.critical_names` (seeded with `NTDS`, `DNS`, `Kdc`, `Netlogon`, `W32Time`, `VMTools`, `VeeamBackupSvc`, `VeeamBrokerSvc`, `ekrn`, `DHCPServer`, `LanmanServer`) is matched case-insensitively with `*`/`?` glob wildcards against each service's name. A second list `alerts.services.whitelist` (e.g. `gupdate*`, `GoogleUpdater*`) names services that must **never** alert even if they match the critical list — noisy auto-updaters that legitimately sit in `Stopped` between runs. Per-user services (LUID-suffixed instances) are excluded outright.
 
@@ -274,6 +275,66 @@ Until this feature (2026-06-12, commit `7ac0962`, migration `037`) the services 
 **Endpoint + client.** `GET /services/critical` joins `computers` (`reachable` / `ip_address` / `os_version`). The client adds a `CriticalServiceStatus` type + `api.criticalServices()`, a new **Critical Services** tab (sortable service×machine table; Running/Stopped colour; an offline machine renders its last-known state as **stale amber**; "only not-running" filter), and a Dashboard tile — `SummaryCards` gains props `criticalServicesDown` / `criticalServicesTotal` / `onClickCriticalServices` that open the tab.
 
 **Design caveat.** A host whose CIM scan fails (`New-CimSession: Access is denied` on hardened DCs/servers) yields **no rows** until the service account is granted WMI/DCOM rights there — the table reflects only machines the collector can actually enumerate, so an absent service×machine cell can mean "not present" *or* "couldn't scan that box". This is the usual **Observer, not executor** ambiguity: absence of signal is not proof of absence.
+
+**Status note (2026-06-12).** The DC/server CIM "Access is denied" blocker is **infrastructure, not code** — re-confirmed live: `B-S-W-DC-01/02/03` all fail `New-CimSession`, and only the legacy `DOMENA01` still returns service data. Granting the service account WMI/DCOM rights on the hardened boxes (GPO) is the fix; no code change unblocks it.
+
+### Per-agenda email recipients with shared fallback (2026-06-12)
+
+Disk, services, ports and the new overview report previously all mailed the one shared `alerts.recipients` list. The 2026-06-12 batch (migrations 038–039) splits **recipients per agenda** while keeping the relay shared. `sendMail(settings, payload, recipientsKey?)` reads a per-agenda key — `alerts.disk.recipients`, `alerts.services.recipients`, `alerts.ports.recipients`, `alerts.reports.recipients` — and **falls back to the shared `alerts.recipients`** when that key is empty. The SMTP host/port/From and the dashboard URL stay shared (one relay, one sender identity). Migration **038** seeds the disk/services/ports keys empty, migration **039** seeds the reports key empty — so existing deployments keep mailing everyone via the shared fallback until the operator narrows a specific agenda.
+
+**Settings UI restructure.** A standalone **"Email setup (SMTP)"** section now holds the shared relay / From / recipients / dashboard URL. Each agenda section below (disk, services, ports, reports) keeps only its own enable/throttle controls plus an optional **recipient-override** field; left blank, the agenda inherits the shared recipients. This makes "everyone gets everything" the zero-config default and per-agenda targeting an opt-in.
+
+### Structured fleet overview report + on-demand email (2026-06-12)
+
+A new `apps/server/src/services/reports.ts` builds a **structured fleet-overview report from the `computers` table alone — no live probing** (it reads the last-collected state, so it is cheap and never blocks on offline boxes). `buildOverviewReport()` derives: **PCs vs servers** (a machine counts as a server when `os_version` matches `/server/i`), **offline machines** with their down-since, and **collection-health** counts. **Disabled machines are included** (rendered with status `'disabled'`) so the report's machine set matches what the Computers tab shows.
+
+**One generator, two consumers.** `GET /reports/overview` (JSON for the UI) and `POST /reports/email` (`{ machines?: string[] }`, the on-demand email) both call the **same** `buildOverviewReport()` — so the on-screen view and the emailed report can never drift. The overview email carries a **green/red status banner** (mirrors the subject prefix, below).
+
+**UI placement — toolbar button, not a tab.** A separate **"Reporting" tab was briefly added then removed** — it duplicated the Computers tab. The capability now lives as an **"✉ Email report"** button in the **Computers toolbar** that emails the **currently visible (filtered)** machines — the same "applies to what you see" model as the bulk flag toggles. So filtering the Computers tab and clicking the button reports exactly the rows on screen.
+
+### Machine-readable email subjects (2026-06-12)
+
+Every report/alert subject now leads with `subjectPrefix(hasProblems, manual)`:
+- **`[OK]`** vs **`[CHYBA]`** — does this mail actually carry a problem. This is the tag a mailbox auto-file rule keys on (file `[CHYBA]` to an action folder, let `[OK]` heartbeats settle elsewhere).
+- **`[RUČNĚ]`** when the mail was triggered manually (a test or an on-demand report); **absent** means the mail fired automatically from a scheduled scan.
+
+The overview email additionally renders the matching **green/red status banner** in the body. `subjectPrefix` is a pure helper (extracted to `alerts-util.ts`, see the test section) shared by every mail path so the convention can't diverge per agenda.
+
+### Two-level service monitoring with per-PC exceptions (2026-06-12, migration 040)
+
+Service email monitoring is now **two independent levels**, each surfaced as a per-PC checkbox + an ignore-list field in the Computers tab:
+- **Broad — "Služby"** (`service_monitor`): emails on **every Auto service that is not Running** on that PC.
+- **Critical — "Critical services"** (`service_email_monitor`): emails only on services in the configurable `alerts.services.critical_names` set (the existing critical-service alerting, see **### Critical-service email alerting**).
+
+Each level has its own per-PC **ignore list** — `service_exceptions` (broad) and `critical_service_exceptions` (critical) — a comma/newline list with `*` `?` wildcards, matched against the service **name OR display name**. An excepted service is suppressed for that PC's level.
+
+**Overlap rule — never emailed twice.** A critical service is reported **only by the critical level**: the broad level **skips any name that matches the critical-names set**, so a stopped `NTDS` pages once (as critical), never twice.
+
+**IMPORTANT design finding — the broad level is exit-code-agnostic.** The broad level reports the collector's **"real" set** of down Auto services and **excludes trigger-start / delayed-start (on-demand) services** (which legitimately sit Stopped). It deliberately does **not** gate on `exit_code`: live data shows **413 of 454** genuine Auto-service-down problems report exit `0`/null and only **19** are exit `≠0`, so `exit_code` is not a useful discriminator of "real" drift. An earlier attempt to gate the broad level on `exit_code <> 0` was **reverted** because it dropped the overwhelming majority of real problems.
+
+### Services tab — exit-code-agnostic drift, shared `isServiceCrash` (2026-06-12)
+
+The Services-tab filters tested `exit_code === 0`, but most stopped services carry `exit_code = null`, so trigger/null rows **leaked through** the filter. The fix introduces a single shared predicate `isServiceCrash(exitCode)` = `exit != null && exit !== 0` — i.e. **`0` OR `null` both count as a graceful stop**, only a non-zero exit is a crash. The default **"Only ExitCode != 0" toggle was flipped OFF**, so the tab shows real drift by default and **matches the dashboard "Stopped services" tile and the broad alert** rather than a narrow exit-code-crash subset. This is the same exit-code-agnostic stance as the broad alert level above; `isServiceCrash` is one of the helpers covered by the new desktop test suite.
+
+### Critical-service exceptions honoured in the tab + dashboard tile (2026-06-12)
+
+The per-PC `critical_service_exceptions` list was first introduced for the email; it is now honoured **everywhere the critical services are surfaced**, so the screen and the mail agree. `GET /services/critical` returns each PC's exceptions; an excepted non-running service is **excluded from the "N not running" count**, **sinks to the bottom** of the table, and renders **greyed with an "exception" tag**. The Dashboard **🛡 Critical services tile** excludes excepted services from its count too. Single source of truth: the same per-PC exception list drives the alert, the tab, and the tile.
+
+### Dashboard tile colours reflect severity (2026-06-12)
+
+Dashboard tile numbers are now **green when zero** and turn **red/orange only when there is an actual problem** (new `.card.ok` style). Previously a "0 problems" tile could still read as alarming; the colour now carries the severity so a clean fleet reads green at a glance.
+
+### First automated test suites + CI gate (2026-06-12)
+
+The earlier oponentura reviews flagged "no automated tests" as the standout gap; this batch closes it. **Vitest** is added to **both apps**. To make the server logic testable without loading the DB / native ODBC driver, the **pure helpers were extracted** from `alerts.ts` into `apps/server/src/services/alerts-util.ts` (no DB, no native-driver load). **54 cases** total:
+- **desktop `api.test.ts`** — service crash/exception classification (`isServiceCrash`, whitelist/exception globbing), disk threshold + drive-scope, `osBucket`, `levelName`.
+- **server `alerts-util.test.ts`** — `subjectPrefix`, recipient + glob parsing, maintenance-window matching, `shouldAlertNow` debounce/throttle.
+
+**CI gate.** `deploy.yml` now runs `npm test` **after typecheck** in both apps, so a failing test **stops the deploy** before any service restart. This directly answers the "no automated tests" critique from the oponentura reviews.
+
+### Academic review/defence document
+
+A ~90-page Czech technical + academic review/defence document was added at `docs/oponentura.md`.
 
 ### Live network reachability probe drives the Status column
 
@@ -429,5 +490,8 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 035_reachability_interval | reachability.interval_sec (300) seed — the reachability/Status probe now runs on its own standalone timer, independent of the periodic-checks window |
 | 036_reachability_ping | reachability.ping (1) seed — ICMP ping fallback so a host that blocks TCP 135/445 but answers ping still counts as reachable |
 | 037_critical_service_status | critical_service_status table (computer_id + service_name PK; service_name, display_name, state, start_mode, collected_at) — the real state of the configured critical services in **any** state, consumed by `GET /services/critical` |
+| 038_per_agenda_recipients | `alerts.disk.recipients` / `alerts.services.recipients` / `alerts.ports.recipients` settings seed (empty) — per-agenda recipient override with fallback to the shared `alerts.recipients`; SMTP host/port/From + dashboard URL stay shared |
+| 039_reports_recipients | `alerts.reports.recipients` settings seed (empty) — per-agenda recipient override for the fleet-overview report, same shared-fallback model as 038 |
+| 040_service_two_level | computers.service_monitor BIT (broad "every Auto service not Running" level) + service_exceptions NVARCHAR (broad per-PC ignore list) + critical_service_exceptions NVARCHAR (critical per-PC ignore list) — two-level service monitoring with per-PC exceptions; the existing service_email_monitor now denotes the critical level |
 
 > `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).

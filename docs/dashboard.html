@@ -153,6 +153,13 @@ a.external { color: var(--accent); }
   <span data-lang="en">Internal IT operations dashboard for the AXINETWORK domain. Provides cross-fleet eventlog visibility, AD-synced computer inventory, disk space monitoring, and per-PC reachability classification for ~225 domain machines.</span>
 </p>
 
+<div class="callout callout-info" data-lang="en">
+  <strong>What's new (2026-06-12):</strong> Email config restructured — a shared <a href="#disk-alerts">"Email setup (SMTP)"</a> section plus <strong>per-agenda recipient overrides</strong>. <strong>Two service-monitoring levels</strong> (🔧 Services broad / 🛡 Critical services) each with <strong>per-PC exceptions</strong>. The <a href="#services">Services tab</a> now treats exit_code 0 and null as graceful and "Only ExitCode != 0" defaults OFF (shows real drift by default). The <a href="#critical-services">Critical services tab</a> and its dashboard tile honour per-PC exceptions. New <strong>"✉ Email report"</strong> structured fleet overview from the Computers tab. <strong>Machine-readable subjects</strong> (<code>[OK]</code> / <code>[CHYBA]</code> / <code>[RUČNĚ]</code>). Dashboard tiles are <strong>green at zero, coloured only on a real problem</strong>.
+</div>
+<div class="callout callout-info" data-lang="cs">
+  <strong>Co je nového (2026-06-12):</strong> Přeorganizované nastavení e-mailu — sdílená sekce <a href="#disk-alerts">„Nastavení e-mailu (SMTP)"</a> plus <strong>per-agenda override příjemců</strong>. <strong>Dvě úrovně monitoringu služeb</strong> (🔧 Služby široká / 🛡 Krit. služby) každá s <strong>per-PC výjimkami</strong>. <a href="#services">Záložka Služby</a> nově bere exit_code 0 i null jako graceful a „Only ExitCode != 0" je defaultně VYPNUTÝ (defaultně ukazuje reálný drift). <a href="#critical-services">Záložka Kritické služby</a> i její dashboard dlaždice respektují per-PC výjimky. Nový <strong>„✉ Report e-mailem"</strong> strukturovaný přehled flotily ze záložky Počítače. <strong>Strojově čitelné předměty</strong> (<code>[OK]</code> / <code>[CHYBA]</code> / <code>[RUČNĚ]</code>). Dashboard dlaždice jsou <strong>zelené na nule, barevné jen při reálném problému</strong>.
+</div>
+
 <h2 id="overview"><span data-lang="cs">Přehled</span><span data-lang="en">Overview</span></h2>
 <div data-lang="cs">
   <p>ITDashboard centralizuje čtyři pracovní postupy IT operátora v jednom dashboardu (tmavý/světlý motiv):</p>
@@ -338,11 +345,12 @@ service restarts on new dist/, in-memory state cleared</div>
       <li>Disk critical (N PCs / M drives) → Computers tab with disk-critical filter</li>
       <li>Disk warning → Computers tab with disk-warning filter</li>
       <li>Stopped services (PCs affected) → Services tab. Services on the service alert whitelist (Settings → "Email alerts — services") are always excluded here — they do not count toward the PC count or the "N services" subtitle.</li>
-      <li>🛡 Critical services (count not-running on reachable machines, red when &gt; 0) → opens the new Critical services tab</li>
+      <li>🛡 Critical services (count not-running on reachable machines, per-PC exceptions excluded, red when &gt; 0) → opens the new Critical services tab</li>
       <li>Slow boot/shutdown (7d, PCs affected) → Perf tab</li>
       <li>Computers (active/total) → Computers tab unfiltered</li>
     </ul>
   </li>
+  <li><strong>Tile colour follows severity</strong> — a tile's number is <strong>green when it is zero</strong> (nothing wrong) and only turns <strong>red / orange when there is an actual problem</strong> (e.g. a critical service not running, a watched disk critical). At a glance a wall of green means "all good"; any colour means "look here".</li>
   <li><strong>Events timeline (24h)</strong> — stacked hourly bars (Critical/Error/Warning), SVG</li>
   <li><strong>Top noisy PCs (24h)</strong> — top 10 ranked, breakdown by level via colored progress bar</li>
   <li><strong>Top event IDs (24h)</strong> — top 15 event IDs by count, sortable</li>
@@ -436,6 +444,7 @@ service restarts on new dist/, in-memory state cleared</div>
     <li><strong>✓ All</strong> / <strong>✗ None</strong> bulk toggle (respects current filter — useful for "Search: SRV" → ✓ All to monitor only servers)</li>
     <li><strong>↻ Sync from AD</strong> — refreshes inventory from <code>Get-ADComputer</code></li>
     <li><strong>🩺 Scan disks</strong> — manual disk space scan; status feedback inline (Scanning…, then OK/fail/drives count)</li>
+    <li><strong>✉ Email report</strong> — emails a structured fleet overview for the <strong>currently shown</strong> machines (filter first, then send); see below</li>
     <li><strong>History</strong> — expands to show last 20 AD sync runs</li>
     <li>Disks column — colored progress bars per drive, status by current thresholds</li>
     <li><strong>Status column — live network reachability</strong> — <em>Disabled</em> = AD account disabled · <em>Active</em> = reachable on the network now (a small <code>logs ⚠</code> marker may sit next to it when the box is up but its event log can't be read) · <em>Offline</em> = not reachable (powered off / disconnected) · <code>— not probed</code> = neutral state shown until the first probe runs after a deploy. The new <em>offline</em> filter (chip + dropdown) selects machines in this state.</li>
@@ -457,6 +466,7 @@ service restarts on new dist/, in-memory state cleared</div>
     <li><strong>✓ All</strong> / <strong>✗ None</strong> hromadný toggle (respektuje aktuální filtr — užitečné pro "Search: SRV" → ✓ All pro monitor jen serverů)</li>
     <li><strong>↻ Sync from AD</strong> — refresh inventáře z <code>Get-ADComputer</code></li>
     <li><strong>🩺 Scan disks</strong> — manuální disk space scan; status feedback inline (Scanning…, pak OK/fail/drives count)</li>
+    <li><strong>✉ Report e-mailem</strong> — pošle strukturovaný přehled flotily za <strong>právě zobrazené</strong> stroje (nejdřív vyfiltruj, pak pošli); viz níže</li>
     <li><strong>History</strong> — rozbalí posledních 20 AD sync runs</li>
     <li>Disks sloupec — barevné progress bary per drive, status podle aktuálních thresholds</li>
     <li><strong>Status sloupec — živá dostupnost na síti</strong> — <em>Disabled</em> = účet v AD vypnutý · <em>Active</em> = teď dostupný na síti (vedle může být drobná značka <code>logs ⚠</code>, když stroj běží, ale nejde mu přečíst event log) · <em>Offline</em> = nedostupný (vypnutý / odpojený) · <code>— not probed</code> = neutrální stav zobrazený do první sondy po nasazení. Nový filtr <em>offline</em> (chip i v rozbalovátku) vybírá stroje v tomto stavu.</li>
@@ -465,6 +475,26 @@ service restarts on new dist/, in-memory state cleared</div>
 </div>
 <div class="callout callout-info" data-lang="cs">
 <strong>Co teď „Status" znamená — sonda dostupnosti</strong> — sloupec Status dřív jen odrážel, jestli se povedl sběr event-logu: běžel jen na monitorovaných strojích, hrubě škatulkoval chyby a po čase „zamrzl", takže „údajně nedostupné" stroje mohly stále ukazovat <em>Unknown</em> nebo zeleně <em>Active</em>. Nově běží samostatná <strong>sonda dostupnosti</strong>: každý zapnutý a nevyřazený počítač (bez ohledu na monitoring) je dostupný, když odpoví <strong>cokoli</strong> z: TCP 135 (RPC), TCP 445 (SMB), nebo <strong>ICMP ping</strong> fallback (defaultně zapnutý) — ping chytí stroje, co blokují RPC/SMB, ale žijí. Sonda běží na <strong>vlastním intervalu</strong> (<code>reachability.interval_sec</code>, defaultně 300 s), <strong>nezávisle</strong> na hlavním scanu a jeho okně, takže Status je čerstvý 24/7 včetně noci a víkendu. Každé PC, které <strong>přepne Active↔Offline</strong>, se nově zapisuje do <strong>activity logu</strong> s názvem a IP, takže máš průběžný záznam, které stroje spadly nebo se vrátily. Přepínač + interval jsou v <strong>Nastavení → „Dostupnost na síti (Status)"</strong>, kde je nově i tlačítko <strong>„Run now"</strong> pro sondu na vyžádání (nemusíš čekat na další interval).
+</div>
+
+<h4><span data-lang="cs">✉ Report e-mailem — strukturovaný přehled flotily</span><span data-lang="en">✉ Email report — structured fleet overview</span></h4>
+<div data-lang="en">
+  <p>The Computers tab has an <strong>"✉ Email report"</strong> button that emails a <strong>structured overview of the fleet</strong> — not an alert, a status report you can send on demand:</p>
+  <ul>
+    <li><strong>Counts:</strong> total machines, <strong>servers vs PCs</strong>, how many are <strong>offline (with downtime)</strong>, and <strong>collection health</strong> (when each was last collected / any errors).</li>
+    <li><strong>It reports on the machines currently shown</strong> — i.e. the report respects your active filter and search. <strong>Filter first, then send</strong>: e.g. filter to "SRV" to email a servers-only report, or to one OU.</li>
+    <li><strong>Disabled machines are included</strong> in the report (so a decommissioned-but-still-listed box is visible).</li>
+    <li>It uses the same shared <a href="#disk-alerts">Email setup (SMTP)</a>; the <strong>reporting</strong> agenda can have its own "Recipients (override)" (e.g. send the fleet report to your manager while alerts go to on-call).</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p>Záložka Počítače má tlačítko <strong>„✉ Report e-mailem"</strong>, které pošle <strong>strukturovaný přehled flotily</strong> — není to alert, ale stavový report na vyžádání:</p>
+  <ul>
+    <li><strong>Počty:</strong> celkem strojů, <strong>servery vs PC</strong>, kolik je <strong>offline (s dobou výpadku)</strong> a <strong>zdraví sběru</strong> (kdy byl každý naposledy sbírán / případné chyby).</li>
+    <li><strong>Reportuje právě zobrazené stroje</strong> — tzn. report respektuje aktivní filtr i hledání. <strong>Nejdřív vyfiltruj, pak pošli</strong>: např. vyfiltruj „SRV" a pošli report jen za servery, nebo za jednu OU.</li>
+    <li><strong>Vypnuté stroje jsou v reportu zahrnuté</strong> (takže vyřazený, ale stále evidovaný stroj je vidět).</li>
+    <li>Používá stejné sdílené <a href="#disk-alerts">Nastavení e-mailu (SMTP)</a>; agenda <strong>reporting</strong> může mít vlastní „Příjemce (override)" (např. report flotily nadřízenému, zatímco alerty jdou pohotovosti).</li>
+  </ul>
 </div>
 
 <h2 id="pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></h2>
@@ -732,7 +762,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
     <li>The Computers tab has a new <strong>📧 Disk</strong> column. Tick a PC to put it under disk email monitoring.</li>
     <li>Optionally type specific drive letters into the small field next to the checkbox — e.g. <code>C</code> or <code>C,F</code>. Leave it empty to watch all in-scope drives on that PC.</li>
     <li>The letter syntax is the same as the Disks "critical drives" scope: <code>C</code>, <code>C,D</code>, <code>&lt;&gt;C</code> / <code>!C</code> (everything except C), <code>*</code> (all).</li>
-    <li><strong>Bulk toggles:</strong> the <strong>📧 Disk</strong>, <strong>🔔 Services</strong> and <strong>Exclude</strong> column headers each carry a small <strong>"✓ all / ✗ none"</strong> control that ticks/unticks that column for <strong>all currently visible (filtered) PCs</strong> at once — e.g. filter to your servers, then ✓ to enable disk alerts on all of them.</li>
+    <li><strong>Bulk toggles:</strong> the per-PC monitoring column headers — <strong>📧 Disk</strong>, <strong>🔧 Services</strong>, <strong>🛡 Critical services</strong> and <strong>Exclude</strong> — each carry a small <strong>"✓ all / ✗ none"</strong> control that ticks/unticks that column for <strong>all currently visible (filtered) PCs</strong> at once — e.g. filter to your servers, then ✓ to enable disk alerts on all of them.</li>
   </ul>
 </div>
 <div data-lang="cs">
@@ -740,33 +770,65 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
     <li>Záložka Počítače má nový sloupec <strong>📧 Disk</strong>. Zaškrtnutím dáš PC pod disk email monitoring.</li>
     <li>Volitelně do malého pole vedle checkboxu napiš konkrétní písmena disků — např. <code>C</code> nebo <code>C,F</code>. Prázdné = sledují se všechny disky v rozsahu na daném PC.</li>
     <li>Syntaxe písmen je stejná jako u "critical drives" scope v Discích: <code>C</code>, <code>C,D</code>, <code>&lt;&gt;C</code> / <code>!C</code> (vše kromě C), <code>*</code> (vše).</li>
-    <li><strong>Hromadné přepínače:</strong> hlavičky sloupců <strong>📧 Disk</strong>, <strong>🔔 Služby</strong> a <strong>Exclude</strong> mají každá malý ovladač <strong>"✓ all / ✗ none"</strong>, který naráz zaškrtne/odškrtne daný sloupec pro <strong>všechna právě zobrazená (vyfiltrovaná) PC</strong> — např. vyfiltruj si servery a pak ✓ zapne disk alerty na všech najednou.</li>
+    <li><strong>Hromadné přepínače:</strong> hlavičky per-PC monitorovacích sloupců — <strong>📧 Disk</strong>, <strong>🔧 Služby</strong>, <strong>🛡 Krit. služby</strong> a <strong>Exclude</strong> — mají každá malý ovladač <strong>"✓ all / ✗ none"</strong>, který naráz zaškrtne/odškrtne daný sloupec pro <strong>všechna právě zobrazená (vyfiltrovaná) PC</strong> — např. vyfiltruj si servery a pak ✓ zapne disk alerty na všech najednou.</li>
   </ul>
+</div>
+
+<h3><span data-lang="cs">Nastavení e-mailu (SMTP) — sdílené pro všechny agendy</span><span data-lang="en">Email setup (SMTP) — shared across all agendas</span></h3>
+<div class="callout callout-info" data-lang="en">
+  <strong>The email config was restructured.</strong> The <strong>SMTP relay/port, sender (From), the shared recipients and the dashboard URL now live in one standalone <em>"Email setup (SMTP)"</em> section</strong> that every email agenda reuses — you set the plumbing <strong>once</strong>. Below it, each agenda (<strong>disk alerts</strong>, <strong>service alerts</strong>, <strong>port checks</strong>, <strong>reporting</strong>) has its own <strong>enable + throttle</strong> and an optional <strong>"Recipients (override)"</strong> field: <strong>leave it empty to use the shared recipients</strong>, or fill it to send <em>that</em> agenda to different people (e.g. disk alerts to the on-call, the fleet report to your manager). The SMTP host/port/sender and dashboard URL stay shared — only recipients can be overridden per agenda.</div>
+<div class="callout callout-info" data-lang="cs">
+  <strong>Nastavení e-mailu bylo přeorganizováno.</strong> <strong>SMTP relay/port, odesílatel (From), sdílení příjemci a adresa dashboardu jsou nově v jedné samostatné sekci <em>„Nastavení e-mailu (SMTP)"</em></strong>, kterou používají všechny e-mailové agendy — instalatérskou část nastavíš <strong>jednou</strong>. Pod ní má každá agenda (<strong>alerty disků</strong>, <strong>alerty služeb</strong>, <strong>port-checky</strong>, <strong>reporting</strong>) svůj vlastní <strong>enable + throttle</strong> a volitelné pole <strong>„Příjemci (override)"</strong>: <strong>prázdné = použijí se sdílení příjemci</strong>, nebo vyplň a danou agendu pošli jiným lidem (např. alerty disků pohotovosti, report flotily nadřízenému). SMTP host/port/odesílatel a adresa dashboardu zůstávají sdílené — per-agenda lze přepsat jen příjemce.</div>
+<table data-lang="en">
+  <tr><th>Field (Email setup section)</th><th>Meaning</th></tr>
+  <tr><td>SMTP relay host + port</td><td>Mail server + port; default <code>25</code> (see "How mail is sent" below). <strong>Shared.</strong></td></tr>
+  <tr><td>Sender (From)</td><td>From address on every report email. <strong>Shared.</strong></td></tr>
+  <tr><td>Recipients (shared)</td><td>Default recipients for every agenda — one per line or comma-separated. Each agenda may override these.</td></tr>
+  <tr><td>Dashboard address (<code>alerts.dashboard_url</code>)</td><td>Where ITDashboard is reachable, e.g. <code>http://10.8.2.213:4000</code>. When filled, alert emails show an "Open ITDashboard" button plus the address, so recipients know where to go to act. <strong>Shared.</strong></td></tr>
+</table>
+<table data-lang="cs">
+  <tr><th>Pole (sekce Nastavení e-mailu)</th><th>Význam</th></tr>
+  <tr><td>SMTP relay host + port</td><td>Mailserver + port; default <code>25</code> (viz „Jak se odesílá mail" níže). <strong>Sdílené.</strong></td></tr>
+  <tr><td>Sender (From)</td><td>Adresa odesílatele v každém report emailu. <strong>Sdílené.</strong></td></tr>
+  <tr><td>Příjemci (sdílení)</td><td>Výchozí příjemci pro všechny agendy — jeden na řádek nebo oddělené čárkou. Každá agenda je může přepsat.</td></tr>
+  <tr><td>Adresa dashboardu (<code>alerts.dashboard_url</code>)</td><td>Kde je ITDashboard dostupný, např. <code>http://10.8.2.213:4000</code>. Když je vyplněno, alert emaily zobrazí tlačítko „Otevřít ITDashboard" a adresu, takže příjemci ví, kam jít zasáhnout. <strong>Sdílené.</strong></td></tr>
+</table>
+
+<h3><span data-lang="cs">Strojově čitelné předměty e-mailů</span><span data-lang="en">Machine-readable email subjects</span></h3>
+<div data-lang="en">
+  <p>Every alert / report email — from every agenda — starts its <strong>subject with status prefixes</strong> so you (or a mail rule) can sort them without opening them:</p>
+  <ul>
+    <li><strong><code>[OK]</code></strong> = the email carries <strong>no problem</strong> (all clear / recovery / a clean report). <strong><code>[CHYBA]</code></strong> = it carries an <strong>actual problem</strong> (a disk critical, a service down, a port unreachable).</li>
+    <li><strong><code>[RUČNĚ]</code></strong> is added when the email was <strong>sent manually</strong> (a "Send test email" or an on-demand report), so you can tell a hand-triggered message from an automatic one.</li>
+  </ul>
+  <div class="callout callout-info"><strong>Operator tip:</strong> set a mail rule that auto-files the <code>[OK]</code> messages into a folder — your inbox then only shows the <code>[CHYBA]</code> ones that actually need you.</div>
+</div>
+<div data-lang="cs">
+  <p>Každý alert / report e-mail — z každé agendy — začíná <strong>předmět stavovými prefixy</strong>, takže je ty (nebo mailové pravidlo) roztřídíš, aniž bys je otevíral:</p>
+  <ul>
+    <li><strong><code>[OK]</code></strong> = e-mail <strong>nenese problém</strong> (vše v pořádku / recovery / čistý report). <strong><code>[CHYBA]</code></strong> = nese <strong>reálný problém</strong> (disk critical, spadlá služba, nedostupný port).</li>
+    <li><strong><code>[RUČNĚ]</code></strong> se přidá, když byl e-mail <strong>odeslán ručně</strong> („Send test email" nebo report na vyžádání), takže poznáš ručně spuštěnou zprávu od automatické.</li>
+  </ul>
+  <div class="callout callout-info"><strong>Tip pro operátora:</strong> nastav si mailové pravidlo, které <code>[OK]</code> zprávy automaticky zařadí do složky — ve schránce ti pak zůstanou jen <code>[CHYBA]</code>, které tě reálně potřebují.</div>
 </div>
 
 <h3><span data-lang="cs">Nastavení → "Email alerty — disky"</span><span data-lang="en">Settings → "Email alerts — disks"</span></h3>
 <p>
-  <span data-lang="cs">Vše se konfiguruje v záložce Nastavení — žádná editace <code>.env</code>, konzistentně se zbytkem nástroje. Sekce obsahuje:</span>
-  <span data-lang="en">Everything is configured in the Settings tab — no <code>.env</code> editing, consistent with the rest of the tool. The section contains:</span>
+  <span data-lang="cs">Tato agenda už neřeší SMTP ani odesílatele — ty má sdílená sekce <a href="#disk-alerts">Nastavení e-mailu (SMTP)</a> výše. Vlastní jen tato pole:</span>
+  <span data-lang="en">This agenda no longer carries the SMTP or sender fields — those live in the shared <a href="#disk-alerts">Email setup (SMTP)</a> section above. It only owns these fields:</span>
 </p>
 <table data-lang="en">
   <tr><th>Field</th><th>Meaning</th></tr>
   <tr><td>Enable</td><td>Master on/off for disk email alerts (off by default)</td></tr>
   <tr><td>Frequency (hours)</td><td>Throttle cadence while a disk stays critical (default 24h)</td></tr>
-  <tr><td>SMTP relay host + port</td><td>Mail server + port; default <code>25</code> (see "How mail is sent" below)</td></tr>
-  <tr><td>Sender (From)</td><td>From address on the report email</td></tr>
-  <tr><td>Recipients</td><td>One per line or comma-separated</td></tr>
-  <tr><td>Dashboard address (<code>alerts.dashboard_url</code>)</td><td>Where ITDashboard is reachable, e.g. <code>http://10.8.2.213:4000</code>. When filled, the alert email shows an "Open ITDashboard" button plus the address, so recipients know where to go to act.</td></tr>
+  <tr><td>Recipients (override)</td><td>Optional — recipients for <strong>disk alerts only</strong>. <strong>Empty = use the shared recipients</strong> from the Email setup section.</td></tr>
   <tr><td>Send test email</td><td>Emails the current state immediately, regardless of enable / throttle — use it to verify mail delivery. It now auto-saves any pending Settings first, so you no longer need to click Save beforehand.</td></tr>
 </table>
 <table data-lang="cs">
   <tr><th>Pole</th><th>Význam</th></tr>
   <tr><td>Enable</td><td>Hlavní zap/vyp email alertů disků (defaultně vypnuto)</td></tr>
   <tr><td>Frequency (hodiny)</td><td>Cadence throttlingu po dobu, co disk zůstává critical (default 24h)</td></tr>
-  <tr><td>SMTP relay host + port</td><td>Mailserver + port; default <code>25</code> (viz "Jak se odesílá mail" níže)</td></tr>
-  <tr><td>Sender (From)</td><td>Adresa odesílatele v report emailu</td></tr>
-  <tr><td>Recipients</td><td>Jeden na řádek nebo oddělené čárkou</td></tr>
-  <tr><td>Adresa dashboardu (<code>alerts.dashboard_url</code>)</td><td>Kde je ITDashboard dostupný, např. <code>http://10.8.2.213:4000</code>. Když je vyplněno, alert email zobrazí tlačítko "Otevřít ITDashboard" a adresu, takže příjemci ví, kam jít zasáhnout.</td></tr>
+  <tr><td>Příjemci (override)</td><td>Volitelné — příjemci <strong>jen pro alerty disků</strong>. <strong>Prázdné = použijí se sdílení příjemci</strong> ze sekce Nastavení e-mailu.</td></tr>
   <tr><td>Send test email</td><td>Pošle aktuální stav okamžitě, bez ohledu na enable / throttle — slouží k ověření doručování mailu. Nově před odesláním automaticky uloží rozpracované Nastavení, takže už nemusíš nejdřív klikat Save.</td></tr>
 </table>
 
@@ -851,26 +913,34 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <span data-lang="en">After each services scan, the services of monitored PCs are checked against the <strong>critical services list</strong> from the settings. A service that is <strong>Auto</strong> and <strong>not Running</strong>, matches the critical list and is not on the whitelist, gets alerted — but only once it has been down longer than the <strong>debounce</strong> (flapping guard), outside the <strong>maintenance window</strong>, and throttled to the cadence set by the <strong>reminder</strong>.</span>
 </p>
 
-<h3><span data-lang="cs">Jak zapnout — sloupec 🔔 Služby v záložce Počítače</span><span data-lang="en">How to enable — the 🔔 Services column in the Computers tab</span></h3>
+<h3><span data-lang="cs">Jak zapnout — dvě úrovně monitoringu služeb v záložce Počítače</span><span data-lang="en">How to enable — two service-monitoring levels in the Computers tab</span></h3>
 <div data-lang="en">
+  <p>Service monitoring now has <strong>two independent levels</strong>, each its own per-PC column (checkbox + a small <strong>"exceptions"</strong> field):</p>
   <ul>
-    <li>The Computers tab has a new <strong>🔔 Services</strong> column. Tick a PC to put it under service alerting.</li>
-    <li>Tick the <strong>key servers</strong> — domain controllers, backup and file servers — where a dead service actually hurts. Ordinary workstations should stay unticked.</li>
-    <li><strong>Bulk toggles:</strong> the <strong>📧 Disk</strong>, <strong>🔔 Services</strong> and <strong>Exclude</strong> column headers each carry a small <strong>"✓ all / ✗ none"</strong> control that ticks/unticks that column for <strong>all currently visible (filtered) PCs</strong> at once — e.g. filter to your servers, then ✓ to enable service alerts on all of them.</li>
+    <li><strong>🔧 Services</strong> (broad) — watches <strong>every Auto service that isn't Running</strong> on that PC and reports genuine "an Auto service should be running but is Stopped" drift. It ignores on-demand trigger-start and delayed-start services.</li>
+    <li><strong>🛡 Critical services</strong> (narrow) — watches <strong>only the configured critical-services list</strong> (<code>NTDS</code>, <code>DNS</code>, <code>Kdc</code>, <code>Veeam</code>…). Tick this on the <strong>key servers</strong> — domain controllers, backup and file servers.</li>
+    <li>A critical service is reported <strong>only by the critical level, never doubled</strong> by the broad level.</li>
+    <li><strong>Exceptions field</strong> — next to each checkbox, lists service names to <strong>IGNORE on that PC</strong> (comma-separated, <code>*</code> / <code>?</code> wildcards). Example: on a demoted domain controller put <code>NTDS,Kdc</code> so those stop alerting <em>there</em> without muting them on the real DCs.</li>
+    <li><strong>Bulk toggles:</strong> the column headers carry a small <strong>"✓ all / ✗ none"</strong> control that ticks/unticks that column for <strong>all currently visible (filtered) PCs</strong> at once — e.g. filter to your servers, then ✓ to enable a level on all of them.</li>
   </ul>
+  <div class="callout callout-info"><strong>What is "a real problem"?</strong> A <strong>Stopped Auto service</strong> is the signal — exit code is <em>not</em> used to decide that, because most stopped services report exit 0. A crash (non-zero exit) is shown in the Exit column for context but isn't required for a service to be flagged.</div>
 </div>
 <div data-lang="cs">
+  <p>Monitoring služeb má nově <strong>dvě nezávislé úrovně</strong>, každá vlastní per-PC sloupec (checkbox + malé pole <strong>„výjimky"</strong>):</p>
   <ul>
-    <li>Záložka Počítače má nový sloupec <strong>🔔 Služby</strong>. Zaškrtnutím dáš PC pod alerting služeb.</li>
-    <li>Zaškrtni <strong>klíčové servery</strong> — doménové řadiče, zálohovací a souborové servery — kde mrtvá služba reálně bolí. Běžné stanice nech nezaškrtnuté.</li>
-    <li><strong>Hromadné přepínače:</strong> hlavičky sloupců <strong>📧 Disk</strong>, <strong>🔔 Služby</strong> a <strong>Exclude</strong> mají každá malý ovladač <strong>"✓ all / ✗ none"</strong>, který naráz zaškrtne/odškrtne daný sloupec pro <strong>všechna právě zobrazená (vyfiltrovaná) PC</strong> — např. vyfiltruj si servery a pak ✓ zapne service alerty na všech najednou.</li>
+    <li><strong>🔧 Služby</strong> (široká) — hlídá <strong>každou Auto službu, která není Running</strong> na daném PC a hlásí reálný drift „Auto služba má běžet, ale je Stopped". Ignoruje on-demand trigger-start a delayed-start služby.</li>
+    <li><strong>🛡 Krit. služby</strong> (úzká) — hlídá <strong>jen nakonfigurovaný seznam kritických služeb</strong> (<code>NTDS</code>, <code>DNS</code>, <code>Kdc</code>, <code>Veeam</code>…). Zaškrtni na <strong>klíčových serverech</strong> — doménové řadiče, zálohovací a souborové servery.</li>
+    <li>Kritická služba se hlásí <strong>jen kritickou úrovní, nikdy zdvojeně</strong> širokou úrovní.</li>
+    <li><strong>Pole výjimky</strong> — vedle každého checkboxu, vyjmenovává názvy služeb, které se na daném PC <strong>IGNORUJÍ</strong> (oddělené čárkou, zástupné znaky <code>*</code> / <code>?</code>). Příklad: na degradovaném doménovém řadiči napiš <code>NTDS,Kdc</code>, aby <em>tady</em> přestaly alertovat, aniž bys je umlčel na reálných DC.</li>
+    <li><strong>Hromadné přepínače:</strong> hlavičky sloupců mají malý ovladač <strong>„✓ all / ✗ none"</strong>, který naráz zaškrtne/odškrtne daný sloupec pro <strong>všechna právě zobrazená (vyfiltrovaná) PC</strong> — např. vyfiltruj si servery a pak ✓ zapne danou úroveň na všech najednou.</li>
   </ul>
+  <div class="callout callout-info"><strong>Co je „reálný problém"?</strong> Signál je <strong>Stopped Auto služba</strong> — exit kód se k tomu <em>nepoužívá</em>, protože většina zastavených služeb hlásí exit 0. Pád (nenulový exit) se pro kontext ukáže ve sloupci Exit, ale není podmínkou, aby byla služba označena.</div>
 </div>
 
 <h3><span data-lang="cs">Nastavení → "Email alerty — služby"</span><span data-lang="en">Settings → "Email alerts — services"</span></h3>
 <p>
-  <span data-lang="cs">Vše se konfiguruje v záložce Nastavení, sekce <strong>"Email alerty — služby"</strong> — žádná editace <code>.env</code>. SMTP relay, příjemce a adresu dashboardu sdílí s disk alerty (viz <a href="#disk-alerts">Email alerty disků</a>). Sekce obsahuje:</span>
-  <span data-lang="en">Everything is configured in the Settings tab, the <strong>"Email alerts — services"</strong> section — no <code>.env</code> editing. It shares the SMTP relay, recipients and dashboard URL with the disk alerts (see <a href="#disk-alerts">Disk email alerts</a>). The section contains:</span>
+  <span data-lang="cs">Vše se konfiguruje v záložce Nastavení, sekce <strong>"Email alerty — služby"</strong> — žádná editace <code>.env</code>. SMTP relay, odesílatele a adresu dashboardu bere ze sdílené sekce <a href="#disk-alerts">Nastavení e-mailu (SMTP)</a>; tady má vlastní jen enable/throttle a volitelné pole „Příjemci (override)". Sekce obsahuje:</span>
+  <span data-lang="en">Everything is configured in the Settings tab, the <strong>"Email alerts — services"</strong> section — no <code>.env</code> editing. It takes the SMTP relay, sender and dashboard URL from the shared <a href="#disk-alerts">Email setup (SMTP)</a> section; here it only owns its enable/throttle and an optional "Recipients (override)" field. The section contains:</span>
 </p>
 <table data-lang="en">
   <tr><th>Field</th><th>Meaning</th></tr>
@@ -880,6 +950,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>Maintenance window (<code>HH:MM-HH:MM</code>)</td><td>Time window that suppresses alerts, e.g. <code>02:00-04:00</code> for the backup/reboot window; <strong>can cross midnight</strong> (e.g. <code>23:00-01:00</code>)</td></tr>
   <tr><td>Critical services list</td><td>Service names that count as critical — case-insensitive, with <code>*</code> / <code>?</code> wildcards. Seeded with the common infra set (see below)</td></tr>
   <tr><td>Whitelist</td><td>Service names to never alert on even if they match the critical list — e.g. updaters like <code>gupdate*</code>, <code>GoogleUpdater*</code>, <code>edgeupdate*</code>. <strong>The whitelist is now also a global view filter:</strong> matching services are additionally hidden from the "Stopped services" dashboard tile (always) and from the Services tab when its "Hide whitelisted" toggle is on (default), where they also drop out of the top-line counts. See <a href="#services">Services collector + policy</a>.</td></tr>
+  <tr><td>Recipients (override)</td><td>Optional — recipients for <strong>service alerts only</strong>. <strong>Empty = use the shared recipients</strong> from the Email setup (SMTP) section</td></tr>
   <tr><td>Send test email</td><td>Emails the current down state immediately, regardless of enable / debounce / throttle. Auto-saves any pending Settings first, so you do not need to click Save beforehand</td></tr>
 </table>
 <table data-lang="cs">
@@ -890,6 +961,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>Údržbové okno (<code>HH:MM-HH:MM</code>)</td><td>Časové okno, které potlačuje alerty, např. <code>02:00-04:00</code> pro okno záloh/restartů; <strong>může přejít přes půlnoc</strong> (např. <code>23:00-01:00</code>)</td></tr>
   <tr><td>Seznam kritických služeb</td><td>Názvy služeb, které se počítají jako kritické — case-insensitive, s wildcardy <code>*</code> / <code>?</code>. Předvyplněno běžnou infra sadou (viz níže)</td></tr>
   <tr><td>Whitelist</td><td>Názvy služeb, na které se nikdy nealertuje, i kdyby matchly kritický seznam — např. updatery jako <code>gupdate*</code>, <code>GoogleUpdater*</code>, <code>edgeupdate*</code>. <strong>Whitelist je nově i globální filtr pohledu:</strong> odpovídající služby se navíc skryjí z dashboard dlaždice "Zastavené služby" (vždy) a ze záložky Služby, když je tam zapnutý přepínač "Hide whitelisted" (default), kde také zmizí z horních počtů. Viz <a href="#services">Services collector + policy</a>.</td></tr>
+  <tr><td>Příjemci (override)</td><td>Volitelné — příjemci <strong>jen pro alerty služeb</strong>. <strong>Prázdné = použijí se sdílení příjemci</strong> ze sekce Nastavení e-mailu (SMTP)</td></tr>
   <tr><td>Send test email</td><td>Pošle aktuální stav (co je teď dole) okamžitě, bez ohledu na enable / debounce / throttle. Nejdřív automaticky uloží rozpracované Nastavení, takže nemusíš nejdřív klikat Save</td></tr>
 </table>
 <p>
@@ -976,6 +1048,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>Enable port checks (phase 2)</td><td>Toggle that turns the port probing on/off (independent of the service Running check)</td></tr>
   <tr><td>Port list (<code>Name:Port</code>)</td><td>Comma-separated list of named ports, e.g. <code>LDAP:389, SMB:445, RDP:3389, DNS:53</code></td></tr>
   <tr><td>Port timeout (ms)</td><td>How long each TCP connect attempt may take before it counts as unreachable</td></tr>
+  <tr><td>Recipients (override)</td><td>Optional — recipients for <strong>port-check alerts only</strong>. <strong>Empty = use the shared recipients</strong> from the Email setup (SMTP) section</td></tr>
   <tr><td>Test ports (live probe)</td><td>Runs the port probe against the watched PCs right now and shows the live result</td></tr>
 </table>
 <table data-lang="cs">
@@ -983,6 +1056,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>Enable port checks (phase 2)</td><td>Přepínač, který zapíná/vypíná probování portů (nezávisle na kontrole Running u služeb)</td></tr>
   <tr><td>Seznam portů (<code>Name:Port</code>)</td><td>Čárkou oddělený seznam pojmenovaných portů, např. <code>LDAP:389, SMB:445, RDP:3389, DNS:53</code></td></tr>
   <tr><td>Port timeout (ms)</td><td>Jak dlouho smí trvat každý pokus o TCP připojení, než se počítá jako nedostupný</td></tr>
+  <tr><td>Příjemci (override)</td><td>Volitelné — příjemci <strong>jen pro alerty port-checků</strong>. <strong>Prázdné = použijí se sdílení příjemci</strong> ze sekce Nastavení e-mailu (SMTP)</td></tr>
   <tr><td>Test ports (live probe)</td><td>Spustí probu portů proti hlídaným PC hned teď a ukáže živý výsledek</td></tr>
 </table>
 <p>
@@ -996,7 +1070,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <span data-lang="en">Detects Windows services with <strong>StartMode = Automatic</strong> but <strong>State ≠ Running</strong> on every monitored PC. Filters legitimate cases (Trigger Start, Delayed Start, per-user instances) and compares the rest against a policy table.</span>
 </p>
 <div class="callout callout-info" data-lang="cs">
-  <strong>CS shrnutí:</strong> Po skenu jsou problémy klasifikované — <strong style="color:#15803d">OK</strong> (matchne policy a vyhovuje), <strong style="color:#b91c1c">Drift</strong> (matchne policy ale nevyhovuje), <strong style="color:#555">Unclassified</strong> (žádné policy pravidlo nematchne, operator review). UI nabízí <strong>By PC view</strong> (flat list problémů) nebo <strong>By service view</strong> (agregát "tato služba je stopnutá na 87 PC"). Přepínač <strong>Hide whitelisted</strong> (defaultně zapnutý) skryje služby odpovídající whitelistu z Nastavení → "Email alerty — služby" — skryté řádky se neukazují a nezapočítávají do horních počtů (total · crashes · drift · OK · unclassified) v obou pohledech; shoda nerozlišuje velikost písmen, zástupné znaky <code>*</code>/<code>?</code>, porovnává název i zobrazovaný název služby. Tlačítko <strong>📤 GPO script</strong> exportuje PowerShell soubor co aplikuje aktuální policy přes GPO Computer Startup Script. Idempotentní, bezpečné re-run.
+  <strong>CS shrnutí:</strong> Po skenu jsou problémy klasifikované — <strong style="color:#15803d">OK</strong> (matchne policy a vyhovuje), <strong style="color:#b91c1c">Drift</strong> (matchne policy ale nevyhovuje), <strong style="color:#555">Unclassified</strong> (žádné policy pravidlo nematchne, operator review). UI nabízí <strong>By PC view</strong> (flat list problémů) nebo <strong>By service view</strong> (agregát "tato služba je stopnutá na 87 PC"). Přepínač <strong>Hide whitelisted</strong> (defaultně zapnutý) skryje služby odpovídající whitelistu z Nastavení → "Email alerty — služby" — skryté řádky se neukazují a nezapočítávají do horních počtů (total · crashes · drift · OK · unclassified) v obou pohledech; shoda nerozlišuje velikost písmen, zástupné znaky <code>*</code>/<code>?</code>, porovnává název i zobrazovaný název služby. Filtry nově považují za „graceful" exit_code <strong>0 i null</strong> (většina zastavených služeb žádný exit kód nemá); <strong>„Hide trigger-start"</strong> skrývá on-demand služby; filtr <strong>„Only ExitCode != 0"</strong> ukazuje jen reálné pády a <strong>defaultně je teď VYPNUTÝ</strong>, takže záložka defaultně ukazuje reálný drift (Auto služby, které jsou Stopped) — shodně s dashboard dlaždicí „Zastavené služby". Tlačítko <strong>📤 GPO script</strong> exportuje PowerShell soubor co aplikuje aktuální policy přes GPO Computer Startup Script. Idempotentní, bezpečné re-run.
 </div>
 <table>
   <tr><th>Setting</th><th>Default</th></tr>
@@ -1022,7 +1096,8 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <li><strong>By PC view (default)</strong> — flat list of all problems with computer / service / state / start type / drift</li>
   <li><strong>By service view</strong> — aggregated; shows <code># PCs / Drift / OK / Unclassified</code> per service name — useful for "this service is stopped on 87 PCs"</li>
   <li>Toggle <strong>📊 By service</strong> / <strong>📋 By PC</strong></li>
-  <li>Filters: Hide trigger-start (default ON), Hide delayed-start, Hide per-user (default ON), Hide compliant, ⚠ Only ExitCode != 0, <strong>Hide whitelisted (default ON)</strong></li>
+  <li>Filters: Hide trigger-start (default ON) — hides on-demand services, Hide delayed-start, Hide per-user (default ON), Hide compliant, ⚠ Only ExitCode != 0 (<strong>now default OFF</strong>), <strong>Hide whitelisted (default ON)</strong></li>
+  <li><strong>What the tab shows by default</strong> — "graceful" now means <strong>exit_code 0 <em>and</em> null</strong> (most stopped services have no exit code at all). Because <strong>"Only ExitCode != 0" defaults OFF</strong>, the tab shows <strong>real drift by default</strong> — i.e. Auto services that are Stopped — matching the dashboard <strong>"Stopped services"</strong> tile. Turn the filter ON only when you want to isolate genuine crashes (non-zero exit).</li>
   <li><strong>Hide whitelisted</strong> — when on (the default), services matching the service alert whitelist (Settings → "Email alerts — services") are dropped from the list <strong>and excluded from the top-line counts</strong> (total · crashes · drift · OK · unclassified) in both the By-PC and By-service views. Matching is case-insensitive with <code>*</code> / <code>?</code> wildcards against the service name or display name. This keeps known-benign updaters (<code>gupdate*</code>, <code>GoogleUpdater*</code>, <code>edgeupdate*</code>) from polluting the drift count. Untick it to see everything again.</li>
   <li><strong>Exit column</strong> shows Win32 ExitCode of the service. 0 = graceful (typical for trigger-start services that completed their task and shut down). Non-zero = SCM-level failure (shown red).</li>
   <li><strong>🔧 Scan services</strong> button with live <code>Scanning… Ns</code> status + button text</li>
@@ -1035,7 +1110,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <p><strong>Co se monitoruje:</strong> každý monitorovaný PC (StartMode='Auto' AND State&lt;&gt;'Running'). Sken probíhá per Periodic checks schedule (default každých 90 min v okně 06:00–18:00 po-ne) + manuální 🔧 Scan services.</p>
   <p><strong>Co je default skryté</strong> (klasifikováno jako legitimní stav, ne alert):</p>
   <ul>
-    <li><strong>Graceful exits</strong> (ExitCode = 0) — filtr ⚠ Only ExitCode != 0 je default ON. Skryje řádky kde Win32 ExitCode = 0 (službu se SCM povedlo zastavit bez chyby). To je primární signál "stojí proč by NEMĚLA".</li>
+    <li><strong>Graceful exits</strong> (ExitCode = 0 <strong>i null</strong>) — filtr ⚠ Only ExitCode != 0 je <strong>nově default OFF</strong>. Většina zastavených služeb žádný exit kód nemá (null) a 0 i null se berou jako „graceful". Primární signál „stojí, ač by NEMĚLA" je samotný stav <strong>Stopped u Auto služby</strong>, ne exit kód — proto je filtr defaultně vypnutý a záložka rovnou ukazuje reálný drift. Filtr zapni, jen když chceš izolovat skutečné pády (nenulový exit).</li>
     <li><strong>Trigger-start s graceful exit</strong> (registry <code>TriggerInfo</code> subkey + exit=0) — service designed jako event-driven (login, network change, ETW), po dokončení úkolu se vypnula čistě. Filtr "Hide trigger-start" je default ON ale skryje JEN trigger-start s exit=0. <strong>Trigger-start co spadl (exit != 0) se VŽDY ukáže</strong> — to je reálný failure.</li>
     <li><strong>Per-user services</strong> (service name matching <code>_[a-f0-9]{4,12}$</code> LUID suffix) — vázané na user session, legitimně stopped když není přihlášen uživatel. Příklady: CDPUserSvc, cbdhsvc, OneSyncSvc.</li>
     <li><strong>Compliant</strong> (matchne <code>service_policy</code> pravidlo a vyhovuje mu) — default OFF, lze zapnout filtrem "Hide compliant".</li>
@@ -1060,7 +1135,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <p><strong>What is monitored:</strong> every monitored PC (StartMode='Auto' AND State&lt;&gt;'Running'). Scan runs on the Periodic checks schedule (default every 90 min in window 06:00–18:00 Mon–Sun) plus the manual 🔧 Scan services button.</p>
   <p><strong>What is hidden by default</strong> (classified as legitimate state, not an alert):</p>
   <ul>
-    <li><strong>Graceful exits</strong> (ExitCode = 0) — the ⚠ Only ExitCode != 0 filter is default ON. Hides rows where Win32 ExitCode = 0 (SCM cleanly stopped the service). This is the primary "stopped that shouldn't be" signal.</li>
+    <li><strong>Graceful exits</strong> (ExitCode = 0 <strong>and null</strong>) — the ⚠ Only ExitCode != 0 filter is <strong>now default OFF</strong>. Most stopped services carry no exit code at all (null), and both 0 and null are treated as "graceful". The primary "stopped that shouldn't be" signal is the <strong>Stopped state of an Auto service</strong> itself, not the exit code — so the filter ships off and the tab shows real drift straight away. Turn it on only to isolate genuine crashes (non-zero exit).</li>
     <li><strong>Trigger-start with graceful exit</strong> (registry <code>TriggerInfo</code> subkey + exit=0) — services designed as event-driven (login, network change, ETW), shut down cleanly after completing their task. The "Hide trigger-start" filter is default ON but only hides trigger-start with exit=0. <strong>A trigger-start that crashed (exit != 0) ALWAYS surfaces</strong> — that is a real failure.</li>
     <li><strong>Per-user services</strong> (service name matching <code>_[a-f0-9]{4,12}$</code> LUID suffix) — bound to a user session, legitimately stopped when no user is logged on. Examples: CDPUserSvc, cbdhsvc, OneSyncSvc.</li>
     <li><strong>Compliant</strong> (matches a <code>service_policy</code> rule and complies with it) — default OFF, toggleable via "Hide compliant".</li>
@@ -1100,17 +1175,19 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <ul>
     <li>A <strong>service × machine table</strong>: <strong style="color: #15803d">Running</strong> shown green, anything else red, plus start mode, IP, and last check.</li>
     <li><strong>Offline machines</strong> show their <strong>last-known state</strong> (amber), so you still have the most recent reading even when the box is unreachable.</li>
+    <li><strong>Per-PC exceptions are honoured</strong> — a critical service that is in <em>that PC's</em> exceptions list (the 🛡 Critical services exceptions field in Computers) is shown <strong>greyed with an "exception" tag</strong>, is <strong>not counted</strong> in the "N not running" total, and is <strong>excluded from the 🛡 dashboard tile</strong>. So a service you deliberately silenced on one box (e.g. <code>NTDS</code> on a demoted DC) stops inflating the count while still being visible for reference.</li>
     <li><strong>"Only not-running" filter</strong> + search + export.</li>
   </ul>
-  <p>The dashboard has a <strong>"🛡 Critical services"</strong> tile — the count of services not-running on reachable machines, <strong>red when &gt; 0</strong> — that opens this tab.</p>
+  <p>The dashboard has a <strong>"🛡 Critical services"</strong> tile — the count of services not-running on reachable machines (exceptions excluded), <strong>red when &gt; 0</strong> — that opens this tab.</p>
 </div>
 <div data-lang="cs">
   <ul>
     <li><strong>Tabulka služba × stroj</strong>: <strong style="color: #15803d">Running</strong> zeleně, jinak červeně, plus start mode, IP a poslední kontrola.</li>
     <li><strong>Offline stroje</strong> ukazují svůj <strong>poslední známý stav</strong> (žlutě), takže máš poslední čtení i když stroj není dostupný.</li>
+    <li><strong>Respektuje per-PC výjimky</strong> — kritická služba, která je ve výjimkách <em>daného PC</em> (pole výjimky u 🛡 Krit. služby v Počítačích), se ukáže <strong>šedě se značkou „výjimka"</strong>, <strong>nezapočítává se</strong> do počtu „N mimo Running" a je <strong>vyloučena z 🛡 dashboard dlaždice</strong>. Takže služba, kterou jsi na jednom stroji vědomě umlčel (např. <code>NTDS</code> na degradovaném DC), přestane nafukovat počet a přitom zůstává pro referenci vidět.</li>
     <li><strong>Filtr „jen mimo Running"</strong> + hledání + export.</li>
   </ul>
-  <p>Na dashboardu je dlaždice <strong>„🛡 Kritické služby"</strong> — počet služeb mimo Running na dostupných strojích, <strong>červená když &gt; 0</strong> — která prokliká do této záložky.</p>
+  <p>Na dashboardu je dlaždice <strong>„🛡 Kritické služby"</strong> — počet služeb mimo Running na dostupných strojích (bez výjimek), <strong>červená když &gt; 0</strong> — která prokliká do této záložky.</p>
 </div>
 <div class="callout callout-warn" data-lang="en">
   <strong>Note:</strong> machines whose services scan fails with <code>"Access is denied"</code> (hardened DCs / servers) have <strong>no data</strong> here until the service account is granted WMI/DCOM rights.
@@ -1234,6 +1311,10 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td><code>disk.warning_pct</code></td><td>15</td><td>UI re-evaluates</td></tr>
   <tr><td><code>disk.critical_gb</code></td><td>5</td><td>UI re-evaluates</td></tr>
   <tr><td><code>disk.warning_gb</code></td><td>20</td><td>UI re-evaluates</td></tr>
+  <tr><td><code>email.smtp_host</code> / <code>email.smtp_port</code> / <code>email.sender</code></td><td><code>25</code></td><td>Shared SMTP plumbing in the "Email setup (SMTP)" section — reused by every email agenda</td></tr>
+  <tr><td><code>email.recipients</code></td><td>(empty)</td><td>Shared default recipients for all agendas</td></tr>
+  <tr><td><code>alerts.dashboard_url</code></td><td>(empty)</td><td>"Open ITDashboard" link in every email</td></tr>
+  <tr><td><code>alerts.disk.recipients</code> / <code>alerts.services.recipients</code> / <code>alerts.ports.recipients</code> / <code>report.recipients</code></td><td>(empty)</td><td>Per-agenda recipients override — <strong>empty = fall back to <code>email.recipients</code></strong></td></tr>
 </table>
 
 <h2 id="api"><span data-lang="cs">API reference</span><span data-lang="en">API reference</span></h2>

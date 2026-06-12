@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-12 (whitelist view filter + OS tile + reachability probe + faulty-PC detection + critical-service status + eventlog %1 fix)
+Last updated: 2026-06-12 (per-agenda + report recipients · standalone Email/SMTP settings · structured fleet report + email from Computers · severity tile colours · two-level service monitoring with per-PC exceptions · machine-readable email subjects · service-filter exit_code fix · critical-service exceptions in tab/tile · first automated test suites + CI gate · oponentura doc)
 
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in
@@ -18,9 +18,142 @@ Last updated: 2026-06-12 (whitelist view filter + OS tile + reachability probe +
 - Runtime path on server: `C:\Apps\ITDashboard`
 - SQL server: `10.8.2.225`
 - Database: `ITDashboard`
-- Live commit: `09c1f0c`
+- Live commit: `b7e03e2`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
+
+## Session 2026-06-12 (batch 2) — recipients, reporting, two-level services, exit_code, tests
+
+A large feature + fix batch. Everything below is live on `b7e03e2`. Migrations
+**038–040**. First **automated test suites** + CI gate added.
+
+### Per-agenda + report email recipients, standalone Email/SMTP settings (mig 038, 039)
+
+All alerts used to share `alerts.recipients`. Now each agenda can route to its
+own list with fallback to the shared one: `sendMail(settings, payload,
+recipientsKey?)` reads the per-agenda key (`alerts.disk.recipients`,
+`alerts.services.recipients`, `alerts.ports.recipients`, `alerts.reports.recipients`)
+and falls back to `alerts.recipients` when empty. SMTP host/port/From and the
+dashboard URL stay shared. Migration **038** seeds the disk/services/ports keys,
+**039** the reports key — all empty, so existing single-list behaviour is
+unchanged. Settings UI was **restructured** per operator: SMTP relay/port/From +
+shared recipients + dashboard URL moved into a standalone **"Nastavení e-mailu
+(SMTP)"** section; the disk / service / port / report agendas sit below it, each
+with only its own enable/throttle + a recipient-override textarea. CS/EN strings.
+
+### Structured fleet report + on-demand email (from the Computers tab)
+
+New `apps/server/src/services/reports.ts` — `buildOverviewReport()` over the
+`computers` table (no probing): PC vs servers (os_version `/server/i`), offline
+machines with down-since, collection-health counts (active/offline/disabled/
+monitored/failing). `GET /reports/overview` (JSON) + `POST /reports/email`
+(`{ machines?: string[] }`) share one generator so UI and email never drift.
+**Disabled machines are included** (status `disabled`) so the report matches what
+the Computers tab shows. A first iteration added a separate **Reporting tab**;
+per operator ("vždyť máme záložku Počítače") it was **removed** and the capability
+folded into Computers as an **"✉ Report e-mailem"** button that emails the
+currently visible (filtered) machines — same "applies to what you see" model as
+the bulk toggles. Recipients = `alerts.reports.recipients` → shared fallback.
+
+### Machine-readable email subjects + status banner
+
+Every report/alert subject now leads with `subjectPrefix(hasProblems, manual)`:
+`[OK]` vs `[CHYBA]` (does the mail carry a problem — the filter target for an
+auto-file mail rule) and `[RUČNĚ]` when manually triggered (test / on-demand),
+absent = automatic. Applied to disk, service and port alerts plus the overview
+report. The overview email also gained a green/red status banner + a `STAV:` line
+in the text part + a manual/auto footer.
+
+### Two-level service monitoring with per-PC exceptions (mig 040)
+
+Computers tab now has **two** per-PC service columns, each a checkbox + an
+exceptions (ignore) field, like the disk drive-scope:
+
+- **🔧 Služby** (`service_monitor`) — broad: every Auto service not Running.
+- **🛡 Krit. služby** (`service_email_monitor`) — the key set from
+  `alerts.services.critical_names`.
+
+Per-PC ignore lists: `service_exceptions` / `critical_service_exceptions`
+(comma/newline, `*`/`?` wildcards; match name OR display name via the same glob as
+the whitelist). A demoted DC can suppress `NTDS,Kdc` locally without muting them
+fleet-wide. Migration **040** adds the columns. Routes: `PATCH
+/computers/:id/service-monitor` and an extended `…/service-email-monitor` (both
+take `{ enabled?, exceptions? }`); `bulk-flag` accepts `service_monitor`.
+
+Alert logic (`loadDownServices` in `alerts.ts`, parametrised by gate /
+exceptions column / critical): **overlap rule** — a critical service is reported
+only by the critical level (broad skips critical names), never twice. The service
+alert email/test merge both levels, **critical first**, each card colour-coded +
+badged. The broad level reports the collector's **"real" set** — it excludes
+**trigger-start and delayed-start** services (on-demand, legitimately idle),
+matching the collector log's "N real". The footer wording was generalised for the
+two-level model.
+
+> Important nuance found via live data: **exit_code is NOT a useful discriminator**
+> — 413 of 454 genuine "Auto service down" problems report exit 0/null, only 19
+> are exit ≠ 0. An earlier attempt to gate the broad alert on `exit_code <> 0`
+> (crashes only) was reverted; the broad level is exit-agnostic and uses
+> trigger/delayed exclusion instead.
+
+### Services tab filter fix — null exit_code = graceful (+ default change)
+
+The Services-tab filters tested `exit_code === 0`, but most stopped services have
+`exit_code = null` (Windows reports no code for a normal stop), so trigger/null
+rows leaked through with "Hide trigger-start" ticked and "Only ExitCode != 0"
+still showed null rows. Fixed: shared `isServiceCrash(exitCode)` = `exit != null
+&& exit !== 0`; 0 OR null both count as graceful. The **"Only ExitCode != 0"
+default flipped to OFF** so the tab shows real drift (matching the dashboard
+stopped-services tile and the broad alert, both exit-agnostic); crashes stay
+visible in the EXIT column and one tick away.
+
+### Critical-service exceptions honoured in the tab + dashboard tile
+
+Per-PC `critical_service_exceptions` previously suppressed only the email. Now
+`GET /services/critical` returns the per-PC exceptions; the **Critical services
+tab** excludes excepted non-running services from the "N mimo Running" count,
+sinks them to the bottom, and renders them greyed with an **"výjimka"** tag
+instead of red. The **dashboard 🛡 tile** (`critDown` in `App.tsx`) excludes them
+too. New shared `serviceMatchesExceptions(name, displayName, raw)` in `api.ts`.
+
+### Dashboard tile colours reflect severity
+
+Tile numbers turn **green (`--ok`) when zero** and only go red/orange when there's
+an actual problem: disk-critical / critical-services / unreachable / problem-PCs →
+red when > 0; disk-warning / slow boot-shutdown / inactive / stopped-services →
+orange/red when > 0; the 30-day event counts colour by their own count. Added a
+`.card.ok` style; loading/empty states stay neutral (`info`).
+
+### First automated tests + CI gate
+
+The gap all three oponentura reviews flagged. **Vitest** added to both apps:
+
+- **Desktop** (`apps/desktop/src/api.test.ts`, 34 cases): `isServiceCrash`,
+  `serviceMatchesExceptions` / whitelist glob, `parseDriveScope` (+ `!`/`<>`),
+  `parseDiskThresholds`, `evaluateDiskWithScope` (pct/gb/either + per-tier scope),
+  `osBucket`, `isStaleComputer`, `levelName`.
+- **Server** (`apps/server/src/services/alerts-util.test.ts`, 20 cases): pure
+  helpers extracted into `alerts-util.ts` (no DB/native-driver load) —
+  `subjectPrefix`, recipient/list parsing, glob matching, `inMaintenanceWindow`
+  (incl. cross-midnight), `shouldAlertNow` (debounce/throttle), drive scope.
+- CI `deploy.yml` runs `npm test` after typecheck → a failing test stops the
+  deploy before build/migrate. Root `npm test` runs both suites (54 cases).
+
+A test even documented real behaviour: exception patterns are whitespace-split,
+so multi-word phrases must use wildcards.
+
+### Oponentura document
+
+`docs/oponentura.md` — a ~90-page (rendered) Czech technical+academic document for
+review/defence (architecture, data model, backend/frontend, security incl. STRIDE,
+CI/CD, performance, ops, appendices: API ref, data dictionary, settings, migration
+list, glossary, use cases, alternatives). Rendered HTML/PDF were handed to the
+operator's Downloads.
+
+### Known still-open (see "Still open" below)
+
+DC/server CIM `Access denied` remains the blocker (infra, not code) — broad
+service monitoring confirmed it again (only the old `DOMENA01` returns service
+data; `B-S-W-DC-01/02/03` fail `New-CimSession: Access is denied`).
 
 ## Session 2026-06-12 — service whitelist as a view filter + OS breakdown chart
 
@@ -320,14 +453,29 @@ render as `â` mojibake in an ANSI-default editor.
 
 ## Still open (next thread)
 
-- **DC/server CIM perms** — grant `svc-itdashboard` WMI/DCOM rights on the DCs and
-  the "Access is denied" servers so disk / services / **critical services** can be
-  collected there. This is the blocker for seeing the real AD critical services.
-- **B) Reporting** — PC vs server split (derive from `os_version` "Server"),
-  include offline machines and the phase-2 port checks in a structured report.
-- **C) Per-agenda email recipients** — today all alerts share `alerts.recipients`;
-  add `alerts.disk.recipients` / `alerts.services.recipients` / `alerts.ports.recipients`
-  with fallback to the shared list, so different agendas go to different people.
+- **DC/server CIM perms** *(top blocker, infrastructure)* — grant `svc-itdashboard`
+  WMI/DCOM rights on the DCs and the "Access is denied" servers so disk / services
+  / **critical services** can be collected there. Re-confirmed live this session:
+  `B-S-W-DC-01/02/03` (+ TRITON, WEB-SERVIS, B-S-W-HAM…) fail the CIM scan, so the
+  real AD critical services (NTDS/DNS/Kdc on the actual DCs) are never seen — only
+  the old `DOMENA01` returns data. Needs DCOM (Remote Activation) + WMI namespace
+  (`Root\CIMV2`: Remote Enable + Enable Account) for the service account via GPO on
+  the Domain Controllers + locked servers. *Offered next: a ready GPO/PS delegation
+  script + verify collection then flows; and/or a UI "CIM blocked" indicator on
+  machines where the disk/service scan fails on Access denied (today only visible
+  indirectly via empty disks).*
+- **Port-checks → structured report (phase 2)** — per-port state isn't persisted
+  into the overview report yet (the report is computers-table only). Either persist
+  per-port status or run an on-demand probe for the report.
+- **More tests** — server-side `subjectPrefix`/maintenance-window/`shouldAlertNow`
+  now covered; still uncovered: the SQL-side faulty score (needs a DB integration
+  test) and the alert *send* path. Consider a watchdog (collector freshness →
+  critical mail on a separate channel) and structured `client_ip` in `activity_log`
+  (both raised in the oponentura responses).
+
+> **Done this batch** (was open): per-agenda email recipients (✅ mig 038/039) and
+> the structured PC-vs-server / offline reporting (✅ `reports.ts`, email from
+> Computers). Two-level service monitoring + per-PC exceptions (✅ mig 040).
 
 ## Config externalization (2026-06-11)
 
