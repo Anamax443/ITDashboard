@@ -311,6 +311,17 @@ export function serviceMatchesExceptions(
   return isServiceWhitelisted(name, displayName, svcNameList(rawExceptions ?? ''));
 }
 
+/**
+ * Is a stopped service a real *crash*? Only a NON-zero exit code counts. Both
+ * exit code 0 AND null mean the service stopped without reporting a failure
+ * (on-demand idle, graceful stop, or benign Auto drift) — and most stopped
+ * services are null/0, so null MUST be treated as graceful, not as a crash.
+ * Used by the Services tab filters and the broad-alert noise model.
+ */
+export function isServiceCrash(exitCode: number | null | undefined): boolean {
+  return exitCode != null && exitCode !== 0;
+}
+
 // ── Operating-system breakdown ──────────────────────────────────────────────
 // Sentinels for buckets that need localized labels in the UI (everything else
 // is an English OS name that reads the same in both languages).

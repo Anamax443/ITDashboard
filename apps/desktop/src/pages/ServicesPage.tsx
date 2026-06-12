@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { ServiceProblem, ServiceAggregate } from '../api.js';
-import { api, timeAgo, serviceWhitelist, isServiceWhitelisted } from '../api.js';
+import { api, timeAgo, serviceWhitelist, isServiceWhitelisted, isServiceCrash } from '../api.js';
 import { useSort, SortHeader, useSortedItems } from '../lib/useSort.jsx';
 import { HelpBox } from '../components/HelpBox.js';
 import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
@@ -81,7 +81,7 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
     // null (Windows reports no code for a normal stop), so null MUST count as
     // graceful, not as a crash. (Treating null as "unknown/visible" used to leak
     // every on-demand/graceful service through these filters.)
-    const isCrash = s.exit_code != null && s.exit_code !== 0;
+    const isCrash = isServiceCrash(s.exit_code);
     // Hide trigger-/delayed-start unless they actually crashed — a crashed
     // on-demand service is a real failure and must always surface.
     if (hideTriggerStart && s.trigger_start && !isCrash) return false;

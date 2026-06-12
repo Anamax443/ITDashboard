@@ -40,6 +40,13 @@ jobs:
         working-directory: ${{ env.RUNTIME_DIR }}\apps\server
         run: npm run typecheck
 
+      - name: Unit tests
+        # Runs every workspace's `test` script if present (currently the desktop
+        # pure-logic suite). A failing test stops the deploy before anything is
+        # built or migrated.
+        working-directory: ${{ env.RUNTIME_DIR }}
+        run: npm test
+
       - name: Build server
         working-directory: ${{ env.RUNTIME_DIR }}\apps\server
         run: npm run build
