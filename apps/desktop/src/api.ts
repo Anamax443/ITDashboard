@@ -432,6 +432,12 @@ export interface ComputerItem {
   /** Per-PC drive-letter scope for disk email alerts (e.g. "C,F"). Empty = all drives. */
   disk_email_drives?: string;
   service_email_monitor?: boolean;
+  /** Per-PC ignore list for critical-service alerts (service names, wildcards). */
+  critical_service_exceptions?: string | null;
+  /** Broad "Services" level monitor toggle. */
+  service_monitor?: boolean;
+  /** Per-PC ignore list for the broad Services level (service names, wildcards). */
+  service_exceptions?: string | null;
   excluded: boolean;
   last_collected_at?: string | null;
   last_error?: string | null;
@@ -625,14 +631,23 @@ export const api = {
     if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/disk/test → ${r.status}`);
     return body as { ok: true; recipients: number; critical: number; monitoredPcs: number };
   },
-  setServiceEmailMonitor: async (id: number, enabled: boolean) => {
+  setServiceMonitor: async (id: number, patch: { enabled?: boolean; exceptions?: string }) => {
+    const r = await fetch(`${API_BASE}/computers/${id}/service-monitor`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!r.ok) throw new Error(`PATCH /computers/${id}/service-monitor → ${r.status}`);
+    return r.json() as Promise<{ id: number; name: string; service_monitor: boolean; service_exceptions: string }>;
+  },
+  setServiceEmailMonitor: async (id: number, patch: { enabled?: boolean; exceptions?: string }) => {
     const r = await fetch(`${API_BASE}/computers/${id}/service-email-monitor`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify(patch),
     });
     if (!r.ok) throw new Error(`PATCH /computers/${id}/service-email-monitor → ${r.status}`);
-    return r.json() as Promise<{ id: number; name: string; service_email_monitor: boolean }>;
+    return r.json() as Promise<{ id: number; name: string; service_email_monitor: boolean; critical_service_exceptions: string }>;
   },
   sendServiceAlertTest: async () => {
     const r = await fetch(`${API_BASE}/alerts/services/test`, { method: 'POST' });
@@ -700,7 +715,7 @@ export const api = {
     if (!r.ok) throw new Error(`PUT /settings → ${r.status}`);
     return r.json() as Promise<{ updated: number }>;
   },
-  bulkSetFlag: async (ids: number[], flag: 'monitor_enabled' | 'disk_email_monitor' | 'service_email_monitor' | 'excluded', value: boolean) => {
+  bulkSetFlag: async (ids: number[], flag: 'monitor_enabled' | 'disk_email_monitor' | 'service_email_monitor' | 'service_monitor' | 'excluded', value: boolean) => {
     const r = await fetch(`${API_BASE}/computers/bulk-flag`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

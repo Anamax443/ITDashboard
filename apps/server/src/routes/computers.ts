@@ -11,6 +11,7 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     const r = await pool.request().query(`
       SELECT id, name, fqdn, os_version, last_seen, enabled, monitor_enabled, excluded,
              disk_email_monitor, disk_email_drives, service_email_monitor,
+             service_monitor, service_exceptions, critical_service_exceptions,
              last_collected_at, last_error, consecutive_failures, ou_path, distinguished_name,
              last_status, [current_user], current_user_seen_at, ip_address, pc_info_collected_at,
              reachable, last_reachable_at, reach_checked_at
@@ -167,22 +168,57 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     return row;
   });
 
+  // Comma/newline-separated service NAMES (wildcards * ?). Used by both the
+  // critical and broad per-PC exception (ignore) lists.
+  const ExceptionsField = z.string().max(2000).regex(/^[\w,;\s*?.\-]*$/);
+
+  // Critical-services column: enable flag + per-PC critical exceptions.
   app.patch('/computers/:id/service-email-monitor', async (req, reply) => {
     const params = z.object({ id: z.coerce.number().int() }).parse(req.params);
-    const body = z.object({ enabled: z.boolean() }).parse(req.body);
-    const pool = await getPool();
-    const r = await pool.request()
-      .input('id', params.id)
-      .input('m', body.enabled ? 1 : 0)
-      .query(`
-        UPDATE computers SET service_email_monitor = @m WHERE id = @id;
-        SELECT id, name, service_email_monitor FROM computers WHERE id = @id;
-      `);
-    const row = r.recordset[0];
-    if (!row) {
-      reply.code(404);
-      return { error: 'Not found' };
+    const body = z.object({
+      enabled: z.boolean().optional(),
+      exceptions: ExceptionsField.optional(),
+    }).parse(req.body);
+    if (body.enabled === undefined && body.exceptions === undefined) {
+      reply.code(400);
+      return { error: 'nothing to update' };
     }
+    const pool = await getPool();
+    const request = pool.request().input('id', params.id);
+    const sets: string[] = [];
+    if (body.enabled !== undefined) { request.input('m', body.enabled ? 1 : 0); sets.push('service_email_monitor = @m'); }
+    if (body.exceptions !== undefined) { request.input('ex', body.exceptions.trim()); sets.push('critical_service_exceptions = @ex'); }
+    const r = await request.query(`
+      UPDATE computers SET ${sets.join(', ')} WHERE id = @id;
+      SELECT id, name, service_email_monitor, critical_service_exceptions FROM computers WHERE id = @id;
+    `);
+    const row = r.recordset[0];
+    if (!row) { reply.code(404); return { error: 'Not found' }; }
+    return row;
+  });
+
+  // Broad "Services" column: enable flag + per-PC service exceptions.
+  app.patch('/computers/:id/service-monitor', async (req, reply) => {
+    const params = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    const body = z.object({
+      enabled: z.boolean().optional(),
+      exceptions: ExceptionsField.optional(),
+    }).parse(req.body);
+    if (body.enabled === undefined && body.exceptions === undefined) {
+      reply.code(400);
+      return { error: 'nothing to update' };
+    }
+    const pool = await getPool();
+    const request = pool.request().input('id', params.id);
+    const sets: string[] = [];
+    if (body.enabled !== undefined) { request.input('m', body.enabled ? 1 : 0); sets.push('service_monitor = @m'); }
+    if (body.exceptions !== undefined) { request.input('ex', body.exceptions.trim()); sets.push('service_exceptions = @ex'); }
+    const r = await request.query(`
+      UPDATE computers SET ${sets.join(', ')} WHERE id = @id;
+      SELECT id, name, service_monitor, service_exceptions FROM computers WHERE id = @id;
+    `);
+    const row = r.recordset[0];
+    if (!row) { reply.code(404); return { error: 'Not found' }; }
     return row;
   });
 
@@ -192,7 +228,7 @@ export async function registerComputersRoutes(app: FastifyInstance) {
   app.post('/computers/bulk-flag', async (req, reply) => {
     const body = z.object({
       ids: z.array(z.number().int()).min(1),
-      flag: z.enum(['monitor_enabled', 'disk_email_monitor', 'service_email_monitor', 'excluded']),
+      flag: z.enum(['monitor_enabled', 'disk_email_monitor', 'service_email_monitor', 'service_monitor', 'excluded']),
       value: z.boolean(),
     }).parse(req.body);
     if (body.ids.length > 5000) { reply.code(400); return { error: 'too many ids' }; }

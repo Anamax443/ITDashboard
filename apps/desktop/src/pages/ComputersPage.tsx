@@ -230,18 +230,10 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     }
   };
 
-  const toggleServiceEmailMonitor = async (c: ComputerItem) => {
-    try {
-      await api.setServiceEmailMonitor(c.id, !c.service_email_monitor);
-      onRefreshLocal();
-    } catch (err) {
-      setError(String(err));
-    }
-  };
 
 
   // Bulk-toggle a per-PC flag for ALL currently visible (filtered) rows.
-  const bulkSetFlag = async (flag: 'disk_email_monitor' | 'service_email_monitor' | 'excluded', value: boolean) => {
+  const bulkSetFlag = async (flag: 'disk_email_monitor' | 'service_email_monitor' | 'service_monitor' | 'excluded', value: boolean) => {
     const targetIds = sorted.map((c) => c.id);
     if (targetIds.length === 0) return;
     try {
@@ -403,8 +395,9 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                 <th style={{ width: 24 }}></th>
                 <th style={{ width: 70, textAlign: 'center' }} title="Collect events from this PC">Monitor</th>
                 <th style={{ width: 70, textAlign: 'center' }} title="Permanently exclude from all stats and views">Exclude<BulkToggle onAll={() => bulkSetFlag('excluded', true)} onNone={() => bulkSetFlag('excluded', false)} /></th>
-                <th style={{ width: 112, textAlign: 'center' }} title={t('computers.diskEmail.title')}>📧 Disk<BulkToggle onAll={() => bulkSetFlag('disk_email_monitor', true)} onNone={() => bulkSetFlag('disk_email_monitor', false)} /></th>
-                <th style={{ width: 64, textAlign: 'center' }} title={t('computers.svcEmail.title')}>🔔 Služby<BulkToggle onAll={() => bulkSetFlag('service_email_monitor', true)} onNone={() => bulkSetFlag('service_email_monitor', false)} /></th>
+                <th style={{ width: 130, textAlign: 'center' }} title={t('computers.diskEmail.title')}>📧 Disk<BulkToggle onAll={() => bulkSetFlag('disk_email_monitor', true)} onNone={() => bulkSetFlag('disk_email_monitor', false)} /></th>
+                <th style={{ width: 130, textAlign: 'center' }} title={t('computers.svc.title')}>🔧 {t('computers.svc.header')}<BulkToggle onAll={() => bulkSetFlag('service_monitor', true)} onNone={() => bulkSetFlag('service_monitor', false)} /></th>
+                <th style={{ width: 130, textAlign: 'center' }} title={t('computers.critSvc.title')}>🛡 {t('computers.critSvc.header')}<BulkToggle onAll={() => bulkSetFlag('service_email_monitor', true)} onNone={() => bulkSetFlag('service_email_monitor', false)} /></th>
                 <SortHeader<ComputerItem> col="name" label="Name" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="ou_path" label="OU path" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="fqdn" label="FQDN" sort={sort} toggle={toggle} />
@@ -447,12 +440,21 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                     <DiskEmailCell c={c} onSaved={onRefreshLocal} onError={setError} />
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={!!c.service_email_monitor}
-                      onChange={() => toggleServiceEmailMonitor(c)}
-                      title={t('computers.svcEmail.toggle')}
-                      style={{ cursor: 'pointer' }}
+                    <ServiceCell
+                      on={!!c.service_monitor}
+                      exceptions={c.service_exceptions ?? ''}
+                      save={(patch) => api.setServiceMonitor(c.id, patch)}
+                      onSaved={onRefreshLocal}
+                      onError={setError}
+                    />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <ServiceCell
+                      on={!!c.service_email_monitor}
+                      exceptions={c.critical_service_exceptions ?? ''}
+                      save={(patch) => api.setServiceEmailMonitor(c.id, patch)}
+                      onSaved={onRefreshLocal}
+                      onError={setError}
                     />
                   </td>
                   <td style={{ fontWeight: 600 }}>
@@ -594,6 +596,52 @@ function BulkToggle({ onAll, onNone }: { onAll: () => void; onNone: () => void }
     <div style={{ display: 'flex', gap: 3, justifyContent: 'center', marginTop: 3 }} onClick={(e) => e.stopPropagation()}>
       <button type="button" style={btn} title="All visible" onClick={onAll}>✓</button>
       <button type="button" style={btn} title="None visible" onClick={onNone}>✗</button>
+    </div>
+  );
+}
+
+// Per-PC service monitoring: a checkbox (enable) plus an exceptions field —
+// comma-separated service names to IGNORE on this PC (empty = ignore none).
+// Used for both the broad "Services" and the "Critical services" columns; the
+// `save` callback decides which agenda the patch targets. Mirrors DiskEmailCell.
+function ServiceCell({ on, exceptions, save, onSaved, onError }: {
+  on: boolean;
+  exceptions: string;
+  save: (patch: { enabled?: boolean; exceptions?: string }) => Promise<unknown>;
+  onSaved: () => void;
+  onError: (e: string) => void;
+}) {
+  const { t } = useI18n();
+  const [ex, setEx] = useState(exceptions);
+  useEffect(() => { setEx(exceptions); }, [exceptions]);
+
+  const toggleEnabled = async () => {
+    try { await save({ enabled: !on }); onSaved(); } catch (err) { onError(String(err)); }
+  };
+  const saveEx = async () => {
+    const next = ex.trim();
+    if (next === (exceptions ?? '').trim()) return;
+    try { await save({ exceptions: next }); onSaved(); } catch (err) { onError(String(err)); setEx(exceptions); }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+      <input type="checkbox" checked={on} onChange={toggleEnabled} title={t('computers.svc.toggle')} style={{ cursor: 'pointer' }} />
+      <input
+        type="text"
+        value={ex}
+        disabled={!on}
+        onChange={(e) => setEx(e.target.value)}
+        onBlur={saveEx}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        placeholder={t('computers.svc.exPlaceholder')}
+        title={t('computers.svc.exTitle')}
+        style={{
+          width: 80, padding: '2px 4px', fontSize: 11, fontFamily: 'Consolas, monospace', textAlign: 'center',
+          background: on ? 'var(--surface)' : 'transparent', color: on ? 'var(--text)' : 'var(--text-dim)',
+          border: '1px solid var(--border)', borderRadius: 3, opacity: on ? 1 : 0.4,
+        }}
+      />
     </div>
   );
 }

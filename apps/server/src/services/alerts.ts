@@ -362,6 +362,7 @@ export interface DownCriticalService {
   displayName: string | null;
   firstDownAt: Date | null;
   lastSentAt: Date | null;
+  critical: boolean; // true = key/critical level, false = broad "Services" level
 }
 
 interface ServiceProblemRow {
@@ -370,38 +371,56 @@ interface ServiceProblemRow {
   ip_address: string | null;
   service_name: string;
   display_name: string | null;
+  exceptions: string | null;
   first_down_at: Date | null;
   last_sent_at: Date | null;
 }
 
-// Monitored PCs' Auto + non-Running services whose name (or display name) is in
-// the critical list and NOT in the whitelist. LEFT JOINs the per-(PC,service)
-// alert state so callers know how long each has been down.
-async function loadMonitoredDownCriticalServices(settings: SettingsMap): Promise<DownCriticalService[]> {
-  const critical = parseList(settings['alerts.services.critical_names']).map(globToRegExp);
-  if (critical.length === 0) return [];
+// Shared loader for both service-monitoring levels. `gate` is the per-PC opt-in
+// column; `exceptionsCol` is its per-PC ignore list; `critical` selects which
+// names to report: the critical level reports ONLY critical_names matches, the
+// broad level reports everything EXCEPT critical_names (so a critical service is
+// never reported by both). Both honour the global whitelist and the per-PC
+// ignore list. (gate/exceptionsCol come from a fixed union — safe to inline.)
+async function loadDownServices(
+  settings: SettingsMap,
+  opts: {
+    gate: 'service_email_monitor' | 'service_monitor';
+    exceptionsCol: 'critical_service_exceptions' | 'service_exceptions';
+    critical: boolean;
+  },
+): Promise<DownCriticalService[]> {
+  const criticalPatterns = parseList(settings['alerts.services.critical_names']).map(globToRegExp);
+  // The critical level is meaningless without a critical list; the broad level
+  // still needs it to know what to exclude.
+  if (opts.critical && criticalPatterns.length === 0) return [];
   const whitelist = parseList(settings['alerts.services.whitelist']).map(globToRegExp);
 
   const pool = await getPool();
   const r = await pool.request().query<ServiceProblemRow>(`
     SELECT c.id AS computer_id, c.name AS computer, c.ip_address,
            sp.service_name, sp.display_name,
+           c.${opts.exceptionsCol} AS exceptions,
            st.first_down_at, st.last_sent_at
     FROM service_problems sp
     JOIN computers c ON c.id = sp.computer_id
     LEFT JOIN service_alert_state st ON st.computer_id = sp.computer_id AND st.service_name = sp.service_name
-    WHERE c.enabled = 1 AND c.service_email_monitor = 1
+    WHERE c.enabled = 1 AND c.${opts.gate} = 1
       AND sp.state <> 'Running' AND sp.per_user_start = 0
     ORDER BY c.name, sp.service_name
   `);
 
   const out: DownCriticalService[] = [];
+  const perPcExceptions = new Map<number, RegExp[]>();
   for (const row of r.recordset) {
     const nm = row.service_name;
     const dn = row.display_name;
-    const isCrit = matchesAny(nm, critical) || (dn != null && matchesAny(dn, critical));
-    if (!isCrit) continue;
+    const isCrit = matchesAny(nm, criticalPatterns) || (dn != null && matchesAny(dn, criticalPatterns));
+    if (opts.critical ? !isCrit : isCrit) continue; // critical→only critical; broad→skip critical
     if (whitelist.length > 0 && (matchesAny(nm, whitelist) || (dn != null && matchesAny(dn, whitelist)))) continue;
+    let pcEx = perPcExceptions.get(row.computer_id);
+    if (!pcEx) { pcEx = parseList(row.exceptions ?? undefined).map(globToRegExp); perPcExceptions.set(row.computer_id, pcEx); }
+    if (pcEx.length > 0 && (matchesAny(nm, pcEx) || (dn != null && matchesAny(dn, pcEx)))) continue; // per-PC ignore
     out.push({
       computerId: row.computer_id,
       computer: row.computer,
@@ -410,9 +429,22 @@ async function loadMonitoredDownCriticalServices(settings: SettingsMap): Promise
       displayName: dn,
       firstDownAt: row.first_down_at,
       lastSentAt: row.last_sent_at,
+      critical: opts.critical,
     });
   }
   return out;
+}
+
+// Critical (key-service) level: gated by service_email_monitor, only critical
+// names, minus per-PC critical_service_exceptions.
+function loadMonitoredDownCriticalServices(settings: SettingsMap): Promise<DownCriticalService[]> {
+  return loadDownServices(settings, { gate: 'service_email_monitor', exceptionsCol: 'critical_service_exceptions', critical: true });
+}
+
+// Broad "Services" level: gated by service_monitor, every down Auto service that
+// is NOT critical, minus per-PC service_exceptions.
+function loadMonitoredDownBroadServices(settings: SettingsMap): Promise<DownCriticalService[]> {
+  return loadDownServices(settings, { gate: 'service_monitor', exceptionsCol: 'service_exceptions', critical: false });
 }
 
 const svcKey = (cid: number, name: string) => `${cid}${name.toLowerCase()}`;
@@ -425,7 +457,10 @@ export async function evaluateAndSendServiceAlerts(): Promise<void> {
   if (!boolSetting(settings['alerts.services.enabled'])) return;
 
   const pool = await getPool();
-  const candidates = await loadMonitoredDownCriticalServices(settings);
+  const candidates = [
+    ...(await loadMonitoredDownCriticalServices(settings)),
+    ...(await loadMonitoredDownBroadServices(settings)),
+  ];
   const candKeys = new Set(candidates.map((c) => svcKey(c.computerId, c.serviceName)));
 
   // Recovery: drop state for services no longer in the down-critical set so the
@@ -472,7 +507,8 @@ export async function evaluateAndSendServiceAlerts(): Promise<void> {
         .query(`UPDATE service_alert_state SET last_sent_at=@t WHERE computer_id=@cid AND service_name=@nm`);
     }
     const pcs = new Set(toAlert.map((a) => a.computer)).size;
-    logActivity('warn', 'alerts', `Service alert email sent to ${recipients} recipient(s) — ${toAlert.length} critical service(s) down on ${pcs} PC(s)`);
+    const crit = toAlert.filter((a) => a.critical).length;
+    logActivity('warn', 'alerts', `Service alert email sent to ${recipients} recipient(s) — ${toAlert.length} service(s) down (${crit} critical) on ${pcs} PC(s)`);
   } catch (err) {
     logActivity('error', 'alerts', `Service alert email failed: ${String(err).split('\n')[0]}`);
   }
@@ -482,7 +518,10 @@ export async function evaluateAndSendServiceAlerts(): Promise<void> {
 // of enable/debounce/maintenance/throttle.
 export async function sendServiceAlertTest(): Promise<{ recipients: number; down: number; monitoredPcs: number }> {
   const settings = await getAllSettings();
-  const candidates = await loadMonitoredDownCriticalServices(settings);
+  const candidates = [
+    ...(await loadMonitoredDownCriticalServices(settings)),
+    ...(await loadMonitoredDownBroadServices(settings)),
+  ];
   const recipients = await sendMail(settings, renderServiceAlert(candidates, Date.now(), true, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.services.recipients');
   const pcs = new Set(candidates.map((c) => c.computer)).size;
   logActivity('info', 'alerts', `Service alert TEST email sent to ${recipients} recipient(s) (${candidates.length} service(s) down)`);
@@ -502,24 +541,30 @@ function serviceCard(c: DownCriticalService, now: number): string {
   const dn = c.displayName && c.displayName !== c.serviceName ? ` · ${escHtml(c.displayName)}` : '';
   const ip = c.ip ? ` · ${escHtml(c.ip)}` : '';
   const since = c.firstDownAt ? `mimo provoz ${fmtDuration(now - new Date(c.firstDownAt).getTime())}` : 'právě zaznamenáno';
+  const accent = c.critical ? '#dc2626' : '#d97706'; // critical = red, broad service = amber
+  const badge = c.critical ? '🛡 kritická služba' : 'služba';
   return `
         <tr><td style="padding:0 0 12px">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#ffffff;border:1px solid #e5e7eb;border-left:4px solid #dc2626;border-radius:8px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#ffffff;border:1px solid #e5e7eb;border-left:4px solid ${accent};border-radius:8px">
             <tr><td style="padding:14px 16px">
+              <div style="font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:.04em;font-family:${FONT}">${badge}</div>
               <div style="font-size:16px;font-weight:700;color:#111827;font-family:${FONT}">${escHtml(c.computer)}</div>
               <div style="font-size:13px;color:#6b7280;margin:2px 0 6px;font-family:${FONT}">${escHtml(c.serviceName)}${dn}${ip}</div>
-              <div style="font-size:14px;color:#dc2626;font-weight:700;font-family:${FONT}">⛔ ${since}</div>
+              <div style="font-size:14px;color:${accent};font-weight:700;font-family:${FONT}">⛔ ${since}</div>
             </td></tr>
           </table>
         </td></tr>`;
 }
 
-export function renderServiceAlert(down: DownCriticalService[], now: number, isTest: boolean, dashboardUrl: string): { subject: string; text: string; html: string } {
+export function renderServiceAlert(downIn: DownCriticalService[], now: number, isTest: boolean, dashboardUrl: string): { subject: string; text: string; html: string } {
+  // Critical first, then broad — most operationally important at the top.
+  const down = [...downIn].sort((a, b) => Number(b.critical) - Number(a.critical));
   const pcs = new Set(down.map((c) => c.computer)).size;
+  const critN = down.filter((c) => c.critical).length;
   const prefix = isTest ? '[TEST] ' : '';
   const has = down.length > 0;
   const subject = has
-    ? `${prefix}ITDashboard — kritická služba mimo provoz (${down.length} na ${pcs} PC)`
+    ? `${prefix}ITDashboard — služby mimo provoz (${down.length} na ${pcs} PC${critN > 0 ? `, z toho ${critN} kritických` : ''})`
     : `${prefix}ITDashboard — test service alertu (žádná služba mimo provoz)`;
 
   const generated = new Date().toLocaleString('cs-CZ', {
@@ -531,18 +576,18 @@ export function renderServiceAlert(down: DownCriticalService[], now: number, isT
     `  • ${c.computer}${c.ip ? ` (${c.ip})` : ''}  ${c.serviceName}${c.displayName && c.displayName !== c.serviceName ? ` (${c.displayName})` : ''}  —  ${c.firstDownAt ? `mimo provoz ${fmtDuration(now - new Date(c.firstDownAt).getTime())}` : 'právě zaznamenáno'}`,
   );
   const text = (has
-    ? `ITDashboard — kritická služba mimo provoz\n${down.length} služba(služby) na ${pcs} PC:\n\n${lines.join('\n')}\n`
-    : 'ITDashboard — test service alertu\nŽádná sledovaná kritická služba není aktuálně mimo provoz.\n')
+    ? `ITDashboard — služby mimo provoz\n${down.length} služba(služby) na ${pcs} PC${critN > 0 ? ` (${critN} kritických)` : ''}:\n\n${lines.join('\n')}\n`
+    : 'ITDashboard — test service alertu\nŽádná sledovaná služba není aktuálně mimo provoz.\n')
     + (isTest ? '\n(Testovací zpráva spuštěná ručně z Nastavení.)\n' : '')
     + (dashboardUrl ? `\nOtevřít ITDashboard: ${dashboardUrl}\n` : '')
     + `Vygenerováno: ${generated}\n`;
 
   const headerBg = has ? '#dc2626' : '#16a34a';
   const headerSub = has ? '#fde2e2' : '#dcfce7';
-  const headerTitle = has ? '⛔ Kritická služba mimo provoz' : '✅ Služby v pořádku';
+  const headerTitle = has ? '⛔ Služby mimo provoz' : '✅ Služby v pořádku';
   const headerLine = has
-    ? `${down.length} kritická služba(služby) na ${pcs} PC mimo Running`
-    : 'Žádná sledovaná kritická služba není mimo provoz';
+    ? `${down.length} služba(služby) na ${pcs} PC mimo Running${critN > 0 ? ` · ${critN} kritických` : ''}`
+    : 'Žádná sledovaná služba není mimo provoz';
 
   const body = has
     ? down.map((c) => serviceCard(c, now)).join('')
