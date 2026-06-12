@@ -131,11 +131,11 @@ function fmtGb(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
-function escHtml(s: string): string {
+export function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif";
+export const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif";
 
 // One white card per critical disk. Pure table + inline styles so it renders in
 // Outlook / Gmail / mobile clients; cards are full-width blocks that stack
@@ -264,7 +264,7 @@ function buildTransport(settings: SettingsMap): nodemailer.Transporter {
 // recipientsKey selects a per-agenda override list (alerts.disk/services/ports
 // .recipients); when that key is empty we fall back to the shared
 // alerts.recipients so a single global list keeps working unchanged.
-async function sendMail(
+export async function sendMail(
   settings: SettingsMap,
   payload: { subject: string; text: string; html: string },
   recipientsKey?: string,

@@ -19,6 +19,7 @@ import { registerPerfEventsRoutes } from './routes/perf-events.js';
 import { registerActionsRoutes } from './routes/actions.js';
 import { registerRetentionRoutes } from './routes/retention.js';
 import { registerAlertsRoutes } from './routes/alerts.js';
+import { registerReportsRoutes } from './routes/reports.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
 import { startReachabilitySchedule } from './services/reachability-collector.js';
@@ -59,6 +60,7 @@ await registerPerfEventsRoutes(app);
 await registerActionsRoutes(app);
 await registerRetentionRoutes(app);
 await registerAlertsRoutes(app);
+await registerReportsRoutes(app);
 await registerFrontendRoutes(app);
 
 // Load the access-check whitelist BEFORE we start accepting connections, so

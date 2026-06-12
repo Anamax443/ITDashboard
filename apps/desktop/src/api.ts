@@ -515,6 +515,37 @@ export interface ActivityHistoryItem {
   message: string;
 }
 
+export type MachineKind = 'server' | 'pc';
+export type MachineStatus = 'active' | 'offline' | 'disabled';
+
+export interface ReportMachine {
+  name: string;
+  ip: string | null;
+  os: string | null;
+  kind: MachineKind;
+  status: MachineStatus;
+  monitored: boolean;
+  lastSeen: string | null;
+  lastReachableAt: string | null;
+  consecutiveFailures: number;
+}
+
+export interface OverviewReport {
+  generatedAt: string;
+  totals: {
+    total: number;
+    servers: number;
+    pcs: number;
+    active: number;
+    offline: number;
+    disabled: number;
+    monitored: number;
+    failing: number;
+  };
+  machines: ReportMachine[];
+  offline: ReportMachine[];
+}
+
 export const api = {
   accessCheck: () => jget<AccessCheck>('/access-check'),
   activityHistory: (q: { level?: 'info' | 'warn' | 'error' | 'success'; source?: string; hours?: number; search?: string; limit?: number; offset?: number } = {}) => {
@@ -614,6 +645,13 @@ export const api = {
     const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; down?: number; monitoredPcs?: number };
     if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/ports/test → ${r.status}`);
     return body as { ok: true; recipients: number; down: number; monitoredPcs: number };
+  },
+  reportOverview: () => jget<OverviewReport>('/reports/overview'),
+  sendReportEmail: async () => {
+    const r = await fetch(`${API_BASE}/reports/email`, { method: 'POST' });
+    const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; total?: number; offline?: number };
+    if (!r.ok || body.ok === false) throw new Error(body.error || `POST /reports/email → ${r.status}`);
+    return body as { ok: true; recipients: number; total: number; offline: number };
   },
   disks: () => jget<{ items: DiskItem[] }>('/disks'),
   disksCollect: () => jpost<{ pcs: number; ok: number; fail: number; drives: number; durationMs: number }>('/disks/collect'),

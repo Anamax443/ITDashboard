@@ -16,6 +16,7 @@ import { ComputersPage } from './pages/ComputersPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { ServicesPage } from './pages/ServicesPage.js';
 import { CriticalServicesPage } from './pages/CriticalServicesPage.js';
+import { ReportingPage } from './pages/ReportingPage.js';
 import { PerfPage } from './pages/PerfPage.js';
 import { HelpBox } from './components/HelpBox.js';
 import { AccessDenied } from './components/AccessDenied.js';
@@ -24,7 +25,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'events' | 'computers' | 'services' | 'critsvc' | 'perf' | 'activity' | 'settings';
+type View = 'dashboard' | 'events' | 'computers' | 'services' | 'critsvc' | 'reporting' | 'perf' | 'activity' | 'settings';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -173,6 +174,7 @@ export function App() {
             <button className={view === 'computers' ? 'active' : ''} onClick={() => setView('computers')}>{t('nav.computers')}</button>
             <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>{t('nav.services')}</button>
             <button className={view === 'critsvc' ? 'active' : ''} onClick={() => setView('critsvc')}>{t('nav.critsvc')}</button>
+            <button className={view === 'reporting' ? 'active' : ''} onClick={() => setView('reporting')}>{t('nav.reporting')}</button>
             <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>{t('nav.perf')}</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>{t('nav.activity')}</button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>{t('nav.settings')}</button>
@@ -324,6 +326,12 @@ export function App() {
       {view === 'critsvc' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <CriticalServicesPage onJumpToComputer={jumpToComputer} />
+        </div>
+      )}
+
+      {view === 'reporting' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <ReportingPage onJumpToComputer={jumpToComputer} />
         </div>
       )}
 

@@ -637,21 +637,7 @@ export function SettingsPage() {
           </p>
         </Section>
 
-        <Section title={t('settings.section.diskAlerts')} description={t('settings.section.diskAlertsDesc')}>
-          <FieldGroup>
-            <CheckField
-              label={t('settings.field.diskAlertsEnabled')}
-              checked={value('alerts.disk.enabled', '0') === '1'}
-              onChange={(checked) => set('alerts.disk.enabled', checked ? '1' : '0')}
-            />
-            <Field label={t('settings.field.diskAlertsFrequency')}>
-              <NumberInput
-                v={value('alerts.disk.frequency_hours', '24')}
-                onChange={(v) => set('alerts.disk.frequency_hours', v)}
-                suffix={t('settings.unit.hour24')}
-              />
-            </Field>
-          </FieldGroup>
+        <Section title={t('settings.section.email')} description={t('settings.section.emailDesc')}>
           <FieldGroup>
             <Field label={t('settings.field.smtpHost')}>
               <input
@@ -684,15 +670,6 @@ export function SettingsPage() {
               style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
             />
           </Field>
-          <Field label={t('settings.field.recipientsDiskOverride')}>
-            <textarea
-              value={value('alerts.disk.recipients', '')}
-              onChange={(e) => set('alerts.disk.recipients', e.target.value)}
-              placeholder={t('settings.field.recipientsOverridePlaceholder')}
-              rows={2}
-              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
-            />
-          </Field>
           <Field label={t('settings.field.dashboardUrl')}>
             <input
               type="text"
@@ -700,6 +677,35 @@ export function SettingsPage() {
               onChange={(e) => set('alerts.dashboard_url', e.target.value)}
               placeholder="http://10.8.2.213:4000"
               style={{ ...fieldStyle, width: '100%', minWidth: 320 }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+            {t('settings.field.emailHelp')}
+          </p>
+        </Section>
+
+        <Section title={t('settings.section.diskAlerts')} description={t('settings.section.diskAlertsDesc')}>
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.diskAlertsEnabled')}
+              checked={value('alerts.disk.enabled', '0') === '1'}
+              onChange={(checked) => set('alerts.disk.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.diskAlertsFrequency')}>
+              <NumberInput
+                v={value('alerts.disk.frequency_hours', '24')}
+                onChange={(v) => set('alerts.disk.frequency_hours', v)}
+                suffix={t('settings.unit.hour24')}
+              />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.recipientsDiskOverride')}>
+            <textarea
+              value={value('alerts.disk.recipients', '')}
+              onChange={(e) => set('alerts.disk.recipients', e.target.value)}
+              placeholder={t('settings.field.recipientsOverridePlaceholder')}
+              rows={2}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
             />
           </Field>
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 8px 0', lineHeight: 1.5 }}>
@@ -796,6 +802,21 @@ export function SettingsPage() {
             {t('settings.field.portChecksHelp')}
           </p>
           <PortAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
+        </Section>
+
+        <Section title={t('settings.section.reportEmail')} description={t('settings.section.reportEmailDesc')}>
+          <Field label={t('settings.field.recipientsReportOverride')}>
+            <textarea
+              value={value('alerts.reports.recipients', '')}
+              onChange={(e) => set('alerts.reports.recipients', e.target.value)}
+              placeholder={t('settings.field.recipientsOverridePlaceholder')}
+              rows={2}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+            {t('settings.field.reportEmailHelp')}
+          </p>
         </Section>
 
       </div>
