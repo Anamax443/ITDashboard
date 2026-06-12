@@ -21,7 +21,11 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
   const [hideDelayedStart, setHideDelayedStart] = useState(false);
   const [hidePerUser, setHidePerUser] = useState(true);
   const [hideCompliant, setHideCompliant] = useState(false);
-  const [onlyNonzeroExit, setOnlyNonzeroExit] = useState(true);
+  // Default OFF: most genuine "Auto service should run but is Stopped" drift
+  // reports exit 0/null, so defaulting to crashes-only would hide the real
+  // signal (matches the Dashboard "stopped services" tile and the broad alert,
+  // which are exit-agnostic). Operator can tick it to narrow to actual crashes.
+  const [onlyNonzeroExit, setOnlyNonzeroExit] = useState(false);
   const [hideWhitelisted, setHideWhitelisted] = useState(true);
   const { sort, toggle } = useSort<ServiceProblem>({ col: 'computer', dir: 'asc' });
   const { sort: aggSort, toggle: aggToggle } = useSort<ServiceAggregate>({ col: 'pc_count', dir: 'desc' });
@@ -72,17 +76,20 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
     : items;
 
   const filtered = visibleItems.filter((s) => {
-    // Hide trigger-start ONLY when the service exited gracefully (exit_code = 0).
-    // A trigger-start service that crashed (exit_code != 0) is a real failure
-    // and must always surface regardless of this filter.
-    if (hideTriggerStart && s.trigger_start && s.exit_code === 0) return false;
-    if (hideDelayedStart && s.delayed_start && s.exit_code === 0) return false;
+    // A "crash" is a NON-zero exit code. exit_code 0 OR null both mean the
+    // service stopped without reporting a failure — most stopped services are
+    // null (Windows reports no code for a normal stop), so null MUST count as
+    // graceful, not as a crash. (Treating null as "unknown/visible" used to leak
+    // every on-demand/graceful service through these filters.)
+    const isCrash = s.exit_code != null && s.exit_code !== 0;
+    // Hide trigger-/delayed-start unless they actually crashed — a crashed
+    // on-demand service is a real failure and must always surface.
+    if (hideTriggerStart && s.trigger_start && !isCrash) return false;
+    if (hideDelayedStart && s.delayed_start && !isCrash) return false;
     if (hidePerUser && s.per_user_start) return false;
     if (hideCompliant && s.is_compliant === true) return false;
-    // Only ExitCode != 0: hide rows with exit_code = 0 (graceful). Keep null
-    // (no data yet from current Sprint 1.7 backfill) visible so operator can
-    // see them until the next scan populates the column.
-    if (onlyNonzeroExit && s.exit_code === 0) return false;
+    // Only ExitCode != 0: show only real crashes — hide graceful (0) and null.
+    if (onlyNonzeroExit && !isCrash) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
