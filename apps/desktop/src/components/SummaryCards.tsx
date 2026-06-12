@@ -77,66 +77,66 @@ export function SummaryCards({
       : `${mss.monitoredPcs} ${t('cards.diskMonitorWatched')}${serviceAlertsEnabled ? '' : ` · ${t('cards.diskMonitorOff')}`}`;
   return (
     <div className="cards">
-      <Card label={`${t('cards.critical')} (${windowLabel})`} value={summary?.critical_24h ?? '—'} kind="critical"
+      <Card label={`${t('cards.critical')} (${windowLabel})`} value={summary?.critical_24h ?? '—'} kind={!summary ? 'info' : summary.critical_24h > 0 ? 'critical' : 'ok'}
         onClick={summary && summary.critical_24h > 0 ? onClickCritical : undefined} />
-      <Card label={`${t('cards.errors')} (${windowLabel})`} value={summary?.error_24h ?? '—'} kind="error"
+      <Card label={`${t('cards.errors')} (${windowLabel})`} value={summary?.error_24h ?? '—'} kind={!summary ? 'info' : summary.error_24h > 0 ? 'error' : 'ok'}
         onClick={summary && summary.error_24h > 0 ? onClickError : undefined} />
-      <Card label={`${t('cards.warnings')} (${windowLabel})`} value={summary?.warning_24h ?? '—'} kind="warning"
+      <Card label={`${t('cards.warnings')} (${windowLabel})`} value={summary?.warning_24h ?? '—'} kind={!summary ? 'info' : summary.warning_24h > 0 ? 'warning' : 'ok'}
         onClick={summary && summary.warning_24h > 0 ? onClickWarning : undefined} />
       <Card
         label={t('cards.unreachable')}
         value={unreachableCount}
         sub={unreachableSub}
-        kind="critical"
+        kind={unreachableCount > 0 ? 'critical' : 'ok'}
         onClick={unreachableCount > 0 ? onClickUnreachable : undefined}
       />
       <Card
         label={t('cards.diskCritical')}
         value={diskSummary ? `${diskSummary.criticalPcs} PC` : '—'}
         sub={diskSummary ? `${diskSummary.criticalDrives} drives` : undefined}
-        kind="critical"
+        kind={!diskSummary ? 'info' : diskSummary.criticalPcs > 0 ? 'critical' : 'ok'}
         onClick={diskSummary && diskSummary.criticalPcs > 0 ? onClickDiskCritical : undefined}
       />
       <Card
         label={t('cards.diskWarning')}
         value={diskSummary ? `${diskSummary.warningPcs} PC` : '—'}
         sub={diskSummary ? `${diskSummary.warningDrives} drives` : undefined}
-        kind="warning"
+        kind={!diskSummary ? 'info' : diskSummary.warningPcs > 0 ? 'warning' : 'ok'}
         onClick={diskSummary && diskSummary.warningPcs > 0 ? onClickDiskWarning : undefined}
       />
       <Card
         label={`📧 ${t('cards.diskMonitor')}`}
         value={mds.monitoredPcs === 0 ? '—' : `${mds.criticalPcs}/${mds.monitoredPcs} PC`}
         sub={mdsSub}
-        kind={mds.criticalPcs > 0 ? 'critical' : 'info'}
+        kind={mds.monitoredPcs === 0 ? 'info' : mds.criticalPcs > 0 ? 'critical' : 'ok'}
         onClick={mds.monitoredPcs > 0 ? onClickMonitoredDisks : undefined}
       />
       <Card
         label={`🔔 ${t('cards.svcMonitor')}`}
         value={mss.monitoredPcs === 0 ? '—' : `${mss.affectedPcs}/${mss.monitoredPcs} PC`}
         sub={mssSub}
-        kind={mss.downServices > 0 ? 'critical' : 'info'}
+        kind={mss.monitoredPcs === 0 ? 'info' : mss.downServices > 0 ? 'critical' : 'ok'}
         onClick={mss.monitoredPcs > 0 ? onClickMonitoredServices : undefined}
       />
       <Card
         label={t('cards.stoppedServices')}
         value={servicesPcsAffected}
         sub={realServiceProblems.length > 0 ? `${realServiceProblems.length} service${realServiceProblems.length === 1 ? '' : 's'}` : 'all healthy'}
-        kind="error"
+        kind={servicesPcsAffected > 0 ? 'error' : 'ok'}
         onClick={servicesPcsAffected > 0 ? onClickServices : undefined}
       />
       <Card
         label={`🛡 ${t('cards.criticalSvc')}`}
         value={criticalServicesDown}
         sub={criticalServicesTotal > 0 ? `${criticalServicesTotal - criticalServicesDown}/${criticalServicesTotal} OK` : '—'}
-        kind={criticalServicesDown > 0 ? 'critical' : 'info'}
+        kind={criticalServicesTotal === 0 ? 'info' : criticalServicesDown > 0 ? 'critical' : 'ok'}
         onClick={criticalServicesTotal > 0 ? onClickCriticalServices : undefined}
       />
       <Card
         label={t('cards.slowBootShutdown')}
         value={perfSummary ? perfSummary.affected_pcs : '—'}
         sub={perfSummary ? `${perfSummary.total_events} event${perfSummary.total_events === 1 ? '' : 's'}` : undefined}
-        kind="warning"
+        kind={!perfSummary ? 'info' : perfSummary.affected_pcs > 0 ? 'warning' : 'ok'}
         onClick={perfSummary && perfSummary.affected_pcs > 0 ? onClickPerf : undefined}
       />
       <Card
@@ -147,7 +147,7 @@ export function SummaryCards({
               .replace('{enabled}', String(inactiveStats.enabledInactive))
               .replace('{disabled}', String(inactiveStats.disabledInactive))
           : undefined}
-        kind="warning"
+        kind={!inactiveStats ? 'info' : (inactiveStats.enabledInactive + inactiveStats.disabledInactive) > 0 ? 'warning' : 'ok'}
         onClick={inactiveStats && (inactiveStats.enabledInactive + inactiveStats.disabledInactive) > 0 ? onClickInactive : undefined}
       />
       <Card label={t('cards.computers')} value={`${enabledCount}/${total}`} kind="info"
@@ -156,7 +156,7 @@ export function SummaryCards({
   );
 }
 
-export function Card({ label, value, sub, kind, onClick }: { label: string; value: number | string; sub?: string; kind: 'critical' | 'error' | 'warning' | 'info'; onClick?: () => void }) {
+export function Card({ label, value, sub, kind, onClick }: { label: string; value: number | string; sub?: string; kind: 'critical' | 'error' | 'warning' | 'info' | 'ok'; onClick?: () => void }) {
   return (
     <div
       className={`card ${kind}`}

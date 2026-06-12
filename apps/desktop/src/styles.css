@@ -125,6 +125,7 @@ html, body, #root {
 .card.error    { border-left-color: var(--error); }
 .card.warning  { border-left-color: var(--warning); }
 .card.info     { border-left-color: var(--accent); }
+.card.ok       { border-left-color: var(--ok); }
 
 .card .label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
 .card .value { font-size: 28px; font-weight: 700; margin-top: 3px; white-space: nowrap; }
@@ -132,6 +133,7 @@ html, body, #root {
 .card.error    .value { color: var(--error); }
 .card.warning  .value { color: var(--warning); }
 .card.info     .value { color: var(--accent); }
+.card.ok       .value { color: var(--ok); }
 
 .panels {
   display: grid;

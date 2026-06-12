@@ -53,7 +53,7 @@ export function HealthCards({ data, onJumpToComputer, onOpenEvents }: {
           label={`🩺 ${t('health.reinstall')}`}
           value={risk.length}
           sub={`${t('health.score')} ≥ ${data.thresholdRisk} · ${win}`}
-          kind="critical"
+          kind={risk.length > 0 ? 'critical' : 'ok'}
           onClick={risk.length > 0 ? () => setOpen((o) => !o) : undefined}
         />
       </div>
