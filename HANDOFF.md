@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-11 (config externalization + disk & critical-service email alerting)
+Last updated: 2026-06-12 (service whitelist as a global view filter + dashboard OS breakdown chart)
 
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in
@@ -21,6 +21,74 @@ Last updated: 2026-06-11 (config externalization + disk & critical-service email
 - Live commit: `0925d4d`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
+
+## Session 2026-06-12 — service whitelist as a view filter + OS breakdown chart
+
+Two **client-only** features (apps/desktop). No server / DB / migration
+changes — both build on data and settings the browser already holds.
+
+### Service whitelist reused as a global view filter (commit `848af42`)
+
+`alerts.services.whitelist` (Settings → "Email alerty — služby") used to gate
+**email alerts only** (server-side eval in `apps/server/src/services/alerts.ts`).
+The same string is now also applied **client-side as a view filter**, so a
+known-benign service is suppressed everywhere, not just in mail:
+
+- **Dashboard "Zastavené služby" tile** (`SummaryCards.tsx`) — whitelisted
+  services are **always** excluded from the affected-PC count and the
+  "N services" subtitle.
+- **Services tab** (`ServicesPage.tsx`) — new **"Hide whitelisted"** checkbox
+  (default **ON**) hides matching rows **and** removes them from the top-line
+  counts (total · crashes · drift · OK · unclassified), in both the By-PC and
+  By-service views. Folded into the export filter summary too.
+- New shared helpers in `apps/desktop/src/api.ts`: `serviceWhitelist(settings)`
+  → `RegExp[]` and `isServiceWhitelisted(name, displayName, whitelist)`, reusing
+  the existing `svcGlob`/`svcNameList` matcher (case-insensitive, `*`/`?`
+  wildcards, matches service name OR display name; empty whitelist = inert).
+
+Motivation: `gupdate*` / `GoogleUpdater*` / `edgeupdate*` were inflating the
+drift count and the tile even though they were already whitelisted for alerts.
+One whitelist string is now the single source of truth for both "don't email"
+and "don't show as noise". The i18n help under the whitelist field (CS+EN)
+documents the broadened scope.
+
+### Dashboard OS breakdown chart — live/stale split + drill-down (commit `38ba1c4`)
+
+New homepage panel **"Operační systémy" / "Operating systems"**
+(`apps/desktop/src/components/OsBreakdownChart.tsx`), rendered after
+`SummaryCards` in `App.tsx`. Pure client-side aggregation over the already-loaded
+`computers` array — **no new endpoint**.
+
+- **Scope** = live managed fleet: `enabled && !excluded` (disabled / excluded
+  machines are out of the chart).
+- **OS normalization**: the single free-text AD `os_version` column is bucketed
+  by shared `osBucket()` in `api.ts` → `Windows 11/10/8.1/8/7`,
+  `Windows Server <year>[ R2]`, `Windows Vista/XP`, generic `Windows Server`,
+  else `Other`; null/empty = `Unknown`. `summarizeOs(computers, thresholdDays)`
+  returns per-bucket `{ total, stale, live }`.
+- **Stale** reuses the inactivity model: `isStaleComputer(c, thresholdDays)` =
+  not excluded AND `last_seen` null or older than `inactive.threshold_days`
+  (default 90, migration 022) — the **same** definition as the existing
+  "inactive" card/filter. These are the machines that aren't deactivated yet but
+  clearly aspire to be.
+- **Bars**: one horizontal bar per bucket, split into an active segment +
+  a hatched dimmed **stale** segment. Clicking the active segment drills into
+  the Computers tab filtered to that OS + **live**; clicking the stale segment
+  filters to that OS + **stale**.
+- **Drill-down plumbing**: `App.tsx` holds `computersOsFilter` and passes it to
+  `ComputersPage` via `initialOsFilter`; the page consumes it into local
+  `osFilter` state and applies it in the filter predicate (mirroring the chart
+  scope: `enabled && !excluded && bucket match && requested staleness`). It
+  renders as a **removable chip** ("OS: Windows 11 · stale ✕") and is mutually
+  exclusive with the status chips. Because the chart and the filter both call
+  `osBucket()`/`isStaleComputer()`, the segment counts and the drilled list
+  agree by construction.
+- New i18n keys (CS+EN): `os.title`, `os.stale`, `os.live`, `os.unknown`,
+  `os.other`, `os.empty`, `os.clickFilter`, `os.filterLabel`.
+
+Possible follow-ups: extra OS buckets if AD carries non-Windows or unusual
+edition strings (they fall into `Other` today); an optional "include disabled"
+toggle if the operator ever wants deactivated machines in the chart.
 
 ## Config externalization (2026-06-11)
 

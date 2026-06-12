@@ -336,7 +336,7 @@ service restarts on new dist/, in-memory state cleared</div>
       <li>Unreachable PCs — subtitle breaks down <code>X offline · Y RPC · Z auth</code> → Computers tab with failing filter</li>
       <li>Disk critical (N PCs / M drives) → Computers tab with disk-critical filter</li>
       <li>Disk warning → Computers tab with disk-warning filter</li>
-      <li>Stopped services (PCs affected) → Services tab</li>
+      <li>Stopped services (PCs affected) → Services tab. Services on the service alert whitelist (Settings → "Email alerts — services") are always excluded here — they do not count toward the PC count or the "N services" subtitle.</li>
       <li>Slow boot/shutdown (7d, PCs affected) → Perf tab</li>
       <li>Computers (active/total) → Computers tab unfiltered</li>
     </ul>
@@ -344,8 +344,31 @@ service restarts on new dist/, in-memory state cleared</div>
   <li><strong>Events timeline (24h)</strong> — stacked hourly bars (Critical/Error/Warning), SVG</li>
   <li><strong>Top noisy PCs (24h)</strong> — top 10 ranked, breakdown by level via colored progress bar</li>
   <li><strong>Top event IDs (24h)</strong> — top 15 event IDs by count, sortable</li>
+  <li><strong>Operating systems panel</strong> — horizontal OS breakdown chart over the live fleet, below the cards (see below)</li>
   <li><strong>Computers list</strong> — quick summary, no filters</li>
 </ul>
+
+<h4><span data-lang="cs">Panel „Operační systémy"</span><span data-lang="en">"Operating systems" panel</span></h4>
+<div data-lang="en">
+  <p>A panel below the cards on the homepage with <strong>one horizontal bar per OS</strong> over the live managed fleet (enabled, non-excluded computers only). The OS comes from the raw AD field and is normalized into buckets: Windows 11 / 10 / 8.1 / 8 / 7, Windows Server &lt;year&gt;[ R2], Vista / XP, generic Windows Server, else "Other"; empty = "Unknown".</p>
+  <ul>
+    <li>Each bar splits into an <strong>active part</strong> and a hatched, dimmed <strong>"stale" part</strong> = machines not seen for a long time (older than the <code>inactive.threshold_days</code> threshold, default 90 days) that are neither excluded nor deactivated — effectively "aspiring" to deactivation.</li>
+    <li><strong>Click the active part</strong> → drills into the Computers tab filtered to that OS and live machines only.</li>
+    <li><strong>Click the stale part</strong> → Computers tab filtered to that OS and stale machines only.</li>
+    <li>The active filter appears in the Computers tab as a <strong>removable chip</strong> (e.g. <code>OS: Windows 11 · stale ✕</code>).</li>
+    <li>The chart counts and the resulting filtered list always agree.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p>Panel pod kartami na úvodní stránce s <strong>jedním vodorovným pruhem na operační systém</strong> přes živou spravovanou flotilu (jen zapnuté a nevyřazené počítače). OS se bere ze surového AD pole a normalizuje do skupin: Windows 11 / 10 / 8.1 / 8 / 7, Windows Server &lt;rok&gt;[ R2], Vista / XP, obecný Windows Server, jinak „Jiné"; prázdné = „Neznámé".</p>
+  <ul>
+    <li>Každý pruh je rozdělen na <strong>aktivní část</strong> a šrafovanou ztlumenou <strong>„stale" část</strong> = stroje, které se dlouho nepřipojily (déle než práh <code>inactive.threshold_days</code>, výchozí 90 dní) a nejsou vyřazené ani deaktivované — fakticky „aspirují" na deaktivaci.</li>
+    <li><strong>Kliknutím na aktivní část</strong> → prokliknete se do záložky Počítače filtrované na daný OS a jen živé stroje.</li>
+    <li><strong>Kliknutím na stale část</strong> → záložka Počítače filtrovaná na daný OS a jen stale stroje.</li>
+    <li>Aktivní filtr se v záložce Počítače ukáže jako <strong>odstranitelný chip</strong> (např. <code>OS: Windows 11 · stale ✕</code>).</li>
+    <li>Počty v grafu a ve výsledném profiltrovaném seznamu vždy sedí.</li>
+  </ul>
+</div>
 
 <h3><span data-lang="cs">Záložka Události</span><span data-lang="en">Events tab</span></h3>
 <div data-lang="en">
@@ -372,6 +395,7 @@ service restarts on new dist/, in-memory state cleared</div>
   <p>Complete inventory with operator controls:</p>
   <ul>
     <li><strong>Status chips in header</strong> — clickable filter pills: <em>active</em>, <em>monitored</em>, <em>unmonitored</em>, <em>failing</em>, <em>disk critical</em>, <em>disk warning</em>, <em>disabled</em></li>
+    <li><strong>OS drill-down chip</strong> — clicking a bar in the Dashboard "Operating systems" panel opens this tab pre-filtered to that OS (and to live or stale machines). The filter shows as a <strong>removable chip</strong> like <code>OS: Windows 11 · stale ✕</code>; click the ✕ to clear it and return to the full list.</li>
     <li>Search across name / FQDN / OS / OU path / IP / current user</li>
     <li>Status dropdown filter (mirror of chips)</li>
     <li>Sortable columns: Name, OU path, FQDN, OS, IP, User, Last seen, Status</li>
@@ -389,6 +413,7 @@ service restarts on new dist/, in-memory state cleared</div>
   <p>Kompletní inventář s operátorskými ovládacími prvky:</p>
   <ul>
     <li><strong>Status chips v hlavičce</strong> — klikatelné filtr pills: <em>active</em>, <em>monitored</em>, <em>unmonitored</em>, <em>failing</em>, <em>disk critical</em>, <em>disk warning</em>, <em>disabled</em></li>
+    <li><strong>OS drill-down chip</strong> — kliknutí na pruh v dashboard panelu „Operační systémy" otevře tuto záložku přednastavenou na daný OS (a na živé nebo stale stroje). Filtr se ukáže jako <strong>odstranitelný chip</strong> typu <code>OS: Windows 11 · stale ✕</code>; kliknutím na ✕ ho zrušíš a vrátíš se na plný seznam.</li>
     <li>Vyhledávání napříč name / FQDN / OS / OU path / IP / aktuální user</li>
     <li>Status dropdown filtr (zrcadlo chips)</li>
     <li>Sortovatelné sloupce: Name, OU path, FQDN, OS, IP, User, Last seen, Status</li>
@@ -808,7 +833,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>Reminder (hours)</td><td>Throttle cadence while a service stays down (reminder emails)</td></tr>
   <tr><td>Maintenance window (<code>HH:MM-HH:MM</code>)</td><td>Time window that suppresses alerts, e.g. <code>02:00-04:00</code> for the backup/reboot window; <strong>can cross midnight</strong> (e.g. <code>23:00-01:00</code>)</td></tr>
   <tr><td>Critical services list</td><td>Service names that count as critical — case-insensitive, with <code>*</code> / <code>?</code> wildcards. Seeded with the common infra set (see below)</td></tr>
-  <tr><td>Whitelist</td><td>Service names to never alert on even if they match the critical list — e.g. updaters like <code>gupdate*</code>, <code>GoogleUpdater*</code></td></tr>
+  <tr><td>Whitelist</td><td>Service names to never alert on even if they match the critical list — e.g. updaters like <code>gupdate*</code>, <code>GoogleUpdater*</code>, <code>edgeupdate*</code>. <strong>The whitelist is now also a global view filter:</strong> matching services are additionally hidden from the "Stopped services" dashboard tile (always) and from the Services tab when its "Hide whitelisted" toggle is on (default), where they also drop out of the top-line counts. See <a href="#services">Services collector + policy</a>.</td></tr>
   <tr><td>Send test email</td><td>Emails the current down state immediately, regardless of enable / debounce / throttle. Auto-saves any pending Settings first, so you do not need to click Save beforehand</td></tr>
 </table>
 <table data-lang="cs">
@@ -818,7 +843,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <tr><td>Reminder (hodiny)</td><td>Cadence throttlingu po dobu, co je služba dole (připomínkové emaily)</td></tr>
   <tr><td>Údržbové okno (<code>HH:MM-HH:MM</code>)</td><td>Časové okno, které potlačuje alerty, např. <code>02:00-04:00</code> pro okno záloh/restartů; <strong>může přejít přes půlnoc</strong> (např. <code>23:00-01:00</code>)</td></tr>
   <tr><td>Seznam kritických služeb</td><td>Názvy služeb, které se počítají jako kritické — case-insensitive, s wildcardy <code>*</code> / <code>?</code>. Předvyplněno běžnou infra sadou (viz níže)</td></tr>
-  <tr><td>Whitelist</td><td>Názvy služeb, na které se nikdy nealertuje, i kdyby matchly kritický seznam — např. updatery jako <code>gupdate*</code>, <code>GoogleUpdater*</code></td></tr>
+  <tr><td>Whitelist</td><td>Názvy služeb, na které se nikdy nealertuje, i kdyby matchly kritický seznam — např. updatery jako <code>gupdate*</code>, <code>GoogleUpdater*</code>, <code>edgeupdate*</code>. <strong>Whitelist je nově i globální filtr pohledu:</strong> odpovídající služby se navíc skryjí z dashboard dlaždice "Zastavené služby" (vždy) a ze záložky Služby, když je tam zapnutý přepínač "Hide whitelisted" (default), kde také zmizí z horních počtů. Viz <a href="#services">Services collector + policy</a>.</td></tr>
   <tr><td>Send test email</td><td>Pošle aktuální stav (co je teď dole) okamžitě, bez ohledu na enable / debounce / throttle. Nejdřív automaticky uloží rozpracované Nastavení, takže nemusíš nejdřív klikat Save</td></tr>
 </table>
 <p>
@@ -925,7 +950,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <span data-lang="en">Detects Windows services with <strong>StartMode = Automatic</strong> but <strong>State ≠ Running</strong> on every monitored PC. Filters legitimate cases (Trigger Start, Delayed Start, per-user instances) and compares the rest against a policy table.</span>
 </p>
 <div class="callout callout-info" data-lang="cs">
-  <strong>CS shrnutí:</strong> Po skenu jsou problémy klasifikované — <strong style="color:#15803d">OK</strong> (matchne policy a vyhovuje), <strong style="color:#b91c1c">Drift</strong> (matchne policy ale nevyhovuje), <strong style="color:#555">Unclassified</strong> (žádné policy pravidlo nematchne, operator review). UI nabízí <strong>By PC view</strong> (flat list problémů) nebo <strong>By service view</strong> (agregát "tato služba je stopnutá na 87 PC"). Tlačítko <strong>📤 GPO script</strong> exportuje PowerShell soubor co aplikuje aktuální policy přes GPO Computer Startup Script. Idempotentní, bezpečné re-run.
+  <strong>CS shrnutí:</strong> Po skenu jsou problémy klasifikované — <strong style="color:#15803d">OK</strong> (matchne policy a vyhovuje), <strong style="color:#b91c1c">Drift</strong> (matchne policy ale nevyhovuje), <strong style="color:#555">Unclassified</strong> (žádné policy pravidlo nematchne, operator review). UI nabízí <strong>By PC view</strong> (flat list problémů) nebo <strong>By service view</strong> (agregát "tato služba je stopnutá na 87 PC"). Přepínač <strong>Hide whitelisted</strong> (defaultně zapnutý) skryje služby odpovídající whitelistu z Nastavení → "Email alerty — služby" — skryté řádky se neukazují a nezapočítávají do horních počtů (total · crashes · drift · OK · unclassified) v obou pohledech; shoda nerozlišuje velikost písmen, zástupné znaky <code>*</code>/<code>?</code>, porovnává název i zobrazovaný název služby. Tlačítko <strong>📤 GPO script</strong> exportuje PowerShell soubor co aplikuje aktuální policy přes GPO Computer Startup Script. Idempotentní, bezpečné re-run.
 </div>
 <table>
   <tr><th>Setting</th><th>Default</th></tr>
@@ -951,7 +976,8 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
   <li><strong>By PC view (default)</strong> — flat list of all problems with computer / service / state / start type / drift</li>
   <li><strong>By service view</strong> — aggregated; shows <code># PCs / Drift / OK / Unclassified</code> per service name — useful for "this service is stopped on 87 PCs"</li>
   <li>Toggle <strong>📊 By service</strong> / <strong>📋 By PC</strong></li>
-  <li>Filters: Hide trigger-start (default ON), Hide delayed-start, Hide per-user (default ON), Hide compliant, ⚠ Only ExitCode != 0</li>
+  <li>Filters: Hide trigger-start (default ON), Hide delayed-start, Hide per-user (default ON), Hide compliant, ⚠ Only ExitCode != 0, <strong>Hide whitelisted (default ON)</strong></li>
+  <li><strong>Hide whitelisted</strong> — when on (the default), services matching the service alert whitelist (Settings → "Email alerts — services") are dropped from the list <strong>and excluded from the top-line counts</strong> (total · crashes · drift · OK · unclassified) in both the By-PC and By-service views. Matching is case-insensitive with <code>*</code> / <code>?</code> wildcards against the service name or display name. This keeps known-benign updaters (<code>gupdate*</code>, <code>GoogleUpdater*</code>, <code>edgeupdate*</code>) from polluting the drift count. Untick it to see everything again.</li>
   <li><strong>Exit column</strong> shows Win32 ExitCode of the service. 0 = graceful (typical for trigger-start services that completed their task and shut down). Non-zero = SCM-level failure (shown red).</li>
   <li><strong>🔧 Scan services</strong> button with live <code>Scanning… Ns</code> status + button text</li>
 </ul>

@@ -217,6 +217,18 @@ Built as a direct mirror of disk alerting (2026-06-11), for the small set of ser
 
 **Observer, not executor — preserved.** The feature emails the operator about a stopped service; it does **not** restart it. A "restart service" button would cross the line in **Observer, not executor** and is deliberately out of scope.
 
+### Service whitelist as a global view filter (single source of truth)
+
+`alerts.services.whitelist` started life as a purely server-side gate — names that must **never** email even if they match the critical list (noisy auto-updaters like `gupdate*`, `GoogleUpdater*` that legitimately sit in `Stopped`). The same whitelist string is now **also applied client-side as a view filter**, so one setting is the single source of truth for both "don't email" and "don't show as noise". There is no server change — the server still evaluates the whitelist only for alerting; the client just reuses the same string off the already-loaded `settings` map.
+
+**Shared helpers** live in `apps/desktop/src/api.ts`: `serviceWhitelist(settings)` compiles `alerts.services.whitelist` into `RegExp[]`, and `isServiceWhitelisted(name, displayName, whitelist)` tests a service against it. They reuse the existing `svcGlob`/`svcNameList` matcher already used for the critical-names list — case-insensitive, `*`/`?` glob wildcards, matched against the service **name OR display name**. An empty whitelist matches nothing (the helper short-circuits), so the filter is inert until the operator populates it.
+
+**Where the filter is applied (client-only):**
+- **Dashboard "Stopped services" tile** (`apps/desktop/src/components/SummaryCards.tsx`) — whitelisted services are *always* excluded from the count and the affected-PC subtitle, so the headline number never inflates with known-benign idlers. This is unconditional (no toggle) because the tile is meant to read as "things worth looking at".
+- **Services tab** (`apps/desktop/src/pages/ServicesPage.tsx`) — a "Hide whitelisted" checkbox (default **on**) drops whitelisted rows out of *both* the table and the top-line counts, in both the by-PC and by-service views. Turning it off shows everything (the raw scan), so the operator can still audit what the whitelist is hiding. The toggle state is folded into the GPO-export filter description so an exported script reflects what was on screen.
+
+Design rationale: the dashboard tile and the alert evaluator should agree on what counts as "noise"; reusing the exact same string and matcher guarantees they stay aligned without a second config knob to keep in sync.
+
 ### Service port reachability checks (phase 2)
 
 Checking the service's `Running` state only proves the service-control manager *thinks* the service is up; it does not prove the service is actually answering. Phase 2 (shipped 2026-06-11) adds an outside-in port probe that exercises the whole path — network → firewall → OS → service — and catches the "running but unreachable" failure mode (firewall rule dropped, process wedged/frozen) that a `Running` flag misses.
@@ -231,6 +243,16 @@ Checking the service's `Running` state only proves the service-control manager *
 
 ### Computers tab sorting (reliability)
 Sorting is locale-aware with numeric chunking, so IPs order naturally (`10.8.2.9` < `10.8.2.10`), hostnames order naturally (`PC2` < `PC10`), accented names collate correctly, and nulls sort last. The "Status" column sorts by the displayed reachability status (`computers.last_status`), not the `enabled` flag. Closing the Per-PC Actions modal after a manual refresh re-syncs the list so the row reflects the latest scan.
+
+### Dashboard OS breakdown chart (live/stale split + drill-down)
+
+A homepage panel (`apps/desktop/src/components/OsBreakdownChart.tsx`, rendered after `SummaryCards` in `apps/desktop/src/App.tsx`) shows the fleet's OS distribution as one horizontal bar per OS bucket. It is **pure client-side aggregation over the already-loaded `computers` array** — no new endpoint, no DB column. Scope is the **live managed fleet**: `enabled && !excluded`.
+
+**Normalizing the free-text OS column.** AD gives us a single free-text `os_version` string (the AD `OperatingSystem` attribute), which we never want to chart raw — too many near-duplicate spellings. `osBucket(os_version)` in `apps/desktop/src/api.ts` collapses it into a small canonical set: `Windows 11/10/8.1/8/7`, `Windows Server <year>[ R2]`, `Windows Vista`/`Windows XP`, a generic `Windows Server` fallback, `Other` for anything else, and `Unknown` for null/blank. `summarizeOs(computers, thresholdDays)` walks the scoped fleet and returns per-bucket `{ total, stale, live }`, sorted by size.
+
+**"Stale" reuses the inactivity model — single source of truth.** A bucket's stale count is the subset of machines that are inactive by the existing definition: `isStaleComputer(c, thresholdDays)` = `!excluded && (last_seen null || older than inactive.threshold_days)` (default 90, migration 022). This is the *same* predicate that drives the Dashboard "Inactive PCs" card and the Computers tab inactive filter, so the OS chart's stale figures can't drift from the rest of the UI. Each bar renders as a solid **live** segment plus a hatched **stale** segment (live = total − stale).
+
+**Drill-down into Computers.** Clicking a segment selects an OS drill-down filter (`{ bucket, staleness }`) that `App.tsx` passes to `ComputersPage` via `initialOsFilter`; the page consumes it into local `osFilter` state and applies it in the filter predicate, mirroring the chart's scope exactly — `enabled && !excluded && osBucket(c.os_version) === bucket && requested staleness`. It surfaces as a removable chip and is mutually exclusive with the status filter chips. Because the chart and the filter predicate both call `osBucket()` and `isStaleComputer()`, the segment count and the drilled-in list **agree by construction** — there is no separate query that could return a different number.
 
 ### Activity log is two-tier
 Live view: ring buffer of 500 entries, polled by dashboard every 2s. Lost on service restart. Persistent history: every `logActivity()` call is also fire-and-forget INSERT into `activity_log` table (`apps/server/src/services/activity-log.ts`). DB writes are intentionally not awaited so collector cadence isn't tied to DB latency; if persistence fails the live view is unaffected. The Activity tab has a Live/History mode toggle — History queries `activity_log` with filters (time range, level, source, message search) and supports pagination. Retention via `activity.retention_days` setting (default 30) and `sp_purge_old_activity` stored procedure.
