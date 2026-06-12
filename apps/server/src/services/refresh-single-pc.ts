@@ -89,7 +89,10 @@ export async function refreshSinglePc(computerId: number): Promise<SingleRefresh
             last_seen = SYSUTCDATETIME(),
             last_error = NULL,
             consecutive_failures = 0,
-            last_status = 'online'
+            last_status = 'online',
+            reachable = 1,
+            last_reachable_at = SYSUTCDATETIME(),
+            reach_checked_at = SYSUTCDATETIME()
         WHERE id = @id;
       `);
       evDetail = `+${added} new event(s)`;

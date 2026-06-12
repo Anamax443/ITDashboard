@@ -400,6 +400,10 @@ export interface ComputerItem {
   current_user_seen_at?: string | null;
   ip_address?: string | null;
   pc_info_collected_at?: string | null;
+  /** Live network reachability from the standalone TCP probe (null = not probed yet). */
+  reachable?: boolean | null;
+  last_reachable_at?: string | null;
+  reach_checked_at?: string | null;
 }
 
 async function jget<T>(path: string): Promise<T> {

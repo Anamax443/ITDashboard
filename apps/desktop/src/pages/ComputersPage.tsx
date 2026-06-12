@@ -86,7 +86,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     }
   };
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'disabled' | 'monitored' | 'unmonitored' | 'failing' | 'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'excluded' | 'inactive'>('');
+  const [statusFilter, setStatusFilter] = useState<'' | 'active' | 'disabled' | 'monitored' | 'unmonitored' | 'failing' | 'offline' | 'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'excluded' | 'inactive'>('');
   // OS drill-down from the Dashboard chart: filter to one OS bucket, optionally
   // restricted to live (stale=false) or stale (stale=true) machines.
   const [osFilter, setOsFilter] = useState<{ bucket: string; stale: boolean | null } | null>(null);
@@ -149,6 +149,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     if (statusFilter === 'monitored' && (!c.enabled || !c.monitor_enabled)) return false;
     if (statusFilter === 'unmonitored' && (!c.enabled || c.monitor_enabled)) return false;
     if (statusFilter === 'failing' && (!c.enabled || (c.consecutive_failures ?? 0) === 0)) return false;
+    if (statusFilter === 'offline' && !(c.enabled && !c.excluded && c.reachable === false)) return false;
     if (statusFilter === 'disk-critical' && worstDiskByComputer.get(c.id) !== 'critical') return false;
     if (statusFilter === 'disk-warning' && worstDiskByComputer.get(c.id) !== 'warning') return false;
     if (statusFilter === 'disk-email' && !c.disk_email_monitor) return false;
@@ -201,6 +202,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
   const monitored = items.filter((c) => c.enabled && !c.excluded && c.monitor_enabled).length;
   const unmonitored = items.filter((c) => c.enabled && !c.excluded && !c.monitor_enabled).length;
   const failing = items.filter((c) => c.enabled && !c.excluded && (c.consecutive_failures ?? 0) > 0).length;
+  const offlineCount = items.filter((c) => c.enabled && !c.excluded && c.reachable === false).length;
   const excludedCount = items.filter((c) => c.excluded).length;
   const inactiveThreshold = inactiveThresholdDays ?? 90;
   const inactiveCutoff = Date.now() - inactiveThreshold * 86400000;
@@ -295,6 +297,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
           <StatusChip label="monitored" count={monitored} active={statusFilter === 'monitored'} color="var(--accent)" onClick={() => setStatusFilter(statusFilter === 'monitored' ? '' : 'monitored')} />
           <StatusChip label="unmonitored" count={unmonitored} active={statusFilter === 'unmonitored'} color="var(--warning)" onClick={() => setStatusFilter(statusFilter === 'unmonitored' ? '' : 'unmonitored')} />
           <StatusChip label="failing" count={failing} active={statusFilter === 'failing'} color="var(--critical)" onClick={() => setStatusFilter(statusFilter === 'failing' ? '' : 'failing')} />
+          <StatusChip label="offline" count={offlineCount} active={statusFilter === 'offline'} color="var(--text-dim)" onClick={() => setStatusFilter(statusFilter === 'offline' ? '' : 'offline')} />
           <StatusChip label="disk critical" count={Array.from(worstDiskByComputer.values()).filter((s) => s === 'critical').length} active={statusFilter === 'disk-critical'} color="var(--critical)" onClick={() => setStatusFilter(statusFilter === 'disk-critical' ? '' : 'disk-critical')} />
           <StatusChip label="disk warning" count={Array.from(worstDiskByComputer.values()).filter((s) => s === 'warning').length} active={statusFilter === 'disk-warning'} color="var(--warning)" onClick={() => setStatusFilter(statusFilter === 'disk-warning' ? '' : 'disk-warning')} />
           <StatusChip label="📧 disk" count={items.filter((c) => c.disk_email_monitor).length} active={statusFilter === 'disk-email'} color="var(--accent)" onClick={() => setStatusFilter(statusFilter === 'disk-email' ? '' : 'disk-email')} />
@@ -318,6 +321,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
             <option value="monitored">Monitored</option>
             <option value="unmonitored">Unmonitored</option>
             <option value="failing">Failing collector</option>
+            <option value="offline">Offline (off network)</option>
             <option value="disk-critical">Disk critical</option>
             <option value="disk-warning">Disk warning</option>
             <option value="disk-email">📧 Disk monitored</option>
@@ -470,14 +474,35 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                   >{c.current_user ?? '—'}</td>
                   <td style={{ color: 'var(--text-dim)' }}>{timeAgo(c.last_seen)}</td>
                   <td style={{ fontSize: 11 }}>
-                    {!c.enabled
-                      ? <span style={{ color: 'var(--text-dim)' }}>Disabled</span>
-                      : c.last_status === 'online' ? <span style={{ color: 'var(--ok)' }}>● Online</span>
-                      : c.last_status === 'offline' ? <span style={{ color: 'var(--text-dim)' }}>○ Offline</span>
-                      : c.last_status === 'rpc_unavailable' ? <span style={{ color: 'var(--warning)' }}>⚠ RPC fail</span>
-                      : c.last_status === 'access_denied' ? <span style={{ color: 'var(--critical)' }}>✗ Access denied</span>
-                      : c.last_status === 'unknown' ? <span style={{ color: 'var(--critical)' }}>? Unknown</span>
-                      : <span style={{ color: 'var(--ok)' }}>Active</span>}
+                    {(() => {
+                      // Status now means LIVE network reachability (TCP probe),
+                      // not "did the event-log collector succeed":
+                      //   Disabled = AD account disabled
+                      //   Active   = reachable on the network now
+                      //   Offline  = not reachable (powered off / disconnected)
+                      // The event-log collector's struggle is a secondary marker
+                      // ("logs") shown next to Active when the box is up but its
+                      // event log can't be read (permissions / RPC).
+                      if (!c.enabled) return <span style={{ color: 'var(--text-dim)' }}>Disabled</span>;
+                      const logsFailing = c.last_status === 'access_denied'
+                        || c.last_status === 'rpc_unavailable'
+                        || c.last_status === 'unknown'
+                        || ((c.consecutive_failures ?? 0) > 0);
+                      if (c.reachable === true) return (
+                        <span style={{ color: 'var(--ok)' }}>● Active{logsFailing && (
+                          <span style={{ color: 'var(--warning)', marginLeft: 6, fontSize: 10 }} title={c.last_error ?? 'Event-log collection is failing on this PC'}>· ⚠ logs</span>
+                        )}</span>
+                      );
+                      if (c.reachable === false) return <span style={{ color: 'var(--text-dim)' }} title={c.last_reachable_at ? `Last on network: ${timeAgo(c.last_reachable_at)}` : 'Never seen on network'}>○ Offline</span>;
+                      // reachable == null → not probed yet; fall back to the
+                      // event-log collector's last verdict until the first probe.
+                      return c.last_status === 'online' ? <span style={{ color: 'var(--ok)' }}>● Online</span>
+                        : c.last_status === 'offline' ? <span style={{ color: 'var(--text-dim)' }}>○ Offline</span>
+                        : c.last_status === 'rpc_unavailable' ? <span style={{ color: 'var(--warning)' }}>⚠ RPC fail</span>
+                        : c.last_status === 'access_denied' ? <span style={{ color: 'var(--critical)' }}>✗ Access denied</span>
+                        : c.last_status === 'unknown' ? <span style={{ color: 'var(--critical)' }}>? Unknown</span>
+                        : <span style={{ color: 'var(--text-dim)' }}>— not probed</span>;
+                    })()}
                   </td>
                   <td><DisksCell disks={disksByComputer.get(c.id) ?? []} thresholds={thresholds} /></td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{timeAgo(c.last_collected_at ?? null)}</td>

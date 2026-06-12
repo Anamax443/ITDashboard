@@ -12,7 +12,8 @@ export async function registerComputersRoutes(app: FastifyInstance) {
       SELECT id, name, fqdn, os_version, last_seen, enabled, monitor_enabled, excluded,
              disk_email_monitor, disk_email_drives, service_email_monitor,
              last_collected_at, last_error, consecutive_failures, ou_path, distinguished_name,
-             last_status, [current_user], current_user_seen_at, ip_address, pc_info_collected_at
+             last_status, [current_user], current_user_seen_at, ip_address, pc_info_collected_at,
+             reachable, last_reachable_at, reach_checked_at
       FROM computers
       ORDER BY enabled DESC, excluded, name
     `);

@@ -2,11 +2,12 @@ import { runCollectorOnce, type CollectorRunResult } from './eventlog-collector.
 import { runDiskCollectorOnce } from './disk-collector.js';
 import { runServicesScanOnce } from './services-collector.js';
 import { runPerfCollectorOnce, type PerfCollectResult } from './perf-collector.js';
+import { runReachabilityProbeOnce, type ReachabilityRunResult } from './reachability-collector.js';
 import { syncComputersFromAD, type SyncResult as AdSyncResult } from './ad-sync.js';
 import { logActivity } from './activity-log.js';
 import { getAllSettings } from './settings.js';
 
-type CheckName = 'eventlog' | 'disk' | 'services' | 'perf' | 'adsync';
+type CheckName = 'reachability' | 'eventlog' | 'disk' | 'services' | 'perf' | 'adsync';
 type CheckSelection = Record<CheckName, boolean>;
 
 interface CheckWindow {
@@ -32,6 +33,7 @@ export interface ServicesScanResult {
 }
 
 export interface RunChecksResult {
+  reachability: ReachabilityRunResult | null;
   eventlog: CollectorRunResult | null;
   disk: DiskCollectResult | null;
   services: ServicesScanResult | null;
@@ -49,7 +51,7 @@ const CHECKS: Array<{
   label: string;
   settingKey: string;
   defaultEnabled: boolean;
-  run: (triggerSource: 'manual' | 'scheduled') => Promise<CollectorRunResult | DiskCollectResult | ServicesScanResult | PerfCollectResult | AdSyncResult | null>;
+  run: (triggerSource: 'manual' | 'scheduled') => Promise<CollectorRunResult | DiskCollectResult | ServicesScanResult | PerfCollectResult | AdSyncResult | ReachabilityRunResult | null>;
 }> = [
   // AD sync runs first so subsequent collectors see fresh inventory in the same run.
   {
@@ -58,6 +60,15 @@ const CHECKS: Array<{
     settingKey: 'checks.run_adsync',
     defaultEnabled: false,
     run: (triggerSource) => syncComputersFromAD(triggerSource),
+  },
+  // Reachability runs early (after inventory) so the Status column reflects who
+  // is on the network now, regardless of whether the other collectors succeed.
+  {
+    name: 'reachability',
+    label: 'reachability',
+    settingKey: 'checks.run_reachability',
+    defaultEnabled: true,
+    run: () => runReachabilityProbeOnce(),
   },
   {
     name: 'eventlog',
@@ -159,6 +170,7 @@ export async function runChecksOnce(
   logActivity('info', 'checks', `Starting ${triggerSource} checks: ${selectedNames.join(' → ') || 'none selected'}`);
 
   try {
+    let reachability: ReachabilityRunResult | null = null;
     let eventlog: CollectorRunResult | null = null;
     let disk: DiskCollectResult | null = null;
     let services: ServicesScanResult | null = null;
@@ -172,6 +184,7 @@ export async function runChecksOnce(
         logActivity('warn', 'checks', `${check.label} skipped: already running`);
         continue;
       }
+      if (check.name === 'reachability') reachability = result as ReachabilityRunResult;
       if (check.name === 'eventlog') eventlog = result as CollectorRunResult;
       if (check.name === 'disk') disk = result as DiskCollectResult;
       if (check.name === 'services') services = result as ServicesScanResult;
@@ -181,7 +194,7 @@ export async function runChecksOnce(
 
     const durationMs = Date.now() - t0;
     logActivity('success', 'checks', `Checks done (${(durationMs / 1000).toFixed(1)}s)`);
-    return { eventlog, disk, services, perf, adsync, durationMs, selected };
+    return { reachability, eventlog, disk, services, perf, adsync, durationMs, selected };
   } catch (err) {
     logActivity('error', 'checks', `Checks failed: ${String(err).split('\n')[0]}`);
     throw err;
@@ -197,7 +210,7 @@ async function runScheduledChecksIfAllowed(): Promise<void> {
 }
 
 export async function runAllChecksOnce(triggerSource: 'manual' | 'scheduled'): Promise<RunChecksResult | null> {
-  return runChecksOnce(triggerSource, { eventlog: true, disk: true, services: true, perf: true, adsync: true });
+  return runChecksOnce(triggerSource, { reachability: true, eventlog: true, disk: true, services: true, perf: true, adsync: true });
 }
 
 export async function startChecksSchedule(): Promise<void> {

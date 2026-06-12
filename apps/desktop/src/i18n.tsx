@@ -295,6 +295,7 @@ const dict = {
     'settings.check.disk': 'Disk scan',
     'settings.check.services': 'Services scan',
     'settings.check.perf': 'Perf events (pomalý boot/shutdown)',
+    'settings.check.reachability': 'Dostupnost na síti (TCP sonda → stav Active/Offline)',
     'settings.check.adsync': 'AD sync (defaultně off v periodic)',
 
     'settings.thresholdMode.pct': 'Pouze procenta volného',
@@ -614,6 +615,7 @@ const dict = {
     'settings.check.disk': 'Disk scan',
     'settings.check.services': 'Services scan',
     'settings.check.perf': 'Perf events (slow boot/shutdown)',
+    'settings.check.reachability': 'Network reachability (TCP probe → Active/Offline status)',
     'settings.check.adsync': 'AD sync (off by default in periodic)',
 
     'settings.thresholdMode.pct': 'Percent free only',
