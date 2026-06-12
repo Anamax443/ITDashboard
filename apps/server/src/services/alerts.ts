@@ -415,6 +415,12 @@ async function loadDownServices(
     LEFT JOIN service_alert_state st ON st.computer_id = sp.computer_id AND st.service_name = sp.service_name
     WHERE c.enabled = 1 AND c.${opts.gate} = 1
       AND sp.state <> 'Running' AND sp.per_user_start = 0
+      ${opts.critical ? '' : `
+      -- Broad level: trigger-/delayed-start services that stopped gracefully
+      -- (exit 0) are on-demand and legitimately idle — same noise the Services
+      -- tab hides by default. Crashes (exit <> 0) still alert even for those.
+      AND NOT ((sp.trigger_start = 1 OR sp.delayed_start = 1)
+               AND (sp.exit_code = 0 OR sp.exit_code IS NULL))`}
     ORDER BY c.name, sp.service_name
   `);
 
