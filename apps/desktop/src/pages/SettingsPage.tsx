@@ -430,6 +430,30 @@ export function SettingsPage() {
         </Section>
 
         <Section
+          title={t('settings.section.faulty')}
+          description={t('settings.section.faultyDesc')}
+        >
+          <FieldGroup>
+            <Field label={t('settings.field.faultyWindow')}>
+              <NumberInput
+                v={value('faulty.window_days', '14')}
+                onChange={(v) => set('faulty.window_days', v)}
+                suffix={t('settings.unit.days')}
+              />
+            </Field>
+            <Field label={t('settings.field.faultyCap')}>
+              <NumberInput v={value('faulty.signature_cap', '20')} onChange={(v) => set('faulty.signature_cap', v)} />
+            </Field>
+            <Field label={t('settings.field.faultyWatch')}>
+              <NumberInput v={value('faulty.threshold_watch', '60')} onChange={(v) => set('faulty.threshold_watch', v)} />
+            </Field>
+            <Field label={t('settings.field.faultyRisk')}>
+              <NumberInput v={value('faulty.threshold_risk', '150')} onChange={(v) => set('faulty.threshold_risk', v)} />
+            </Field>
+          </FieldGroup>
+        </Section>
+
+        <Section
           title={t('settings.section.pcUserHistory')}
           description={t('settings.section.pcUserHistoryDesc')}
         >

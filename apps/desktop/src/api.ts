@@ -46,6 +46,27 @@ export interface TopComputer {
   warning_count: number;
 }
 
+export interface PcHealth {
+  computer_id: number;
+  name: string;
+  critical: number;
+  error: number;
+  warning: number;
+  /** Distinct error/critical signatures (provider+event_id) — breadth of problems. */
+  signatures: number;
+  /** Distinct days within the window that had errors — persistence. */
+  active_days: number;
+  /** Damped-blend score; higher = more likely a reinstall candidate. */
+  score: number;
+  level: 'watch' | 'risk';
+}
+export interface PcHealthResult {
+  windowDays: number;
+  thresholdWatch: number;
+  thresholdRisk: number;
+  items: PcHealth[];
+}
+
 export interface ServiceProblem {
   id: number;
   computer_id: number;
@@ -496,6 +517,7 @@ export const api = {
   },
   topIds: (hours = 24, limit = 15) => jget<{ items: TopEventId[] }>(`/events/top-ids?hours=${hours}&limit=${limit}`),
   timeline: (hours = 24) => jget<{ items: TimelineBucket[] }>(`/events/timeline?hours=${hours}`),
+  pcHealth: () => jget<PcHealthResult>('/events/pc-health'),
   topComputers: (hours = 24, limit = 10) => jget<{ items: TopComputer[] }>(`/events/top-computers?hours=${hours}&limit=${limit}`),
   computers: () => jget<{ items: ComputerItem[] }>('/computers'),
   inactiveStats: () => jget<InactiveStats>('/computers/inactive-stats'),

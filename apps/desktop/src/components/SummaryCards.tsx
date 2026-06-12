@@ -146,7 +146,7 @@ export function SummaryCards({
   );
 }
 
-function Card({ label, value, sub, kind, onClick }: { label: string; value: number | string; sub?: string; kind: 'critical' | 'error' | 'warning' | 'info'; onClick?: () => void }) {
+export function Card({ label, value, sub, kind, onClick }: { label: string; value: number | string; sub?: string; kind: 'critical' | 'error' | 'warning' | 'info'; onClick?: () => void }) {
   return (
     <div
       className={`card ${kind}`}

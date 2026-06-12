@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../db/pool.js';
-import { getSetting } from '../services/settings.js';
+import { getSetting, getAllSettings } from '../services/settings.js';
 
 const ListQuery = z.object({
   computer: z.string().optional(),
@@ -111,5 +111,76 @@ export async function registerEventsRoutes(app: FastifyInstance) {
         ORDER BY total DESC
       `);
     return { items: r.recordset };
+  });
+
+  // Per-PC "health" / reinstall-candidate ranking. Damped-blend score over a
+  // configurable window: each distinct signature (provider+event_id+level)
+  // contributes at most `signature_cap` occurrences, weighted by severity, plus
+  // breadth (distinct error/critical signatures) and persistence (distinct days
+  // with errors) bonuses — so one chatty source can't flag a healthy box. All
+  // weights/thresholds come from settings (migration 033). Returns only PCs at or
+  // above the "watch" threshold, classified watch/risk, worst first.
+  app.get('/events/pc-health', async () => {
+    const pool = await getPool();
+    const s = await getAllSettings();
+    const num = (key: string, fallback: number): number => {
+      const n = Number(s[key]);
+      return Number.isFinite(n) && n >= 0 ? n : fallback;
+    };
+    const windowDays = Math.min(90, Math.max(1, Math.floor(num('faulty.window_days', 14))));
+    const cap = Math.max(1, Math.floor(num('faulty.signature_cap', 20)));
+    const watch = num('faulty.threshold_watch', 60);
+    const risk = num('faulty.threshold_risk', 150);
+
+    const r = await pool.request()
+      .input('days', windowDays)
+      .input('cap', cap)
+      .input('wc', num('faulty.weight_critical', 10))
+      .input('we', num('faulty.weight_error', 3))
+      .input('ww', num('faulty.weight_warning', 1))
+      .input('wb', num('faulty.weight_breadth', 5))
+      .input('wp', num('faulty.weight_persistence', 3))
+      .query(`
+        WITH sig AS (
+          SELECT computer_id, level, event_id, provider_name, COUNT(*) AS cnt
+          FROM events
+          WHERE time_created >= DATEADD(DAY, -@days, SYSUTCDATETIME())
+            AND level IN (1, 2, 3)
+          GROUP BY computer_id, level, event_id, provider_name
+        ),
+        agg AS (
+          SELECT computer_id,
+            SUM((CASE WHEN cnt > @cap THEN @cap ELSE cnt END)
+                * (CASE level WHEN 1 THEN @wc WHEN 2 THEN @we ELSE @ww END)) AS weighted,
+            SUM(CASE WHEN level IN (1, 2) THEN 1 ELSE 0 END) AS signatures,
+            SUM(CASE WHEN level = 1 THEN cnt ELSE 0 END) AS critical,
+            SUM(CASE WHEN level = 2 THEN cnt ELSE 0 END) AS [error],
+            SUM(CASE WHEN level = 3 THEN cnt ELSE 0 END) AS warning
+          FROM sig
+          GROUP BY computer_id
+        ),
+        dys AS (
+          SELECT computer_id, COUNT(DISTINCT CAST(time_created AS DATE)) AS active_days
+          FROM events
+          WHERE time_created >= DATEADD(DAY, -@days, SYSUTCDATETIME())
+            AND level IN (1, 2)
+          GROUP BY computer_id
+        )
+        SELECT c.id AS computer_id, c.name,
+          a.critical, a.[error], a.warning, a.signatures,
+          ISNULL(d.active_days, 0) AS active_days,
+          CAST(a.weighted + a.signatures * @wb + ISNULL(d.active_days, 0) * @wp AS INT) AS score
+        FROM agg a
+        JOIN computers c ON c.id = a.computer_id
+        LEFT JOIN dys d ON d.computer_id = a.computer_id
+        WHERE c.enabled = 1 AND c.excluded = 0
+        ORDER BY score DESC
+      `);
+
+    const items = r.recordset
+      .map((row) => ({ ...row, level: row.score >= risk ? 'risk' : row.score >= watch ? 'watch' : 'ok' }))
+      .filter((row) => row.level !== 'ok');
+
+    return { windowDays, thresholdWatch: watch, thresholdRisk: risk, items };
   });
 }

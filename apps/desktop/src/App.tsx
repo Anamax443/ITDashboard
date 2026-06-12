@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult } from './api.js';
 import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
+import { HealthCards } from './components/HealthCards.js';
 import { EventsTable } from './components/EventsTable.js';
 import { TopEventIds } from './components/TopEventIds.js';
 import { ComputersList } from './components/ComputersList.js';
@@ -48,9 +49,11 @@ export function App() {
   const [serviceProblems, setServiceProblems] = useState<ServiceProblem[]>([]);
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [inactiveStats, setInactiveStats] = useState<InactiveStats | null>(null);
+  const [pcHealth, setPcHealth] = useState<PcHealthResult | null>(null);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
   const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'failing' | 'inactive' | null>(null);
   const [computersOsFilter, setComputersOsFilter] = useState<{ bucket: string; stale: boolean | null } | null>(null);
+  const [computersIdFilter, setComputersIdFilter] = useState<{ ids: number[]; label: string } | null>(null);
   const [computersSearchPrefill, setComputersSearchPrefill] = useState<string | null>(null);
 
   // Cross-tab jump: any tab that renders a computer name calls this to
@@ -72,6 +75,7 @@ export function App() {
     api.serviceProblems().then((r) => setServiceProblems(r.items)).catch(() => {});
     api.perfSummary(7).then(setPerfSummary).catch(() => {});
     api.inactiveStats().then(setInactiveStats).catch(() => {});
+    api.pcHealth().then(setPcHealth).catch(() => {});
     // Re-pull settings-derived data when Settings page broadcasts a save.
     const onSettingsSaved = (e: Event) => {
       const detail = (e as CustomEvent<{ changedKeys: string[] }>).detail;
@@ -80,11 +84,21 @@ export function App() {
       if (isAll || keys.includes('inactive.threshold_days')) {
         api.inactiveStats().then(setInactiveStats).catch(() => {});
       }
+      if (isAll || keys.some((k) => k.startsWith('faulty.'))) {
+        api.pcHealth().then(setPcHealth).catch(() => {});
+      }
       api.settings().then(setSettingsMap).catch(() => {});
     };
     window.addEventListener('itd:settings-saved', onSettingsSaved);
     return () => window.removeEventListener('itd:settings-saved', onSettingsSaved);
     api.settings().then(setSettingsMap).catch(() => {});
+  }, []);
+
+  // PC health is a heavier 14-day GROUP BY and changes slowly — refresh it on
+  // its own slow cadence rather than every 30s with the rest of the dashboard.
+  useEffect(() => {
+    const t = setInterval(() => { api.pcHealth().then(setPcHealth).catch(() => {}); }, 300_000);
+    return () => clearInterval(t);
   }, []);
 
   const thresholds = parseDiskThresholds(settingsMap);
@@ -247,6 +261,11 @@ export function App() {
             onClickUnreachable={() => { setComputersPreFilter('failing'); setView('computers'); }}
             onClickInactive={() => { setComputersPreFilter('inactive'); setView('computers'); }}
           />
+          <HealthCards
+            data={pcHealth}
+            onSelectCandidates={(ids, label) => { setComputersIdFilter({ ids, label }); setView('computers'); }}
+            onJumpToComputer={jumpToComputer}
+          />
           <OsBreakdownChart
             items={computers}
             thresholdDays={inactiveStats?.thresholdDays ?? 90}
@@ -277,7 +296,7 @@ export function App() {
 
       {view === 'computers' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <ComputersPage items={computers} onRefreshLocal={refreshComputers} initialFilter={computersPreFilter} onFilterConsumed={() => setComputersPreFilter(null)} inactiveThresholdDays={inactiveStats?.thresholdDays} initialSearch={computersSearchPrefill} onSearchPrefillConsumed={() => setComputersSearchPrefill(null)} initialOsFilter={computersOsFilter} onOsFilterConsumed={() => setComputersOsFilter(null)} />
+          <ComputersPage items={computers} onRefreshLocal={refreshComputers} initialFilter={computersPreFilter} onFilterConsumed={() => setComputersPreFilter(null)} inactiveThresholdDays={inactiveStats?.thresholdDays} initialSearch={computersSearchPrefill} onSearchPrefillConsumed={() => setComputersSearchPrefill(null)} initialOsFilter={computersOsFilter} onOsFilterConsumed={() => setComputersOsFilter(null)} initialIdFilter={computersIdFilter} onIdFilterConsumed={() => setComputersIdFilter(null)} />
         </div>
       )}
 
