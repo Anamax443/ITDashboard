@@ -261,11 +261,22 @@ function buildTransport(settings: SettingsMap): nodemailer.Transporter {
   });
 }
 
-async function sendMail(settings: SettingsMap, payload: { subject: string; text: string; html: string }): Promise<number> {
+// recipientsKey selects a per-agenda override list (alerts.disk/services/ports
+// .recipients); when that key is empty we fall back to the shared
+// alerts.recipients so a single global list keeps working unchanged.
+async function sendMail(
+  settings: SettingsMap,
+  payload: { subject: string; text: string; html: string },
+  recipientsKey?: string,
+): Promise<number> {
   const from = (settings['alerts.smtp_from'] ?? '').trim();
-  const to = parseRecipients(settings['alerts.recipients']);
+  const override = recipientsKey ? parseRecipients(settings[recipientsKey]) : [];
+  const to = override.length > 0 ? override : parseRecipients(settings['alerts.recipients']);
   if (!from) throw new Error('alerts.smtp_from not configured');
-  if (to.length === 0) throw new Error('alerts.recipients is empty');
+  if (to.length === 0) {
+    const where = recipientsKey ? `${recipientsKey} and alerts.recipients are both empty` : 'alerts.recipients is empty';
+    throw new Error(where);
+  }
   const transport = buildTransport(settings);
   await transport.sendMail({ from, to, subject: payload.subject, text: payload.text, html: payload.html });
   return to.length;
@@ -294,7 +305,7 @@ export async function evaluateAndSendDiskAlerts(): Promise<void> {
   if (Number.isFinite(lastSent) && now - lastSent < freqHours * 3600_000) return; // throttled
 
   try {
-    const recipients = await sendMail(settings, renderDiskAlert(critical, false, (settings['alerts.dashboard_url'] ?? '').trim()));
+    const recipients = await sendMail(settings, renderDiskAlert(critical, false, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.disk.recipients');
     await setSetting('alerts.disk.last_sent_at', new Date(now).toISOString());
     const pcs = new Set(critical.map((c) => c.computer)).size;
     logActivity('warn', 'alerts', `Disk alert email sent to ${recipients} recipient(s) — ${critical.length} critical drive(s) on ${pcs} monitored PC(s)`);
@@ -308,7 +319,7 @@ export async function evaluateAndSendDiskAlerts(): Promise<void> {
 export async function sendDiskAlertTest(): Promise<{ recipients: number; critical: number; monitoredPcs: number }> {
   const settings = await getAllSettings();
   const critical = await loadMonitoredCriticalDisks(settings);
-  const recipients = await sendMail(settings, renderDiskAlert(critical, true, (settings['alerts.dashboard_url'] ?? '').trim()));
+  const recipients = await sendMail(settings, renderDiskAlert(critical, true, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.disk.recipients');
   const pcs = new Set(critical.map((c) => c.computer)).size;
   logActivity('info', 'alerts', `Disk alert TEST email sent to ${recipients} recipient(s) (${critical.length} critical drive(s))`);
   return { recipients, critical: critical.length, monitoredPcs: pcs };
@@ -455,7 +466,7 @@ export async function evaluateAndSendServiceAlerts(): Promise<void> {
   if (toAlert.length === 0) return;
 
   try {
-    const recipients = await sendMail(settings, renderServiceAlert(toAlert, now, false, (settings['alerts.dashboard_url'] ?? '').trim()));
+    const recipients = await sendMail(settings, renderServiceAlert(toAlert, now, false, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.services.recipients');
     for (const a of toAlert) {
       await pool.request().input('cid', a.computerId).input('nm', a.serviceName).input('t', nowDate)
         .query(`UPDATE service_alert_state SET last_sent_at=@t WHERE computer_id=@cid AND service_name=@nm`);
@@ -472,7 +483,7 @@ export async function evaluateAndSendServiceAlerts(): Promise<void> {
 export async function sendServiceAlertTest(): Promise<{ recipients: number; down: number; monitoredPcs: number }> {
   const settings = await getAllSettings();
   const candidates = await loadMonitoredDownCriticalServices(settings);
-  const recipients = await sendMail(settings, renderServiceAlert(candidates, Date.now(), true, (settings['alerts.dashboard_url'] ?? '').trim()));
+  const recipients = await sendMail(settings, renderServiceAlert(candidates, Date.now(), true, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.services.recipients');
   const pcs = new Set(candidates.map((c) => c.computer)).size;
   logActivity('info', 'alerts', `Service alert TEST email sent to ${recipients} recipient(s) (${candidates.length} service(s) down)`);
   return { recipients, down: candidates.length, monitoredPcs: pcs };
@@ -692,7 +703,7 @@ export async function evaluateAndSendPortAlerts(): Promise<void> {
   if (eligible.length === 0) return;
 
   try {
-    const recipients = await sendMail(settings, renderPortAlert(eligible, now, false, (settings['alerts.dashboard_url'] ?? '').trim()));
+    const recipients = await sendMail(settings, renderPortAlert(eligible, now, false, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.ports.recipients');
     for (const a of eligible) {
       await pool.request().input('cid', a.computerId).input('nm', a.checkName).input('t', nowDate)
         .query(`UPDATE port_check_state SET last_sent_at = @t WHERE computer_id = @cid AND check_name = @nm`);
@@ -729,7 +740,7 @@ export async function sendPortAlertTest(): Promise<{ recipients: number; down: n
     }));
   }
 
-  const recipients = await sendMail(settings, renderPortAlert(down, Date.now(), true, (settings['alerts.dashboard_url'] ?? '').trim()));
+  const recipients = await sendMail(settings, renderPortAlert(down, Date.now(), true, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.ports.recipients');
   const monitoredPcs = pcs.length;
   logActivity('info', 'alerts', `Port alert TEST email sent to ${recipients} recipient(s) (${down.length} unreachable port(s))`);
   return { recipients, down: down.length, monitoredPcs };

@@ -684,6 +684,15 @@ export function SettingsPage() {
               style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
             />
           </Field>
+          <Field label={t('settings.field.recipientsDiskOverride')}>
+            <textarea
+              value={value('alerts.disk.recipients', '')}
+              onChange={(e) => set('alerts.disk.recipients', e.target.value)}
+              placeholder={t('settings.field.recipientsOverridePlaceholder')}
+              rows={2}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
+            />
+          </Field>
           <Field label={t('settings.field.dashboardUrl')}>
             <input
               type="text"
@@ -740,6 +749,15 @@ export function SettingsPage() {
               style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }}
             />
           </Field>
+          <Field label={t('settings.field.recipientsSvcOverride')}>
+            <textarea
+              value={value('alerts.services.recipients', '')}
+              onChange={(e) => set('alerts.services.recipients', e.target.value)}
+              placeholder={t('settings.field.recipientsOverridePlaceholder')}
+              rows={2}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
+            />
+          </Field>
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 8px 0', lineHeight: 1.5 }}>
             {t('settings.field.svcAlertsHelp')}
           </p>
@@ -763,6 +781,15 @@ export function SettingsPage() {
               onChange={(e) => set('alerts.services.port_checks', e.target.value)}
               placeholder="LDAP:389, SMB:445, RDP:3389, Kerberos:88, DNS:53"
               style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace' }}
+            />
+          </Field>
+          <Field label={t('settings.field.recipientsPortOverride')}>
+            <textarea
+              value={value('alerts.ports.recipients', '')}
+              onChange={(e) => set('alerts.ports.recipients', e.target.value)}
+              placeholder={t('settings.field.recipientsOverridePlaceholder')}
+              rows={2}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
             />
           </Field>
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 8px 0', lineHeight: 1.5 }}>
