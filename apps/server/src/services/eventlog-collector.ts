@@ -156,7 +156,12 @@ async function listTargets(): Promise<ComputerRow[]> {
     WHERE enabled = 1
       AND monitor_enabled = 1
       AND excluded = 0
-      AND consecutive_failures < ${MAX_FAILURES_BEFORE_SKIP}
+      -- Park based on LIVE reachability, not a frozen failure counter: collect
+      -- from any box the reachability probe says is on the network (so a box
+      -- that recovered un-parks itself instead of staying stuck until a manual
+      -- refresh), skip confirmed-offline boxes, and fall back to the old failure
+      -- cap only when reachability is unknown (probe disabled / not yet run).
+      AND (reachable = 1 OR (reachable IS NULL AND consecutive_failures < ${MAX_FAILURES_BEFORE_SKIP}))
     ORDER BY ISNULL(last_collected_at, '1900-01-01') ASC;
   `);
   return r.recordset;

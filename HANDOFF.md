@@ -149,6 +149,22 @@ Three signals are now distinct: **reachability** (live, this probe) vs **event-l
 collection health** (`last_status`) vs **AD inactivity** (`last_seen` /
 `inactive.threshold_days`).
 
+**Follow-up fix — collectors park on reachability, not a frozen counter
+(same commit family).** All four collectors (eventlog / disk / services / perf)
+used to skip any PC with `consecutive_failures >= 10`. That permanently
+**parked** a box after a transient bad patch: once parked, the scheduled
+collectors never retried it, so it stayed frozen (stale `last_seen`, old error,
+the "⚠ logs" marker) until someone hit "Aktualizovat teď" (single-PC refresh
+ignores the cap and resets the counter). Operator caught a healthy, reachable
+server (B-S-W-VEMA-TEST) stuck this way. Each collector's `listTargets` now gates
+on the live probe instead:
+`(reachable = 1 OR (reachable IS NULL AND consecutive_failures < 10))` — collect
+from any box the probe says is on the network regardless of past failures (so a
+recovered box un-parks itself next cycle), skip confirmed-offline boxes, and fall
+back to the old failure cap only when reachability is unknown (probe disabled /
+not yet run). Reachability runs first in the cycle, so the value is fresh when
+the collectors query it.
+
 **Caveat:** the probe runs inside the periodic-checks window (`checks.days` /
 `checks.window_*`, default Mon–Fri 06:00–18:00), so in the default config Status
 is not refreshed overnight / weekends. Making it a window-independent fast timer

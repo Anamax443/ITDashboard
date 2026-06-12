@@ -180,7 +180,10 @@ export async function runPerfCollectorOnce(): Promise<PerfCollectResult | null> 
       SELECT id, name,
         (SELECT MAX(time_created) FROM perf_events WHERE computer_id = c.id) AS last_perf_collected_at
       FROM computers c
-      WHERE enabled = 1 AND monitor_enabled = 1 AND excluded = 0 AND consecutive_failures < 10
+      -- Park on live reachability, not the frozen failure counter (see
+      -- eventlog-collector listTargets).
+      WHERE enabled = 1 AND monitor_enabled = 1 AND excluded = 0
+        AND (c.reachable = 1 OR (c.reachable IS NULL AND consecutive_failures < 10))
     `);
     const targets = r.recordset;
     logActivity('info', 'perf', `Starting perf scan — ${targets.length} PCs (cold-start ${coldStartDays}d)`);
