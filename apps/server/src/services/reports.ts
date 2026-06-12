@@ -68,10 +68,12 @@ export async function buildOverviewReport(): Promise<OverviewReport> {
   `);
 
   const machines: ReportMachine[] = [];
-  let disabled = 0;
   for (const row of r.recordset) {
-    if (!row.enabled) { disabled++; continue; } // counted, not listed in scope
-    const status: MachineStatus = row.reachable === false ? 'offline' : 'active';
+    // Disabled (gone from AD) machines are still listed so the report matches
+    // what the Computers tab shows; reachability only matters while enabled.
+    const status: MachineStatus = !row.enabled
+      ? 'disabled'
+      : (row.reachable === false ? 'offline' : 'active');
     machines.push({
       name: row.name,
       ip: row.ip_address,
@@ -88,16 +90,21 @@ export async function buildOverviewReport(): Promise<OverviewReport> {
   machines.sort((a, b) =>
     a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'server' ? -1 : 1);
 
+  return { generatedAt: new Date().toISOString(), ...totalsFor(machines) };
+}
+
+// Totals + offline subset computed from a machine list, so buildOverviewReport
+// and the selection filter stay in lockstep.
+function totalsFor(machines: ReportMachine[]): Omit<OverviewReport, 'generatedAt'> {
   const offline = machines.filter((m) => m.status === 'offline');
   return {
-    generatedAt: new Date().toISOString(),
     totals: {
       total: machines.length,
       servers: machines.filter((m) => m.kind === 'server').length,
       pcs: machines.filter((m) => m.kind === 'pc').length,
       active: machines.filter((m) => m.status === 'active').length,
       offline: offline.length,
-      disabled,
+      disabled: machines.filter((m) => m.status === 'disabled').length,
       monitored: machines.filter((m) => m.monitored).length,
       failing: machines.filter((m) => m.consecutiveFailures > 0).length,
     },
@@ -155,11 +162,12 @@ export function renderOverviewReport(rep: OverviewReport, dashboardUrl: string):
     ? row(['<span style="color:#10b981">žádné offline stroje</span>', '', '', ''])
     : rep.offline.map((m) => row([escHtml(m.name), escHtml(m.ip ?? '—'), m.kind === 'server' ? 'server' : 'PC', `offline ${fmtSince(m.lastReachableAt)}`])).join('');
 
+  const statusColor = (s: string) => s === 'offline' ? '#ef4444' : s === 'disabled' ? '#9ca3af' : '#10b981';
   const machineRows = rep.machines.map((m) => row([
     escHtml(m.name),
     escHtml(m.ip ?? '—'),
     m.kind === 'server' ? 'server' : 'PC',
-    `<span style="color:${m.status === 'offline' ? '#ef4444' : '#10b981'};font-weight:600">${m.status}</span>`,
+    `<span style="color:${statusColor(m.status)};font-weight:600">${m.status}</span>`,
     escHtml(m.os ?? '—'),
   ])).join('');
 
@@ -200,22 +208,7 @@ export function renderOverviewReport(rep: OverviewReport, dashboardUrl: string):
 function filterReportToSelection(rep: OverviewReport, names: string[]): OverviewReport {
   const wanted = new Set(names);
   const machines = rep.machines.filter((m) => wanted.has(m.name));
-  const offline = machines.filter((m) => m.status === 'offline');
-  return {
-    generatedAt: rep.generatedAt,
-    totals: {
-      total: machines.length,
-      servers: machines.filter((m) => m.kind === 'server').length,
-      pcs: machines.filter((m) => m.kind === 'pc').length,
-      active: machines.filter((m) => m.status === 'active').length,
-      offline: offline.length,
-      disabled: 0,
-      monitored: machines.filter((m) => m.monitored).length,
-      failing: machines.filter((m) => m.consecutiveFailures > 0).length,
-    },
-    machines,
-    offline,
-  };
+  return { generatedAt: rep.generatedAt, ...totalsFor(machines) };
 }
 
 // On-demand send from the Reporting tab. Uses the reports recipient list,
