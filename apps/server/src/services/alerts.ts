@@ -470,10 +470,9 @@ export async function sendServiceAlertTest(): Promise<{ recipients: number; down
   return { recipients, down: candidates.length, monitoredPcs: pcs };
 }
 
-function serviceCard(c: DownCriticalService, now: number): string {
+function serviceCard(c: DownCriticalService): string {
   const dn = c.displayName && c.displayName !== c.serviceName ? ` · ${escHtml(c.displayName)}` : '';
   const ip = c.ip ? ` · ${escHtml(c.ip)}` : '';
-  const since = c.firstDownAt ? `mimo provoz ${fmtDuration(now - new Date(c.firstDownAt).getTime())}` : 'právě zaznamenáno';
   const accent = c.critical ? '#dc2626' : '#d97706'; // critical = red, broad service = amber
   const badge = c.critical ? '🛡 kritická služba' : 'služba';
   return `
@@ -483,7 +482,7 @@ function serviceCard(c: DownCriticalService, now: number): string {
               <div style="font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:.04em;font-family:${FONT}">${badge}</div>
               <div style="font-size:16px;font-weight:700;color:#111827;font-family:${FONT}">${escHtml(c.computer)}</div>
               <div style="font-size:13px;color:#6b7280;margin:2px 0 6px;font-family:${FONT}">${escHtml(c.serviceName)}${dn}${ip}</div>
-              <div style="font-size:14px;color:${accent};font-weight:700;font-family:${FONT}">⛔ ${since}</div>
+              <div style="font-size:14px;color:${accent};font-weight:700;font-family:${FONT}">⛔ mimo provoz</div>
             </td></tr>
           </table>
         </td></tr>`;
@@ -506,7 +505,7 @@ export function renderServiceAlert(downIn: DownCriticalService[], now: number, i
   });
 
   const lines = down.map((c) =>
-    `  • ${c.computer}${c.ip ? ` (${c.ip})` : ''}  ${c.serviceName}${c.displayName && c.displayName !== c.serviceName ? ` (${c.displayName})` : ''}  —  ${c.firstDownAt ? `mimo provoz ${fmtDuration(now - new Date(c.firstDownAt).getTime())}` : 'právě zaznamenáno'}`,
+    `  • ${c.computer}${c.ip ? ` (${c.ip})` : ''}  ${c.serviceName}${c.displayName && c.displayName !== c.serviceName ? ` (${c.displayName})` : ''}`,
   );
   const text = (has
     ? `ITDashboard — služby mimo provoz\n${down.length} služba(služby) na ${pcs} PC${critN > 0 ? ` (${critN} kritických)` : ''}:\n\n${lines.join('\n')}\n`
@@ -523,7 +522,7 @@ export function renderServiceAlert(downIn: DownCriticalService[], now: number, i
     : 'Žádná sledovaná služba není mimo provoz';
 
   const body = has
-    ? down.map((c) => serviceCard(c, now)).join('')
+    ? down.map((c) => serviceCard(c)).join('')
     : `<tr><td style="padding:4px 0 12px;font-size:14px;color:#374151;font-family:${FONT}">Všechny sledované služby běží. 👍</td></tr>`;
 
   const testBanner = isTest
