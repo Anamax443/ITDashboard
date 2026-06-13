@@ -92,8 +92,12 @@ export function App() {
       api.settings().then(setSettingsMap).catch(() => {});
     };
     window.addEventListener('itd:settings-saved', onSettingsSaved);
-    return () => window.removeEventListener('itd:settings-saved', onSettingsSaved);
+    // Initial settings load — MUST run before the cleanup return (it used to sit
+    // after it = dead code, so settingsMap stayed empty on first load and
+    // settings-derived UI — alert on/off flags, whitelist, disk thresholds —
+    // read as "off"/defaults until the operator saved Settings once).
     api.settings().then(setSettingsMap).catch(() => {});
+    return () => window.removeEventListener('itd:settings-saved', onSettingsSaved);
   }, []);
 
   // PC health is a heavier 14-day GROUP BY and changes slowly — refresh it on
