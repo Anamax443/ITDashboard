@@ -339,7 +339,12 @@ async function loadDownServices(
     FROM service_problems sp
     JOIN computers c ON c.id = sp.computer_id
     LEFT JOIN service_alert_state st ON st.computer_id = sp.computer_id AND st.service_name = sp.service_name
-    WHERE c.enabled = 1 AND c.${opts.gate} = 1
+    WHERE c.enabled = 1 AND c.excluded = 0 AND c.${opts.gate} = 1
+      -- Only alert on machines that are reachable NOW. service_problems is a
+      -- snapshot from the last successful scan; an offline PC holds stale "down"
+      -- rows (the box is just powered off, not a real service failure). Skip
+      -- confirmed-offline (reachable = 0); keep online and not-yet-probed.
+      AND (c.reachable = 1 OR c.reachable IS NULL)
       AND sp.state <> 'Running' AND sp.per_user_start = 0
       ${opts.critical ? '' : `
       -- Broad level = the collector's "real" set: an Auto service that should be
