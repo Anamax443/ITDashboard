@@ -356,6 +356,7 @@ export function App() {
         <span>
           {error ? <span className="err">⚠ {error}</span> : <span className="ok">● {t('status.connected')}</span>}
         </span>
+        <span>© {new Date().getFullYear()} Milan Trnka, IT</span>
         <span>
           {t('status.lastRefresh')}: {lastFetch ? lastFetch.toLocaleTimeString(lang === 'cs' ? 'cs-CZ' : 'en-US') : '—'} · {t('status.autoEvery')} {REFRESH_MS / 1000}s
         </span>

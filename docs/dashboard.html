@@ -1599,6 +1599,9 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td>HTTPS na API → desktop</td><td>Aktuálně HTTP na portu 4000. Produkční TLS termination plánováno (Caddy / IIS reverse proxy)</td></tr>
 </table>
 
+<footer style="margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--surface); color: var(--text-dim); font-size: 12px; text-align: center;">
+  © <span id="cpy-year">2026</span> Milan Trnka, IT
+</footer>
 </main>
 </div>
 <script>
@@ -1625,6 +1628,8 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
     if (enBtn) enBtn.classList.toggle('active', lang === 'en');
   };
   window.setLang(detectInitialLang());
+  var cpyYear = document.getElementById('cpy-year');
+  if (cpyYear) cpyYear.textContent = String(new Date().getFullYear());
 })();
 </script>
 </body>
