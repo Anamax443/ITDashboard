@@ -12,7 +12,11 @@ const isStale = (s: CriticalServiceStatus) => s.reachable === false;
 // (e.g. NTDS/Kdc on a demoted DC) — not a problem, not counted as "down".
 const isExcepted = (s: CriticalServiceStatus) => serviceMatchesExceptions(s.service_name, s.display_name, s.exceptions);
 
-export function CriticalServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: string) => void } = {}) {
+export function CriticalServicesPage({ onJumpToComputer, initialOnlyDown, onOnlyDownConsumed }: {
+  onJumpToComputer?: (name: string) => void;
+  initialOnlyDown?: boolean;
+  onOnlyDownConsumed?: () => void;
+} = {}) {
   const { t } = useI18n();
   const [items, setItems] = useState<CriticalServiceStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +30,14 @@ export function CriticalServicesPage({ onJumpToComputer }: { onJumpToComputer?: 
     const id = setInterval(refresh, 30_000);
     return () => clearInterval(id);
   }, []);
+
+  // Pre-check "only down" when opened from the dashboard tile (one-shot).
+  useEffect(() => {
+    if (initialOnlyDown) {
+      setOnlyDown(true);
+      onOnlyDownConsumed?.();
+    }
+  }, [initialOnlyDown, onOnlyDownConsumed]);
 
   const machines = new Set(items.map((i) => i.computer_id)).size;
   const services = new Set(items.map((i) => i.service_name)).size;

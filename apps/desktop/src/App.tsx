@@ -54,6 +54,8 @@ export function App() {
   // One-shot: arriving on the Ports tab via the dashboard tile pre-checks the
   // "only issues" filter so the operator lands on the problem machines.
   const [portsInitialOnlyIssues, setPortsInitialOnlyIssues] = useState(false);
+  // Same one-shot for Critical services → pre-checks "only down".
+  const [critInitialOnlyDown, setCritInitialOnlyDown] = useState(false);
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [inactiveStats, setInactiveStats] = useState<InactiveStats | null>(null);
   const [pcHealth, setPcHealth] = useState<PcHealthResult | null>(null);
@@ -276,7 +278,7 @@ export function App() {
             settings={settingsMap}
             criticalServicesDown={critDown}
             criticalServicesTotal={critTotal}
-            onClickCriticalServices={() => setView('critsvc')}
+            onClickCriticalServices={() => { setCritInitialOnlyDown(true); setView('critsvc'); }}
             portsWithIssues={portsWithIssues}
             portsTotal={portsTotal}
             onClickPorts={() => { setPortsInitialOnlyIssues(true); setView('ports'); }}
@@ -347,7 +349,7 @@ export function App() {
 
       {view === 'critsvc' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <CriticalServicesPage onJumpToComputer={jumpToComputer} />
+          <CriticalServicesPage onJumpToComputer={jumpToComputer} initialOnlyDown={critInitialOnlyDown} onOnlyDownConsumed={() => setCritInitialOnlyDown(false)} />
         </div>
       )}
 
