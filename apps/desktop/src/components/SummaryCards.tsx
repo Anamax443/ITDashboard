@@ -16,6 +16,9 @@ interface Props {
   criticalServicesDown?: number;
   criticalServicesTotal?: number;
   onClickCriticalServices?: () => void;
+  portsWithIssues?: number;
+  portsTotal?: number;
+  onClickPorts?: () => void;
   perfSummary: PerfSummary | null;
   inactiveStats: InactiveStats | null;
   onClickCritical?: () => void;
@@ -33,7 +36,7 @@ interface Props {
 }
 
 export function SummaryCards({
-  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, perfSummary, inactiveStats,
+  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, portsWithIssues = 0, portsTotal = 0, onClickPorts, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
   onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
 }: Props) {
@@ -131,6 +134,13 @@ export function SummaryCards({
         sub={criticalServicesTotal > 0 ? `${criticalServicesTotal - criticalServicesDown}/${criticalServicesTotal} OK` : '—'}
         kind={criticalServicesTotal === 0 ? 'info' : criticalServicesDown > 0 ? 'critical' : 'ok'}
         onClick={criticalServicesTotal > 0 ? onClickCriticalServices : undefined}
+      />
+      <Card
+        label={`🔌 ${t('cards.ports')}`}
+        value={portsTotal === 0 ? '—' : `${portsWithIssues}/${portsTotal} PC`}
+        sub={portsTotal > 0 ? `${portsTotal - portsWithIssues}/${portsTotal} OK` : '—'}
+        kind={portsTotal === 0 ? 'info' : portsWithIssues > 0 ? 'critical' : 'ok'}
+        onClick={portsTotal > 0 ? onClickPorts : undefined}
       />
       <Card
         label={t('cards.slowBootShutdown')}

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer } from './api.js';
 import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { HealthCards } from './components/HealthCards.js';
@@ -50,6 +50,7 @@ export function App() {
   const [disks, setDisks] = useState<DiskItem[]>([]);
   const [serviceProblems, setServiceProblems] = useState<ServiceProblem[]>([]);
   const [criticalServices, setCriticalServices] = useState<CriticalServiceStatus[]>([]);
+  const [ports, setPorts] = useState<PortStatusComputer[]>([]);
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [inactiveStats, setInactiveStats] = useState<InactiveStats | null>(null);
   const [pcHealth, setPcHealth] = useState<PcHealthResult | null>(null);
@@ -76,6 +77,7 @@ export function App() {
     api.disks().then((r) => setDisks(r.items)).catch(() => {});
     api.serviceProblems().then((r) => setServiceProblems(r.items)).catch(() => {});
     api.criticalServices().then((r) => setCriticalServices(r.items)).catch(() => {});
+    api.portStatus().then((r) => setPorts(r.items)).catch(() => {});
     api.perfSummary(7).then(setPerfSummary).catch(() => {});
     api.inactiveStats().then(setInactiveStats).catch(() => {});
     api.pcHealth().then(setPcHealth).catch(() => {});
@@ -89,6 +91,9 @@ export function App() {
       }
       if (isAll || keys.some((k) => k.startsWith('faulty.'))) {
         api.pcHealth().then(setPcHealth).catch(() => {});
+      }
+      if (isAll || keys.some((k) => k.startsWith('alerts.services.port_checks') || k === 'alerts.services.port_timeout_ms')) {
+        api.portStatus().then((r) => setPorts(r.items)).catch(() => {});
       }
       api.settings().then(setSettingsMap).catch(() => {});
     };
@@ -121,6 +126,10 @@ export function App() {
   const critDown = criticalServices.filter((c) =>
     c.state !== 'Running' && c.reachable !== false
     && !serviceMatchesExceptions(c.service_name, c.display_name, c.exceptions)).length;
+  // Ports tile: PCs that have at least one closed configured port, counting only
+  // reachable machines (an offline PC holds a stale/unknown port state).
+  const portsTotal = ports.length;
+  const portsWithIssues = ports.filter((pc) => pc.reachable !== false && pc.ports.some((p) => !p.is_open)).length;
 
   const refreshComputers = useCallback(async () => {
     try {
@@ -265,6 +274,9 @@ export function App() {
             criticalServicesDown={critDown}
             criticalServicesTotal={critTotal}
             onClickCriticalServices={() => setView('critsvc')}
+            portsWithIssues={portsWithIssues}
+            portsTotal={portsTotal}
+            onClickPorts={() => setView('ports')}
             perfSummary={perfSummary}
             inactiveStats={inactiveStats}
             onClickMonitoredDisks={() => { setComputersPreFilter('disk-email'); setView('computers'); }}

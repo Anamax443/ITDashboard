@@ -94,6 +94,30 @@ async function persistPcPorts(computerId: number, results: PortProbeResult[]): P
   }
 }
 
+// Remove port_status rows for checks no longer in the configured set, so the
+// grid always reflects current Settings (removing a port from the list makes it
+// disappear instead of lingering). Scope to one PC with `computerId`, or omit to
+// prune the whole table. An empty `names` deletes all rows in scope.
+async function prunePortStatus(names: string[], computerId?: number): Promise<void> {
+  const pool = await getPool();
+  const req = pool.request();
+  if (computerId != null) req.input('cid', computerId);
+  if (names.length === 0) {
+    await req.query(computerId != null ? `DELETE FROM port_status WHERE computer_id = @cid` : `DELETE FROM port_status`);
+    return;
+  }
+  const scope = computerId != null ? 'computer_id = @cid AND ' : '';
+  const params = names.map((n, i) => { req.input(`n${i}`, n); return `@n${i}`; });
+  await req.query(`DELETE FROM port_status WHERE ${scope}check_name NOT IN (${params.join(',')})`);
+}
+
+// Set of port-check names currently configured in Settings — used by the API to
+// filter the grid so it never shows a port the operator has removed.
+export async function configuredCheckNames(): Promise<Set<string>> {
+  const settings = await getAllSettings();
+  return new Set(parsePortChecks(settings['alerts.services.port_checks']).map((c) => c.name));
+}
+
 // Probe one PC's configured ports and persist the result. Used by the per-row
 // "Refresh now" action (step 5) and the per-PC on-demand probe endpoint, so a
 // single PC always gets a fresh port verdict regardless of the schedule.
@@ -101,9 +125,14 @@ export async function probeOnePcPorts(computerId: number, host: string): Promise
   const settings = await getAllSettings();
   const checks = parsePortChecks(settings['alerts.services.port_checks']);
   const timeoutMs = Number(settings['alerts.services.port_timeout_ms'] ?? 2000) || 2000;
-  if (checks.length === 0) return { checks: 0, open: 0, results: [] };
+  if (checks.length === 0) {
+    await prunePortStatus([], computerId);
+    return { checks: 0, open: 0, results: [] };
+  }
   const results = await probePcPortsRaw(host, checks, timeoutMs);
   await persistPcPorts(computerId, results);
+  // Drop this PC's stale rows for ports removed from the config.
+  await prunePortStatus(checks.map((c) => c.name), computerId);
   return { checks: results.length, open: results.filter((r) => r.open).length, results };
 }
 
@@ -198,8 +227,12 @@ export async function runPortStatusProbeOnce(): Promise<PortStatusRunResult | nu
     const checks = parsePortChecks(settings['alerts.services.port_checks']);
     const timeoutMs = Number(settings['alerts.services.port_timeout_ms'] ?? 2000) || 2000;
     if (checks.length === 0) {
+      // No ports configured → the grid should be empty too.
+      await prunePortStatus([]);
       return { pcs: 0, probed: 0, skippedOffline: 0, openPorts: 0, durationMs: Date.now() - t0 };
     }
+    // Drop rows for ports removed from the config before re-probing the fleet.
+    await prunePortStatus(checks.map((c) => c.name));
     const targets = await listTargets();
 
     let probed = 0;

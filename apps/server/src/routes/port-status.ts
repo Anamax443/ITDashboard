@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getPool } from '../db/pool.js';
-import { runPortStatusProbeOnce } from '../services/port-status-collector.js';
+import { runPortStatusProbeOnce, configuredCheckNames } from '../services/port-status-collector.js';
 
 interface PortRow {
   id: number;
@@ -32,6 +32,10 @@ export async function registerPortStatusRoutes(app: FastifyInstance) {
   // rows yet (never probed) returns an empty `ports` array.
   app.get('/port-status', async () => {
     const pool = await getPool();
+    // Only surface ports that are still in the configured list — a stored row
+    // for a port the operator just removed must not show until the next probe
+    // prunes it from the table.
+    const allowed = await configuredCheckNames();
     const r = await pool.request().query<PortRow>(`
       SELECT c.id, c.name, c.fqdn, c.ip_address, c.reachable, c.reach_checked_at,
              ps.check_name, ps.port, ps.is_open, ps.latency_ms, ps.checked_at
@@ -42,6 +46,8 @@ export async function registerPortStatusRoutes(app: FastifyInstance) {
     `);
     const byId = new Map<number, PortStatusComputer>();
     for (const row of r.recordset) {
+      // Always register the PC (so a machine whose every port was just removed
+      // still shows as a row), but only attach ports still in the config.
       let pc = byId.get(row.id);
       if (!pc) {
         pc = {
@@ -50,7 +56,8 @@ export async function registerPortStatusRoutes(app: FastifyInstance) {
         };
         byId.set(row.id, pc);
       }
-      if (row.check_name != null && row.port != null && row.is_open != null && row.checked_at != null) {
+      if (row.check_name != null && row.port != null && row.is_open != null && row.checked_at != null
+          && allowed.has(row.check_name)) {
         pc.ports.push({
           check_name: row.check_name, port: row.port, is_open: row.is_open,
           latency_ms: row.latency_ms, checked_at: row.checked_at,
