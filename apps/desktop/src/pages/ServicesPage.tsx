@@ -6,7 +6,11 @@ import { HelpBox } from '../components/HelpBox.js';
 import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { useI18n } from '../i18n.js';
 
-export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: string) => void } = {}) {
+export function ServicesPage({ onJumpToComputer, initialOnlyNonzeroExit, onOnlyNonzeroExitConsumed }: {
+  onJumpToComputer?: (name: string) => void;
+  initialOnlyNonzeroExit?: boolean;
+  onOnlyNonzeroExitConsumed?: () => void;
+} = {}) {
   const { t } = useI18n();
   const [view, setView] = useState<'by-pc' | 'by-service'>('by-pc');
   const [items, setItems] = useState<ServiceProblem[]>([]);
@@ -41,6 +45,14 @@ export function ServicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: s
     const t = setInterval(refresh, 30_000);
     return () => clearInterval(t);
   }, []);
+
+  // Pre-check "only ExitCode != 0" when opened from the dashboard tile (one-shot).
+  useEffect(() => {
+    if (initialOnlyNonzeroExit) {
+      setOnlyNonzeroExit(true);
+      onOnlyNonzeroExitConsumed?.();
+    }
+  }, [initialOnlyNonzeroExit, onOnlyNonzeroExitConsumed]);
 
   const triggerScan = async () => {
     setError(null);

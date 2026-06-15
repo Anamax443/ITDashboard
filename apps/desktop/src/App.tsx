@@ -56,6 +56,8 @@ export function App() {
   const [portsInitialOnlyIssues, setPortsInitialOnlyIssues] = useState(false);
   // Same one-shot for Critical services → pre-checks "only down".
   const [critInitialOnlyDown, setCritInitialOnlyDown] = useState(false);
+  // Same one-shot for Services → pre-checks "only ExitCode != 0".
+  const [svcInitialOnlyNonzeroExit, setSvcInitialOnlyNonzeroExit] = useState(false);
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [inactiveStats, setInactiveStats] = useState<InactiveStats | null>(null);
   const [pcHealth, setPcHealth] = useState<PcHealthResult | null>(null);
@@ -286,7 +288,7 @@ export function App() {
             inactiveStats={inactiveStats}
             onClickMonitoredDisks={() => { setComputersPreFilter('disk-email'); setView('computers'); }}
             onClickMonitoredServices={() => { setComputersPreFilter('service-email'); setView('computers'); }}
-            onClickServices={() => setView('services')}
+            onClickServices={() => { setSvcInitialOnlyNonzeroExit(true); setView('services'); }}
             onClickPerf={() => setView('perf')}
             onClickCritical={() => { setFilterLevel('critical'); setFilterHours((summary?.window_days ?? 1) * 24); setView('events'); }}
             onClickError={() => { setFilterLevel('error'); setFilterHours((summary?.window_days ?? 1) * 24); setView('events'); }}
@@ -343,7 +345,7 @@ export function App() {
 
       {view === 'services' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <ServicesPage onJumpToComputer={jumpToComputer} />
+          <ServicesPage onJumpToComputer={jumpToComputer} initialOnlyNonzeroExit={svcInitialOnlyNonzeroExit} onOnlyNonzeroExitConsumed={() => setSvcInitialOnlyNonzeroExit(false)} />
         </div>
       )}
 
