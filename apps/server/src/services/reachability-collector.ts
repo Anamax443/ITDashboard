@@ -29,7 +29,7 @@ function tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolea
 // the output — it appears only on a genuine echo reply and is NOT localized, so
 // this works on a Czech/any-locale Windows and rejects router-sourced
 // "Destination host unreachable" replies (which can still exit 0).
-function icmpPing(host: string, timeoutMs: number): Promise<boolean> {
+export function icmpPing(host: string, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
     let out = '';
     let settled = false;

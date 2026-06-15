@@ -4,6 +4,7 @@ import { collectFromPC, insertEvents } from './eventlog-collector.js';
 import { fetchPcScan, upsertDisk, upsertPcInfo } from './disk-collector.js';
 import { fetchServices, replaceProblems, replaceCritical } from './services-collector.js';
 import { fetchPerfEvents, insertPerfEvents } from './perf-collector.js';
+import { probeOnePcPorts } from './port-status-collector.js';
 import { getSetting } from './settings.js';
 
 // Runs all four collectors against a single PC sequentially. Used by the
@@ -134,6 +135,20 @@ export async function refreshSinglePc(computerId: number): Promise<SingleRefresh
       }
     }
     steps.push({ step: 'perf', ok: perfOk, detail: perfDetail, durationMs: Date.now() - t4 });
+
+    // 5) Ports — TCP-probe the configured ports and upsert into port_status so
+    // the Ports tab reflects this PC's live availability right after a refresh.
+    const t5 = Date.now();
+    let portDetail = '';
+    let portOk = false;
+    try {
+      const res = await probeOnePcPorts(target.id, target.name);
+      portDetail = res.checks === 0 ? 'no ports configured' : `${res.open}/${res.checks} port(s) open`;
+      portOk = true;
+    } catch (err) {
+      portDetail = String(err).split('\n')[0]?.slice(0, 200) ?? 'unknown';
+    }
+    steps.push({ step: 'ports', ok: portOk, detail: portDetail, durationMs: Date.now() - t5 });
 
     const allOk = steps.every((s) => s.ok);
     const durationMs = Date.now() - t0;

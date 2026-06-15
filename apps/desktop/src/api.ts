@@ -481,6 +481,42 @@ export interface ComputerItem {
   reach_checked_at?: string | null;
 }
 
+/** One PC's latest verdict for a single configured port (Ports tab grid). */
+export interface PortStatusEntry {
+  check_name: string;
+  port: number;
+  is_open: boolean;
+  latency_ms: number | null;
+  checked_at: string;
+}
+
+/** A monitored PC with its latest per-port availability (GET /port-status). */
+export interface PortStatusComputer {
+  id: number;
+  name: string;
+  fqdn: string | null;
+  ip_address: string | null;
+  reachable: boolean | null;
+  reach_checked_at: string | null;
+  ports: PortStatusEntry[];
+}
+
+/** Live result of a single port probe (per-PC on-demand probe). */
+export interface PortProbeResult {
+  checkName: string;
+  port: number;
+  open: boolean;
+  latencyMs: number | null;
+}
+
+/** Response of POST /computers/:id/probe — live ICMP ping + per-port TCP. */
+export interface PerPcProbeResult {
+  computerId: number;
+  host: string;
+  ping: boolean;
+  ports: PortProbeResult[];
+}
+
 async function jget<T>(path: string): Promise<T> {
   const r = await fetch(`${API_BASE}${path}`);
   if (!r.ok) throw new Error(`${path} → ${r.status}`);
@@ -614,6 +650,9 @@ export const api = {
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),
   collectorRunAll: () => jpost<CollectorRunAllResult>('/collector/run-all'),
   reachabilityRun: () => jpost<{ pcs: number; reachable: number; unreachable: number; durationMs: number }>('/reachability/run'),
+  portStatus: () => jget<{ items: PortStatusComputer[] }>('/port-status'),
+  portStatusRun: () => jpost<{ pcs: number; probed: number; skippedOffline: number; openPorts: number; durationMs: number }>('/port-status/run'),
+  probeComputer: (computerId: number) => jpost<PerPcProbeResult>(`/computers/${computerId}/probe`),
   collectorStop: () => jpost<{ stopped: boolean }>('/collector/stop'),
   activityLog: (limit = 200, sinceSeq?: number) => {
     const params = new URLSearchParams();

@@ -513,7 +513,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                     {c.last_error ?? '—'}
                   </td>
                   <td>
-                    <PcActionsButton name={c.name} fqdn={c.fqdn} ipAddress={c.ip_address} disks={disks.filter((d) => d.computer_id === c.id)} computerId={c.id} onRefreshed={onRefreshLocal} />
+                    <PcActionsButton name={c.name} computerId={c.id} onRefreshed={onRefreshLocal} />
                   </td>
                 </tr>
               ))}

@@ -4,6 +4,7 @@ import { getPool } from '../db/pool.js';
 import { syncComputersFromAD, getSyncHistory, getLastSync } from '../services/ad-sync.js';
 import { getSetting } from '../services/settings.js';
 import { refreshSinglePc } from '../services/refresh-single-pc.js';
+import { probeComputerNow } from '../services/port-status-collector.js';
 
 export async function registerComputersRoutes(app: FastifyInstance) {
   app.get('/computers', async () => {
@@ -65,6 +66,28 @@ export async function registerComputersRoutes(app: FastifyInstance) {
       return result;
     } catch (err) {
       app.log.error({ err, computerId: params.id }, 'single-PC refresh failed');
+      reply.code(500);
+      return { error: String(err) };
+    }
+  });
+
+  // On-demand live probe of ONE PC: ICMP ping + every configured TCP port.
+  // Persists the port verdicts (so the Ports grid updates) and returns the live
+  // result for the row's "Ping" button.
+  app.post('/computers/:id/probe', async (req, reply) => {
+    const params = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    const pool = await getPool();
+    const r = await pool.request()
+      .input('id', params.id)
+      .query<{ name: string; fqdn: string | null }>(`SELECT TOP 1 name, fqdn FROM computers WHERE id = @id`);
+    const target = r.recordset[0];
+    if (!target) { reply.code(404); return { error: 'Not found' }; }
+    try {
+      const host = target.fqdn || target.name;
+      const result = await probeComputerNow(params.id, host);
+      return result;
+    } catch (err) {
+      app.log.error({ err, computerId: params.id }, 'per-PC probe failed');
       reply.code(500);
       return { error: String(err) };
     }

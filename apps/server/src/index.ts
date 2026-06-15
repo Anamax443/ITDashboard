@@ -20,9 +20,11 @@ import { registerActionsRoutes } from './routes/actions.js';
 import { registerRetentionRoutes } from './routes/retention.js';
 import { registerAlertsRoutes } from './routes/alerts.js';
 import { registerReportsRoutes } from './routes/reports.js';
+import { registerPortStatusRoutes } from './routes/port-status.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
 import { startReachabilitySchedule } from './services/reachability-collector.js';
+import { startPortStatusSchedule } from './services/port-status-collector.js';
 import { refreshIpGuard } from './services/ip-guard.js';
 import { startRetentionSchedule } from './services/retention-runner.js';
 
@@ -61,6 +63,7 @@ await registerActionsRoutes(app);
 await registerRetentionRoutes(app);
 await registerAlertsRoutes(app);
 await registerReportsRoutes(app);
+await registerPortStatusRoutes(app);
 await registerFrontendRoutes(app);
 
 // Load the access-check whitelist BEFORE we start accepting connections, so
@@ -75,6 +78,7 @@ await refreshIpGuard('boot');
 app.listen({ port: PORT, host: BIND }).then(async () => {
   await startChecksSchedule();
   await startReachabilitySchedule();
+  await startPortStatusSchedule();
   await startRetentionSchedule();
 }).catch((err) => {
   app.log.error(err);
