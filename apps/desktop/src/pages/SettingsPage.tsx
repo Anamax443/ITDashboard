@@ -445,6 +445,39 @@ export function SettingsPage() {
           </div>
         </Section>
 
+        <Section title={t('settings.section.mikrotik')} description={t('settings.section.mikrotikDesc')}>
+          <Field label={t('settings.field.mikrotikRouters')}>
+            <input
+              type="text"
+              value={value('mikrotik.routers', '')}
+              onChange={(e) => set('mikrotik.routers', e.target.value)}
+              placeholder="Brno=10.8.2.207, Zastavka=10.10.181.2"
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace' }}
+            />
+          </Field>
+          <Field label={t('settings.field.mikrotikUser')}>
+            <input
+              type="text"
+              value={value('mikrotik.user', 'dhcp-reader')}
+              onChange={(e) => set('mikrotik.user', e.target.value)}
+              style={{ ...fieldStyle, width: 240 }}
+            />
+          </Field>
+          <Field label={t('settings.field.mikrotikPassword')}>
+            <input
+              type="password"
+              value={value('mikrotik.password', '')}
+              onChange={(e) => set('mikrotik.password', e.target.value)}
+              placeholder={t('settings.field.mikrotikPasswordPlaceholder')}
+              autoComplete="new-password"
+              style={{ ...fieldStyle, width: 240 }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+            {t('settings.field.mikrotikHelp')}
+          </p>
+        </Section>
+
         <Section
           title={t('settings.section.perfLookback')}
           description={t('settings.section.perfLookbackDesc')}
