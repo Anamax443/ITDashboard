@@ -18,7 +18,7 @@ Last updated: 2026-06-15 (Ports availability tab + per-port latency · per-PC re
 - Runtime path on server: `C:\Apps\ITDashboard`
 - SQL server: `10.8.2.225`
 - Database: `ITDashboard`
-- Live commit: `604f8f4` (docs sweep commit lands on top — update to deployed hash after push)
+- Live commit: `1f28b31`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
 
