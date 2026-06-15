@@ -1,0 +1,114 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { getPool } from '../db/pool.js';
+import { runMikrotikCollectOnce, probeDeviceNow, suggestCategory } from '../services/mikrotik-collector.js';
+
+// Allowed operator device categories (empty string clears the assignment).
+const CATEGORIES = [
+  'printer_canon', 'printer_kyocera', 'printer_zebra', 'printer_hp', 'printer_other',
+  'phone', 'pc', 'server', 'network', 'iot', 'other',
+] as const;
+
+interface DeviceRow {
+  site: string;
+  mac_address: string;
+  ip_address: string | null;
+  host_name: string | null;
+  server: string | null;
+  comment: string | null;
+  status: string | null;
+  dynamic: boolean | null;
+  expires_after: string | null;
+  router_last_seen: string | null;
+  last_seen: string;
+  reachable: boolean | null;
+  reach_checked_at: string | null;
+  category: string | null;
+  computer_id: number | null;
+  computer_name: string | null;
+  computer_reachable: boolean | null;
+}
+
+export async function registerDevicesRoutes(app: FastifyInstance) {
+  // All DHCP-discovered devices, each paired with its AD computer (by host_name,
+  // fallback IP) and its operator category. `suggested` is a UI-only hint.
+  app.get('/devices', async () => {
+    const pool = await getPool();
+    const r = await pool.request().query<DeviceRow>(`
+      SELECT l.site, l.mac_address, l.ip_address, l.host_name, l.server, l.comment,
+             l.status, l.dynamic, l.expires_after, l.router_last_seen, l.last_seen,
+             l.reachable, l.reach_checked_at,
+             dc.category,
+             m.id AS computer_id, m.name AS computer_name, m.reachable AS computer_reachable
+      FROM dhcp_leases l
+      LEFT JOIN device_categories dc ON dc.mac_address = l.mac_address
+      OUTER APPLY (
+        SELECT TOP 1 c.id, c.name, c.reachable
+        FROM computers c
+        WHERE (l.host_name IS NOT NULL AND LOWER(c.name) = LOWER(l.host_name))
+           OR (l.ip_address IS NOT NULL AND c.ip_address = l.ip_address)
+        ORDER BY CASE WHEN l.host_name IS NOT NULL AND LOWER(c.name) = LOWER(l.host_name) THEN 0 ELSE 1 END, c.name
+      ) m
+      ORDER BY l.site, l.ip_address
+    `);
+    const items = r.recordset.map((d) => ({
+      ...d,
+      suggested: suggestCategory(d.host_name, d.mac_address),
+    }));
+    return { items };
+  });
+
+  // Set / clear the operator category for a MAC (persists across reloads).
+  app.patch('/devices/category', async (req, reply) => {
+    const body = z.object({
+      mac: z.string().min(1).max(32),
+      category: z.union([z.enum(CATEGORIES), z.literal('')]),
+      note: z.string().max(255).optional(),
+    }).parse(req.body);
+    const mac = body.mac.trim().toUpperCase();
+    const pool = await getPool();
+    if (body.category === '') {
+      await pool.request().input('mac', mac).query(`DELETE FROM device_categories WHERE mac_address = @mac`);
+      return { mac, category: '' };
+    }
+    await pool.request().input('mac', mac).input('cat', body.category).input('note', body.note ?? null).query(`
+      MERGE device_categories AS t USING (SELECT @mac AS mac) AS s ON t.mac_address = s.mac
+      WHEN MATCHED THEN UPDATE SET category = @cat, note = @note, updated_at = SYSUTCDATETIME()
+      WHEN NOT MATCHED THEN INSERT (mac_address, category, note) VALUES (@mac, @cat, @note);
+    `);
+    return { mac, category: body.category };
+  });
+
+  // Manual one-off pull of every configured router — on demand from the tab.
+  app.post('/devices/run', async (_req, reply) => {
+    try {
+      const result = await runMikrotikCollectOnce();
+      if (result === null) {
+        reply.code(409);
+        return { error: 'DHCP collect already running' };
+      }
+      return result;
+    } catch (err) {
+      app.log.error({ err }, 'DHCP collect failed');
+      reply.code(500);
+      return { error: String(err) };
+    }
+  });
+
+  // Live ICMP ping of one device (per-row "Ping" → console modal).
+  app.post('/devices/probe', async (req, reply) => {
+    const body = z.object({
+      site: z.string().min(1).max(64),
+      mac: z.string().min(1).max(32),
+      ip: z.string().regex(/^[A-Za-z0-9._-]{1,255}$/),
+    }).parse(req.body);
+    try {
+      const result = await probeDeviceNow(body.site, body.mac.trim().toUpperCase(), body.ip);
+      return result;
+    } catch (err) {
+      app.log.error({ err, ip: body.ip }, 'device probe failed');
+      reply.code(500);
+      return { error: String(err) };
+    }
+  });
+}

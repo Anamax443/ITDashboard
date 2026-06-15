@@ -155,7 +155,7 @@ const HOST_RE = /^[A-Za-z0-9._-]{1,255}$/;
 // as UTF-8 and renders correctly in the console modal — a bare ping.exe spawn
 // emits the OEM codepage (cp852) which would mangle accents. TTL= in the output
 // marks a genuine echo reply (not a router "host unreachable", which exits 0).
-function pingWithOutput(host: string, count: number, timeoutMs: number): Promise<{ alive: boolean; output: string }> {
+export function pingWithOutput(host: string, count: number, timeoutMs: number): Promise<{ alive: boolean; output: string }> {
   return new Promise((resolve) => {
     if (!HOST_RE.test(host)) { resolve({ alive: false, output: `Invalid host: ${host}` }); return; }
     let out = '';

@@ -519,6 +519,28 @@ export interface PerPcProbeResult {
   console: string;
 }
 
+/** A MikroTik DHCP-discovered device (Devices tab), paired with its AD computer. */
+export interface DeviceItem {
+  site: string;
+  mac_address: string;
+  ip_address: string | null;
+  host_name: string | null;
+  server: string | null;
+  comment: string | null;
+  status: string | null;
+  dynamic: boolean | null;
+  expires_after: string | null;
+  router_last_seen: string | null;
+  last_seen: string;
+  reachable: boolean | null;            // ping verdict for UNMATCHED devices
+  reach_checked_at: string | null;
+  category: string | null;              // operator-assigned category (by MAC)
+  computer_id: number | null;           // matched AD computer (host_name / IP)
+  computer_name: string | null;
+  computer_reachable: boolean | null;   // matched computer's reachability
+  suggested: string;                    // UI-only category hint ('' = none)
+}
+
 async function jget<T>(path: string): Promise<T> {
   const r = await fetch(`${API_BASE}${path}`);
   if (!r.ok) throw new Error(`${path} → ${r.status}`);
@@ -655,6 +677,26 @@ export const api = {
   portStatus: () => jget<{ items: PortStatusComputer[] }>('/port-status'),
   portStatusRun: () => jpost<{ pcs: number; probed: number; skippedOffline: number; openPorts: number; durationMs: number }>('/port-status/run'),
   probeComputer: (computerId: number) => jpost<PerPcProbeResult>(`/computers/${computerId}/probe`),
+  devices: () => jget<{ items: DeviceItem[] }>('/devices'),
+  devicesRun: () => jpost<{ routers: number; leases: number; unmatchedPinged: number; reachable: number; errors: string[]; durationMs: number }>('/devices/run'),
+  setDeviceCategory: async (mac: string, category: string) => {
+    const r = await fetch(`${API_BASE}/devices/category`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mac, category }),
+    });
+    if (!r.ok) throw new Error(`PATCH /devices/category → ${r.status}`);
+    return r.json() as Promise<{ mac: string; category: string }>;
+  },
+  probeDevice: async (site: string, mac: string, ip: string) => {
+    const r = await fetch(`${API_BASE}/devices/probe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ site, mac, ip }),
+    });
+    if (!r.ok) throw new Error(`POST /devices/probe → ${r.status}`);
+    return r.json() as Promise<{ alive: boolean; console: string }>;
+  },
   collectorStop: () => jpost<{ stopped: boolean }>('/collector/stop'),
   activityLog: (limit = 200, sinceSeq?: number) => {
     const params = new URLSearchParams();
