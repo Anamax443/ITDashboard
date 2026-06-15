@@ -42,7 +42,7 @@
 <body>
 <main>
   <h1>ITDashboard <span class="badge live">LIVE</span></h1>
-  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-12</span></p>
+  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-15</span></p>
 
   <h2>Stav nasazení</h2>
   <div class="grid">
@@ -73,7 +73,9 @@
     <li><strong>Performance events</strong> — pomalý boot/shutdown/standby/resume z Diagnostics-Performance kanálu s pojmenovanými culprity.</li>
     <li><strong>Klasifikace dostupnosti</strong> — každý běh: online / offline / rpc_unavailable / access_denied.</li>
     <li><strong>Activity log</strong> — terminálový live view (filtr, pauza, copy) + perzistentní historie.</li>
-    <li><strong>Per-PC Actions</strong> — vzdálené admin zkratky (MMC, services, eventvwr, RDP, admin shares) přes hardenované <code>itd-*</code> URL handlery.</li>
+    <li><strong>Porty</strong> — záložka s živou mřížkou dostupnosti nakonfigurovaných TCP portů per stroj (otevřeno/zavřeno + latence); sonda na pozadí, ruční obnova a per-řádek živý ping (konzolové okno).</li>
+    <li><strong>Zařízení (Devices)</strong> — inventář DHCP zařízení z MikroTiku (IP, hostname, MAC, lokalita) párovaný s AD počítači podle hostname/IP; nespárovaná zařízení (tiskárny/telefony/IoT) se pingnou; per-zařízení kategorie s auto-návrhem, uložená dle MAC.</li>
+    <li><strong>Per-PC „Obnovit teď"</strong> — jednorázová obnova jednoho stroje napříč všemi checky: disky, služby, eventlog, perf, porty.</li>
     <li><strong>Settings</strong> — frekvence, časové okno, zapnuté checky, prahy — aplikováno živě bez restartu služby.</li>
   </ul>
 
@@ -90,8 +92,41 @@
     <tr><td>Protocol-handler installer</td><td>API base injektuje server při stažení (dle <code>Host</code> hlavičky) — nic ručně needitovat.</td></tr>
     <tr><td>Email alerty disků</td><td>Settings → „Email alerty — disky" (DB <code>settings.alerts.*</code>); per-PC výběr v Počítačích (📧 Disk). Nic v <code>.env</code>.</td></tr>
     <tr><td>Email alerty služeb</td><td>Settings → „Email alerty — služby" (DB <code>settings.alerts.services.*</code>); per-PC výběr (🔔 Služby). Sdílí SMTP/příjemce s disky.</td></tr>
+    <tr><td>MikroTik (DHCP inventář)</td><td>Settings → routery / uživatel / heslo. Heslo uloženo v DB <strong>šifrovaně</strong> (AES-256-CBC, klíč z env <code>MIKROTIK_SECRET</code>) — nikdy plaintext. Sběr DHCP běží jako externí naplánovaná PowerShell úloha na SQL serveru (host povolený na routerech), čte config z DB a heslo dešifruje.</td></tr>
   </table>
-  <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>.</p>
+  <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
+
+  <h2>Poslední změny (2026-06-15) — Porty, Zařízení (MikroTik DHCP), zjednodušení akcí</h2>
+  <p class="sub" style="margin:0 0 .75rem">Dvě nové záložky (Porty, Zařízení), MikroTik DHCP inventář se šifrovaným heslem a zjednodušení per-PC akcí. Zásahy do DB — <strong>migrace 041–042</strong>.</p>
+  <p style="margin:0 0 4px"><strong>Nová záložka „Porty"</strong> <span class="pill">migrace 041</span></p>
+  <ul>
+    <li>Živá mřížka dostupnosti nakonfigurovaných TCP portů per monitorovaný PC — otevřeno/zavřeno + latence.</li>
+    <li>Sonda na pozadí + ruční obnova + per-řádek živý ping (konzolové okno).</li>
+    <li>Nová tabulka <code>port_status</code>; nová nastavení <code>checks.run_port_status</code> a <code>port_status.interval_sec</code>; využívá stávající seznam portů a timeout.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Per-PC „Obnovit teď" probne i porty</strong></p>
+  <ul>
+    <li>Jednorázová obnova jednoho stroje teď zahrnuje porty jako 5. krok — obnoví disky, služby, eventlog, perf i porty.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Zjednodušení per-PC modálu Actions</strong></p>
+  <ul>
+    <li>Odebráno launcher / remote-management UI (MMC, RDP, PsExec, PS Remote, admin shares, copy) — zůstává jen obnova jednoho stroje.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Dashboard — dlaždice „Porty" + předvolba filtru na proklik</strong></p>
+  <ul>
+    <li>Nová dlaždice „Porty"; kliknutí na dlaždice teď předvolí filtr cílové záložky — Porty → jen problémy, Kritické služby → jen down, Zastavené služby → jen ExitCode ≠ 0.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Nová záložka „Zařízení" (MikroTik DHCP inventář)</strong> <span class="pill">migrace 042</span></p>
+  <ul>
+    <li>Inventář DHCP zařízení z MikroTiku (IP, hostname, MAC, lokalita) párovaný s AD počítači podle hostname/IP.</li>
+    <li>Nespárovaná zařízení (tiskárny / telefony / IoT) se pingnou; per-zařízení kategorie s auto-návrhem, uložená dle MAC.</li>
+    <li>Nové tabulky <code>dhcp_leases</code> + <code>device_categories</code>; routy <code>/devices</code> (+ category, run, probe).</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>MikroTik konfigurace + šifrované heslo</strong></p>
+  <ul>
+    <li>MikroTik (routery / uživatel / heslo) se nastavuje v Settings; heslo uloženo v DB <strong>šifrovaně</strong> (AES-256-CBC, klíč z env <code>MIKROTIK_SECRET</code>), nikdy plaintext. Nová env proměnná <code>MIKROTIK_SECRET</code>.</li>
+    <li><strong>Sběr DHCP:</strong> běží jako externí naplánovaná PowerShell úloha na SQL serveru (host povolený na routerech) — čte config z DB nastavení a heslo dešifruje.</li>
+  </ul>
 
   <h2>Poslední změny (2026-06-12) — emailing, dvouúrovňové služby, testy</h2>
   <p class="sub" style="margin:0 0 .75rem">Přepracování emailových reportů a monitoringu služeb; první automatizované testy jako deploy gate. Zásahy do DB — <strong>migrace 038–040</strong>. Živý commit <span class="pill">b7e03e2</span>.</p>
@@ -235,7 +270,7 @@
     <a href="SETUP-SERVER.md">SETUP-SERVER.md</a> ·
     <a href="../HANDOFF.md">HANDOFF.md</a> ·
     <a href="../README.md">README.md</a><br>
-    Generováno jako statický status snapshot — 2026-06-12.<br>
+    Generováno jako statický status snapshot — 2026-06-15.<br>
     © 2026 Milan Trnka, IT
   </footer>
 </main>

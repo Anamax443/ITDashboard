@@ -40,6 +40,8 @@
   - `services` — problems list, critical (`GET /services/critical` — real state of configured critical services, joined to `computers`; the response now also carries each PC's `critical_service_exceptions` so the tab/tile honour the same per-PC excepted-service list the email does)
   - `reports` — `GET /reports/overview` (structured fleet-overview JSON, no live probing) + `POST /reports/email` (`{ machines?: string[] }`, on-demand overview email); both share one generator so UI and email never drift
   - `reachability` — `POST /reachability/run` (manual probe trigger, backs Settings "Run now")
+  - `port-status` — `GET /port-status` (latest per-port verdict joined to `computers`, filtered to the currently configured check names), `POST /port-status/run` (manual probe), `POST /computers/:id/probe` (live ICMP-ping + ports console for one PC) — see **### Ports availability subsystem**
+  - `devices` — `GET /devices` (DHCP-lease inventory joined to `device_categories` + best-match computer, with a computed `suggested` category), `PATCH /devices/category` (upsert/clear a category by MAC), `POST /devices/run` (manual DHCP pull), `POST /devices/probe` (live per-row ping console) — see **### MikroTik DHCP device inventory**
   - `disks` — list, collect
   - `activity` — log
   - `settings` — get all, put bulk
@@ -52,6 +54,8 @@
   - **Disk + PC-info collector** — pulls Win32_LogicalDisk, Win32_ComputerSystem (current logged-in user), Win32_NetworkAdapterConfiguration (primary IPv4) via a single DCOM session. PC info populates `computers.current_user`, `current_user_seen_at`, `ip_address`, `pc_info_collected_at`. User is only overwritten when non-null (last-seen persists); IP is always overwritten.
   - **Services collector** — one `Get-CimInstance Win32_Service` enumeration per PC derives two outputs: Auto + non-running services (drift policy) and the configured critical services in any state (see **### Critical-service status collection**)
   - **Perf-events collector** — pulls slow boot/shutdown/standby/resume records from the `Microsoft-Windows-Diagnostics-Performance/Operational` channel; parses EventData XML for TotalTime / DegradationTime / culprit
+  - **Port-status collector** — a standalone timer (independent of the checks window) that probes every enabled, non-excluded PC's configured ports and records the latest open/closed + connect-latency verdict in `port_status`. See **### Ports availability subsystem**
+  - **MikroTik DHCP collector** — pulls bound DHCP leases from each configured RouterOS v7 router via the REST API, upserts them into `dhcp_leases`, pairs each lease to an AD computer, and pings only the unmatched (non-AD) devices. See **### MikroTik DHCP device inventory**
   - **Retention purge** — `sp_purge_old_events @retention_days = 90` daily
 
 ### Database (MSSQL on the SQL host — `SQL_HOST` / `SQL_INSTANCE`, DB `SQL_DATABASE`)
@@ -65,6 +69,9 @@ Tables:
 - `critical_service_status` — real state (any state, not just stopped) of the configured critical services per machine; `(computer_id, service_name)` PK, columns `service_name`, `display_name`, `state`, `start_mode`, `collected_at`. Populated from the same single Win32_Service enumeration as `service_problems`; consumed by `GET /services/critical`
 - `service_alert_state` — per-(PC, service) flapping-debounce state for critical-service email alerts (`first_down_at`); row cleared on service recovery
 - `port_check_state` — per-(PC, port) state for service port reachability checks: baseline `last_ok_at` (a port becomes alert-eligible only once it has answered) + flapping-debounce state; row cleared on port recovery
+- `port_status` — the **latest** per-port verdict for the ports-availability grid (migration 041): `computer_id`, `check_name`, `port`, `is_open`, `latency_ms`, `checked_at`; PK `(computer_id, check_name)`. Distinct from `port_check_state` (which is the phase-2 ALERT state machine) — this holds only the current open/closed + latency snapshot the grid renders. See **### Ports availability subsystem**
+- `dhcp_leases` — bound MikroTik DHCP leases discovered via RouterOS (migration 042); PK `(site, mac_address)`, columns `ip`, `host_name`, `server`, `comment`, `status`, `dynamic`, `expires_after`, `first_seen`, `last_seen`, `reachable`, `last_reachable_at`, `reach_checked_at`. See **### MikroTik DHCP device inventory**
+- `device_categories` — operator-assigned device category (migration 042); PK `mac_address` so the category persists by MAC across sites/router reloads, independently of the lease lifecycle
 - `settings` — key-value, edited via Settings tab
 - `collector_runs` — eventlog collector run audit
 - `ad_sync_runs` — AD sync audit
@@ -76,7 +83,7 @@ Tables:
 
 All environment-specific configuration is fully externalized — the source tree carries **no IPs, hostnames, or domain names**. To stand the project up in a different environment you change config only, never code:
 
-- **`apps/server/.env`** is the single place for runtime config (SQL host/instance/database, AD/LDAP settings, edit-group DN, retention overrides, etc.). The committed **`.env.example`** is the template and the single source of truth for what knobs exist — copy it to `.env` and fill in access/values.
+- **`apps/server/.env`** is the single place for runtime config (SQL host/instance/database, AD/LDAP settings, edit-group DN, retention overrides, etc.). The committed **`.env.example`** is the template and the single source of truth for what knobs exist — copy it to `.env` and fill in access/values. **`MIKROTIK_SECRET`** (new this session) is the AES key material for reversibly encrypting the MikroTik router password in `settings` (see **### Secret encryption for settings**) — it **must be identical on the API host and the SQL-side DHCP sync host** (see **### MikroTik collection deployment model**).
 - **GitHub Actions repository Variables** drive the auto-deploy pipeline: the workflow reads `SQL_HOST`, `SQL_INSTANCE`, and `SQL_DATABASE` from repo-level Variables, so the deploy target is configured in the repo settings, not in committed YAML.
 - **Browser client** uses relative URLs (served by the API), so it needs no base configuration. The **Electron** client sets `VITE_API_BASE` at build time. The **protocol-handler installer** base is injected by the server at download time (committed default is a neutral `localhost` placeholder).
 
@@ -138,6 +145,9 @@ AD sync is registered as the first check in the registry. Order matters: if a pe
 The whole tool follows the loop `observe → compare with threshold → show to operator`, never `observe → act → re-observe`. Remediation is delegated to the human at the screen. The Services tab "GPO script export" stays on the right side of this line (we export a script, we don't execute it). Future backlog items like "Direct fix button per service-PC" would cross it, and should be evaluated against this principle before being implemented. Two reasons: (1) absence of signal is ambiguous — an OFFLINE PC could be down, the network could be down, or the monitor itself could be blind, so acting on incomplete state is dangerous; (2) the monitor doesn't own truth, the machines do — every shown value is a 30-second-to-15-minute-stale derivative, and acting on stale state is how races and storms start.
 
 ### Per-PC Actions and URL protocol handlers
+
+> **UI surface removed (this session).** The PcActions launcher / remote-management UI (MMC / RDP / PsExec / PS Remote / admin shares / copy / installer banner) has been **removed** from the client — only single-PC refresh remains in the Computers tab. The `/actions/*` server routes and the install-handler scripts described below are **retained server-side but unused from the UI**; the rest of this section documents that retained (now dormant) mechanism.
+
 Computers tab Actions are operator launch shortcuts, not automated remediation. Every row offers copy/download fallbacks. Optional one-click launch is implemented by a per-workstation installer (`apps/server/scripts/install-itd-handlers.cmd`) that registers custom `itd-*` URL protocols under HKCU only. The installer does **not** hardcode the API base — the committed default is a neutral `localhost` placeholder, and the server rewrites it at download time to whatever host the browser fetched it from, honoring `x-forwarded-proto` / `x-forwarded-host` so the injected base is correct behind a TLS-terminating reverse proxy.
 
 Security posture:
@@ -259,6 +269,44 @@ Checking the service's `Running` state only proves the service-control manager *
 **Reuses the service-alert guards.** The port checks reuse the service-alert `debounce_minutes` / `maintenance_window` / `frequency_hours` (no separate flapping config), but have their own enable toggle so port checks can be turned on/off independently of the `Running`-state alerts. Settings keys: `alerts.services.port_checks_enabled`, `alerts.services.port_checks` (seeded `LDAP:389,SMB:445,RDP:3389,Kerberos:88,DNS:53`), and `alerts.services.port_timeout_ms` (default 2000).
 
 **Implementation.** `evaluateAndSendPortAlerts` in `apps/server/src/services/alerts.ts` does the TCP probe, baseline learning, debounce / maintenance-window / throttle, and renders its own mobile-friendly report; it is hooked right after `evaluateAndSendServiceAlerts` in `runServicesScanOnce`. Route `POST /alerts/ports/test` runs a live probe (ignoring enable/throttle) to back the Settings test button.
+
+### Ports availability subsystem (migration 041)
+
+A read-only **ports-availability grid** that shows, per PC, the **current** open/closed state and TCP connect latency of each configured port. This is the *observability* counterpart to the phase-2 port **alerting** above: the alert path (`port_check_state`) is a baseline-learning state machine that decides when to email; this subsystem (`port_status`) is just "what is the latest verdict for every port on every box", surfaced as a grid the operator can scan.
+
+**Storage.** Table `port_status` holds the latest verdict only — `(computer_id, check_name)` PK, columns `port`, `is_open`, `latency_ms`, `checked_at`. One row per (PC, configured check); each probe overwrites it. Kept deliberately distinct from `port_check_state` so the grid snapshot and the alert state machine never interfere.
+
+**Service.** `apps/server/src/services/port-status-collector.ts` runs on its **own standalone scheduler** (gated by `checks.run_port_status`, interval `port_status.interval_sec`, default 300 s), the same independent-timer pattern as the reachability probe — *not* a member of the checks-runner array. It **reuses the configured port list + timeout** from the alert config (`alerts.services.port_checks` / `alerts.services.port_timeout_ms`) so the grid and the alerts probe the same ports. For every enabled, non-excluded PC it TCP-connects each port and measures connect latency; it **skips PCs with `computers.reachable = 0`** (a powered-off box isn't re-probed per-port). It **prunes `port_status` rows whose `check_name` is no longer configured**, so the grid follows Settings — removing a port from the list removes its column rather than leaving stale rows.
+
+**Exports.** `runPortStatusProbeOnce` (full-fleet probe), `probeOnePcPorts` (single-PC, reused by refresh-single-pc), `probeComputerNow` (ICMP ping + ports, returns a cmd-like console transcript via `cmd /c chcp 65001 & ping -n 4 …` for the per-PC live console), and `configuredCheckNames` (the active check-name set used by the grid filter).
+
+**Routes.** `GET /port-status` joins `computers` (OUTER APPLY-style best match) and filters to the configured check names; `POST /port-status/run` triggers a manual probe; `POST /computers/:id/probe` runs the live ping + ports console for one PC.
+
+**Single-PC refresh integration.** `refresh-single-pc.ts` gained a **5th step** that calls `probeOnePcPorts`, so a manual "Aktualizovat teď" also refreshes that machine's port-status row alongside the other collectors.
+
+### MikroTik DHCP device inventory (migration 042)
+
+Discovers the **non-AD** devices on the network — printers, phones, IoT — by reading the bound DHCP leases off the MikroTik routers, and builds the authoritative **IP ↔ MAC ↔ hostname** map. AD computers are already richly tracked (and have reachability), so the value here is precisely the devices that *aren't* in AD.
+
+**Storage.** Two tables (migration 042):
+- `dhcp_leases` — PK `(site, mac_address)`; the lease itself (`ip`, `host_name`, `server`, `comment`, `status`, `dynamic`, `expires_after`), `first_seen` / `last_seen` lifecycle, and reachability columns (`reachable`, `last_reachable_at`, `reach_checked_at`) for the unmatched devices the collector pings itself.
+- `device_categories` — PK `mac_address`; the operator-assigned category, keyed by MAC so it persists across sites and router reloads regardless of the lease's churn.
+
+**Service.** `apps/server/src/services/mikrotik-collector.ts` pulls bound leases from each configured **RouterOS v7** router via the **REST API** (`GET /rest/ip/dhcp-server/lease`, HTTP Basic auth) and upserts each lease per `(site, mac)`. It then **pairs each lease to an AD computer** by `host_name` (falling back to IP), and **pings ONLY the unmatched devices** — matched ones already have reachability from the reachability collector, so re-pinging them would be redundant. `suggestCategory(hostname, mac)` is a UI hint only: a printer-vendor OUI map (Zebra / Canon / Kyocera) plus hostname keywords (HP / Epson / etc., phones). `probeDeviceNow` backs the per-row live-ping console.
+
+**Routes.** `GET /devices` LEFT JOINs `device_categories` and OUTER APPLY-best-matches a computer by `host_name` then IP, adding a computed `suggested` category; `PATCH /devices/category` upserts or clears a category by MAC; `POST /devices/run` triggers a manual DHCP pull; `POST /devices/probe` runs the per-row live ping console.
+
+**Pairing rationale.** Matched devices already have rich data + reachability — "a lot is already handled" by the existing collectors. The inventory's payoff is twofold: discovering the **non-AD** devices (printers / phones / IoT) that nothing else sees, and the authoritative **IP ↔ MAC ↔ hostname** mapping that the lease table provides.
+
+### Secret encryption for settings (`secret-crypto.ts`)
+
+Some settings (the MikroTik router password) must be stored **reversibly** because HTTP Basic auth needs the real password back at request time — a one-way hash is deliberately **not** used here. `apps/server/src/services/secret-crypto.ts` implements reversible **AES-256-CBC**: the key is `SHA-256(env MIKROTIK_SECRET)`, and ciphertext is stored in the format `enc:v1:base64(iv || ciphertext)`. When `MIKROTIK_SECRET` is unset, it falls back to a `plain:` prefix with a logged warning rather than failing — so a misconfigured host still works, loudly, instead of silently breaking.
+
+**Settings route hooks.** `mikrotik.password` is **never persisted in plaintext**: on PUT the route encrypts it into `mikrotik.password_enc`; on GET it **masks** the value and **omits the ciphertext** from the response. Submitting the mask back means "unchanged" (the existing ciphertext is kept); submitting empty clears it.
+
+### MikroTik collection deployment model
+
+The RouterOS read-only account is **source-IP restricted to the SQL host (`10.8.2.225`)**, not the API host (`10.8.2.213`) — so in the reference deployment the API host cannot reach the routers. The DHCP pull therefore runs as an **external scheduled PowerShell job on the SQL server**: it reads the router list + user from the DB `settings`, **decrypts the password with the shared `MIKROTIK_SECRET`**, writes `dhcp_leases` directly to the local DB, and pings the unmatched devices. The in-process `mikrotik-collector.ts` on the API host is the **alternative** path, usable only if that host is itself allowed on the routers. Either way, `MIKROTIK_SECRET` **must be identical** on the API host and the sync host, since one encrypts what the other decrypts.
 
 ### Critical-service status collection
 
@@ -493,5 +541,7 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 038_per_agenda_recipients | `alerts.disk.recipients` / `alerts.services.recipients` / `alerts.ports.recipients` settings seed (empty) — per-agenda recipient override with fallback to the shared `alerts.recipients`; SMTP host/port/From + dashboard URL stay shared |
 | 039_reports_recipients | `alerts.reports.recipients` settings seed (empty) — per-agenda recipient override for the fleet-overview report, same shared-fallback model as 038 |
 | 040_service_two_level | computers.service_monitor BIT (broad "every Auto service not Running" level) + service_exceptions NVARCHAR (broad per-PC ignore list) + critical_service_exceptions NVARCHAR (critical per-PC ignore list) — two-level service monitoring with per-PC exceptions; the existing service_email_monitor now denotes the critical level |
+| 041_port_status | port_status table (PK `(computer_id, check_name)`; port, is_open, latency_ms, checked_at) — latest per-port open/closed + latency verdict for the ports-availability grid; distinct from the port_check_state alert state machine. Consumed by `GET /port-status`, populated by the standalone port-status collector (`checks.run_port_status` / `port_status.interval_sec` default 300) |
+| 042_mikrotik_dhcp | dhcp_leases table (PK `(site, mac_address)`; ip, host_name, server, comment, status, dynamic, expires_after, first_seen, last_seen, reachable, last_reachable_at, reach_checked_at) + device_categories table (PK `mac_address`; operator-assigned category, persists by MAC) — MikroTik RouterOS DHCP device inventory, consumed by `GET /devices` |
 
 > `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).

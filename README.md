@@ -13,13 +13,16 @@ Internal IT operations dashboard for the **AXINETWORK** domain. Eventlog analyti
 - **Services collector + policy** — detects Auto + non-Running services across the fleet, classifies legitimate cases (Trigger / Delayed / per-user), flags real drift against a policy table, GPO PS script export.
 - **Critical services — real state** — the configured critical-services list (`alerts.services.critical_names`: NTDS, DNS, Kdc, Veeam, …) is now captured on every machine where it exists, in **any** state (Running included), from the same CIM enumeration as the problem scan — so you can confirm the critical services actually run, not just spot the ones that broke. Dashboard tile "🛡 Critical services" (count not-running on reachable machines, red when >0) opens a "Critical services" tab: a sortable service × machine table of real State (Running/Stopped), start mode, IP, last check, with offline machines flagged amber (last-known rows kept stale), an only-not-running filter, search and export. Only services that exist on a machine get a row (servers vs PCs sorts itself out). Per-PC critical-service exceptions are honoured here too — an excepted non-running service is dropped from the "N not running" count and the dashboard tile, sinks to the bottom and renders greyed with an "exception" tag instead of red. DCs/locked-down servers that fail the CIM scan with "Access is denied" have no rows until the service account is granted WMI/DCOM rights there.
 - **Performance events** — pulls slow boot / shutdown / standby / resume records from the `Microsoft-Windows-Diagnostics-Performance/Operational` channel with named culprits and timings (observer of Windows' own diagnostics, no continuous polling).
+- **Port availability (Ports tab)** — a standalone collector TCP-probes each monitored PC's configured ports on its **own interval** (`port_status.interval_sec`, default 300 s; toggle `checks.run_port_status`), reusing the existing port list and timeout (`alerts.services.port_checks`, `alerts.services.port_timeout_ms`) so it works even when the phase-2 service/port alert emails are off. Offline PCs (`computers.reachable=0`) are skipped. The Ports tab is a grid of PC × port (● open + latency / ○ closed / — offline) with an "only issues" filter, a "Refresh" button (whole-fleet probe now), and a per-row "Ping" button. Removing a port from the Settings list drops it from the grid (the feed filters to currently-configured names and the probe prunes stale rows). Dashboard tile "🔌 Ports" (PCs with a closed port / total) opens it.
+- **Device inventory (Devices tab)** — MikroTik DHCP lease inventory pulled from the configured RouterOS routers. Each lease is paired with an AD computer by host name (fallback IP): matched devices reuse the reachability collector's online/offline; unmatched devices (printers, phones, IoT) are pinged directly. A category suggestion guesses printer vendors (Canon/Kyocera/Zebra/HP via OUI/hostname) and phones, but an operator-assigned category is authoritative and **persists by MAC** across reloads and sites. The Devices tab is a site / IP / hostname / MAC grid with a per-row category dropdown (clickable suggestion), online/offline, AD link, filters (site / "not in AD only" / "printers only"), Refresh, and a per-row Ping console.
 - **Reachability classification** — every collector run categorises each PC as `online` / `offline` / `rpc_unavailable` / `access_denied`. Dashboard surfaces breakdown.
 - **Live reachability probe** — a standalone probe marks every enabled, non-excluded PC reachable if any of TCP 135 / TCP 445 / an ICMP ping fallback (`reachability.ping`, on by default — catches hosts that block RPC/SMB but answer ping) responds, on its **own interval** (`reachability.interval_sec`, default 300 s), independent of monitoring, the collector failure cap, **and the main-scan window** — so Status stays fresh 24/7. Drives the Computers **Status** column as live "is this PC on the network now": `Active` = reachable (dim "logs" marker if up but event log unreadable), `Offline` = not reachable, `Disabled` = AD account disabled. New **offline** filter chip/dropdown; toggle + interval in Settings → "Network reachability (Status)".
 - **OS breakdown chart** — second-row "📊 Operating systems" dashboard tile (count of OS buckets) that expands an inline bar chart of the live managed fleet by canonical OS bucket (Windows 11/10/Server/…), each bar split into an active and a hatched "stale" (past inactivity threshold) segment; click a segment to drill into the Computers tab filtered to that OS + live/stale.
 - **Problem-PC detection** — a second-row "Problem PCs" dashboard tile that ranks PCs by accumulated eventlog problems to surface boxes in trouble. A "damped blend" score over a configurable window caps per-signature occurrences (so one chatty driver can't flag a healthy box), weights severity, and rewards breadth (many *different* errors) and persistence (errors across many *days*) — catching a systemically sick box, not just a noisy one. Clicking the tile expands an inline breakdown table (score · crit · err · warn · types · days); each row jumps to that PC.
 - **Activity log** — terminal-style live view of every collector / sync / disk-scan action with filter, pause, copy-to-clipboard.
 - **Settings page** — periodic check frequency, days/time window, enabled checks + disk thresholds, applied live without service restart.
-- **Per-PC Actions** — one-row remote-admin shortcuts (MMC, services, event viewer, task scheduler, RDP, admin shares) with copy/download fallbacks and optional hardened `itd-*` URL protocol handlers.
+- **Per-PC Refresh** — the per-row 🔄 action in Computers (component `PcActions`) refreshes everything monitored for one PC in a single pass: disk, services, eventlog, perf, and now **ports** as a 5th step (`refresh-single-pc.ts`). The launcher / remote-management UI that used to live here (Remote MMC compmgmt/services/eventvwr/taskschd, Remote access RDP/PsExec/PS Remote, admin shares, copy helpers, the URL-handler installer banner) was **removed at operator request** — the modal now contains only the single-PC Refresh, and the launcher `actions.*` i18n keys were dropped. The server `/actions/*` install-handler routes and the handler scripts described in **Status** below are **retained but no longer surfaced from the UI**.
+- **Ping console** — the per-row "Ping" button (Ports and Devices tabs) opens a cmd-style console modal showing the real `ping.exe` output (run via `cmd /c chcp 65001 & ping -n 4` so localized output comes back as UTF-8) plus per-port open/closed/latency lines. `POST /computers/:id/probe` runs a live ICMP ping + per-port TCP probe for one PC.
 
 ## Live topology
 
@@ -67,6 +70,7 @@ this repo into a different environment you only change access/config, not code:
    | `AD_LDAP_URL` | comma-separated DC LDAP URLs (edit-tier login) |
    | `AD_LDAP_DOMAIN` | default UPN suffix for bare usernames |
    | `AD_LDAP_BASE_DN` / `AD_EDIT_GROUP` | search root + edit-tier group DN |
+   | `MIKROTIK_SECRET` | AES-256-CBC key material (SHA-256'd) for the encrypted RouterOS password — **must match** on the API host and on any external sync host that decrypts it |
 
 2. **GitHub Actions variables** (only if you use the auto-deploy pipeline) — set
    `SQL_HOST`, `SQL_INSTANCE`, `SQL_DATABASE` as repository *Variables*; the
@@ -79,14 +83,31 @@ this repo into a different environment you only change access/config, not code:
    was fetched from. Only the packaged Electron client needs an explicit
    `VITE_API_BASE` baked at build time.
 
+4. **MikroTik DHCP (Devices tab)** — configured in Settings → "MikroTik DHCP":
+   routers as a `Site=IP` comma list, the RouterOS read-only user, and the
+   password. The password is stored **encrypted** in the DB, never plaintext —
+   `secret-crypto.ts` (AES-256-CBC, key = SHA-256 of env `MIKROTIK_SECRET`).
+   `GET /settings` masks it (••••); `PUT` encrypts it into
+   `mikrotik.password_enc` (a submitted mask = leave unchanged, empty = clear).
+   If `MIKROTIK_SECRET` is unset it falls back to a clearly-marked `plain:`
+   prefix with a warning. **Deployment note:** in the reference deployment the
+   RouterOS account is restricted by source IP to the SQL host (10.8.2.225), not
+   the API host (10.8.2.213), so the DHCP pull runs as an **external scheduled
+   PowerShell job on the SQL server** — it reads the router list/user from the DB
+   settings, decrypts the password with the same `MIKROTIK_SECRET`, writes
+   `dhcp_leases`, and pings unmatched devices. (Alternative: allow the API host
+   on the routers and use the built-in in-process collector.) Routes: `GET
+   /devices`, `PATCH /devices/category`, `POST /devices/run`, `POST
+   /devices/probe`.
+
 ## Layout
 
 ```
 ITDashboard/
   apps/
-    desktop/                       # Electron + React UI (Dashboard, Events, Computers, Activity, Settings)
+    desktop/                       # Electron + React UI (Dashboard, Events, Computers, Services, Ports, Devices, Activity, Settings)
     server/                        # Fastify API + collectors + AD sync
-      migrations/                  # MSSQL migrations 001–040
+      migrations/                  # MSSQL migrations 001–042
   packages/
     ad-bridge/                     # AD wrapper (Get-ADComputer)
     eventlog-collector/            # standalone wrapper (currently inlined in server)
@@ -168,6 +189,16 @@ New `itd-ps://` launcher for remote PowerShell via `Enter-PSSession`. Registered
 **TXT export BOM (commit `563a147`):** the TXT (Tab) export now carries a UTF-8 BOM so an ANSI-default editor doesn't render →/✓/— as mojibake.
 
 **Recipients, reporting, two-level services, tests (2026-06-12 batch 2, migrations 038–040):** per-agenda email recipients with shared fallback + a standalone Email/SMTP settings section (mig 038/039). Structured PC-vs-servers fleet report — `GET /reports/overview` + `POST /reports/email` (one generator), emailed from the Computers tab for the filtered machines, disabled machines included. Machine-readable email subjects `[OK]`/`[CHYBA]` + `[RUČNĚ]`, status banner. Two-level service monitoring (broad 🔧 Služby + 🛡 Krit. služby) with per-PC ignore lists (mig 040); broad level = the collector's "real" set (excludes trigger/delayed, exit-code-agnostic — 413 of 454 real Auto-down problems report exit 0/null, so exit code is not a discriminator). Services-tab filters fixed to treat `exit_code` null as graceful and the "Only ExitCode != 0" default flipped off. Critical-service per-PC exceptions now honoured in the tab + dashboard tile. Dashboard **tile numbers colour by severity** (green at zero, red/orange when there's a problem). **First automated test suites** — Vitest, 54 cases across desktop (`api.test.ts`) and server (`alerts-util.test.ts`, pure helpers extracted to `alerts-util.ts`); CI runs `npm test` after typecheck as a deploy gate. A ~90-page Czech review/defence document is in `docs/oponentura.md`.
+
+**Ports tab + Devices tab + per-PC refresh trim (migrations 041–042):** two new tabs and a trimmed per-PC modal.
+
+- **Ports tab** (migration 041 adds table `port_status` — latest per-(computer, check_name) verdict: `is_open`, `latency_ms`, `checked_at`). Standalone collector `port-status-collector.ts` TCP-probes each monitored PC's configured ports on its own schedule (settings `checks.run_port_status` default 1, `port_status.interval_sec` default 300), reusing the existing port list + timeout (`alerts.services.port_checks`, `alerts.services.port_timeout_ms`) so it runs even with phase-2 alert emails off; offline PCs (`reachable=0`) are skipped. Routes: `GET /port-status` (grid feed, filtered to currently-configured port names + paired with computer reachability), `POST /port-status/run` (whole-fleet probe now), `POST /computers/:id/probe` (live ICMP ping + per-port TCP for one PC). Desktop `PortsPage`: PC × port grid (● open + latency / ○ closed / — offline), "only issues" filter, "Refresh" button, per-row "Ping". Removing a port from the Settings list drops it from the grid (GET filters to configured names; the probe prunes stale rows).
+- **Per-PC Refresh now also probes ports** — the per-row 🔄 action (`PcActions` / `refresh-single-pc.ts`) refreshes all five monitored areas: disk, services, eventlog, perf, ports.
+- **PcActions trimmed** — the launcher / remote-management content (Remote MMC, RDP/PsExec/PS Remote, admin shares, copy helpers, URL-handler installer banner) was **removed at operator request**; the modal now holds only the single-PC Refresh, and the launcher `actions.*` i18n keys were removed. The server `/actions/*` install-handler routes and handler scripts (documented above) are retained but no longer surfaced from the UI.
+- **Ping console** — the per-row "Ping" (Ports and Devices tabs) opens a cmd-style console modal with the real `ping.exe` output (run via `cmd /c chcp 65001 & ping -n 4` for UTF-8 localized output) plus per-port open/closed/latency lines.
+- **Dashboard tiles** — new tile "🔌 Ports" (PCs with a closed port / total) opens the Ports tab. Clicking a dashboard tile now also pre-checks the relevant filter (one-shot): Ports → "only issues"; Critical services → "only down (not Running)"; Stopped services → "only ExitCode != 0".
+- **Devices tab** (migration 042 adds `dhcp_leases` — PK site+mac_address: ip, host_name, server, comment, status, dynamic, expires_after, first_seen/last_seen, reachable/reach_checked_at — and `device_categories` — PK mac_address, operator-assigned category persisting by MAC across reloads/sites). MikroTik DHCP lease inventory; each lease is paired with an AD `computers` row by host_name (fallback IP): matched devices reuse the reachability collector's online/offline, unmatched devices (printers, phones, IoT) are pinged. A `suggestCategory` hint guesses printer vendors (Canon/Kyocera/Zebra/HP via OUI/hostname) and phones — operator override is authoritative. Routes: `GET /devices` (leases + matched computer + category + suggestion), `PATCH /devices/category`, `POST /devices/run`, `POST /devices/probe`. Desktop `DevicesPage`: site / IP / hostname / MAC grid, per-row category dropdown (clickable suggestion), online/offline, AD link, filters (site / "not in AD only" / "printers only"), Refresh, per-row Ping console.
+- **MikroTik config + encrypted password** — Settings → "MikroTik DHCP" (routers as `Site=IP` comma list, RouterOS user, password). Password stored **encrypted** via `secret-crypto.ts` (AES-256-CBC, key = SHA-256 of env `MIKROTIK_SECRET`); `GET /settings` masks it (••••), `PUT` encrypts into `mikrotik.password_enc` (mask = unchanged, empty = clear); `plain:`-prefixed fallback with a warning if `MIKROTIK_SECRET` is unset. Because the RouterOS read-only account is restricted by source IP to the SQL host (10.8.2.225), the reference deployment pulls DHCP via an **external scheduled PowerShell job on the SQL server** (reads router list/user from DB settings, decrypts with the same `MIKROTIK_SECRET`, writes `dhcp_leases`, pings unmatched devices); the built-in in-process collector is the alternative if the API host is allowed on the routers. New env var `MIKROTIK_SECRET` documented in `.env.example` (must match on the API host and the sync host).
 
 ## Testing
 

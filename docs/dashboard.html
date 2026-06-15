@@ -108,6 +108,8 @@ a.external { color: var(--accent); }
     <li><a href="#configuration"><span data-lang="cs">Konfigurace a přenositelnost</span><span data-lang="en">Configuration &amp; portability</span></a></li>
     <li><a href="#components"><span data-lang="cs">Komponenty</span><span data-lang="en">Components</span></a></li>
     <li><a href="#ui-tour"><span data-lang="cs">UI prohlídka</span><span data-lang="en">UI tour</span></a></li>
+    <li><a href="#ports"><span data-lang="cs">Záložka Porty</span><span data-lang="en">Ports tab</span></a></li>
+    <li><a href="#devices"><span data-lang="cs">Záložka Zařízení</span><span data-lang="en">Devices tab</span></a></li>
     <li><a href="#pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></a></li>
     <li><a href="#collector">Eventlog collector</a></li>
     <li><a href="#disk"><span data-lang="cs">Disk collector</span><span data-lang="en">Disk space collector</span></a></li>
@@ -346,11 +348,13 @@ service restarts on new dist/, in-memory state cleared</div>
       <li>Disk warning → Computers tab with disk-warning filter</li>
       <li>Stopped services (PCs affected) → Services tab. Services on the service alert whitelist (Settings → "Email alerts — services") are always excluded here — they do not count toward the PC count or the "N services" subtitle.</li>
       <li>🛡 Critical services (count not-running on reachable machines, per-PC exceptions excluded, red when &gt; 0) → opens the new Critical services tab</li>
+      <li>🔌 Ports / Porty (count of PCs with at least one closed key TCP port, red when &gt; 0) → opens the new Ports tab</li>
       <li>Slow boot/shutdown (7d, PCs affected) → Perf tab</li>
       <li>Computers (active/total) → Computers tab unfiltered</li>
     </ul>
   </li>
   <li><strong>Tile colour follows severity</strong> — a tile's number is <strong>green when it is zero</strong> (nothing wrong) and only turns <strong>red / orange when there is an actual problem</strong> (e.g. a critical service not running, a watched disk critical). At a glance a wall of green means "all good"; any colour means "look here".</li>
+  <li><strong>Clicking a tile pre-selects the matching filter on the target tab</strong> — the <strong>Ports</strong> tile opens the Ports tab with <em>"only issues"</em> on; the <strong>Critical services</strong> tile opens the Services tab with <em>"only down"</em> on; the <strong>Stopped services</strong> tile opens the Services tab with <em>"only ExitCode ≠ 0"</em> on. So you land directly on the problem rows instead of the full list.</li>
   <li><strong>Events timeline (24h)</strong> — stacked hourly bars (Critical/Error/Warning), SVG</li>
   <li><strong>Top noisy PCs (24h)</strong> — top 10 ranked, breakdown by level via colored progress bar</li>
   <li><strong>Top event IDs (24h)</strong> — top 15 event IDs by count, sortable</li>
@@ -497,7 +501,63 @@ service restarts on new dist/, in-memory state cleared</div>
   </ul>
 </div>
 
+<h3 id="ports"><span data-lang="cs">Záložka Porty</span><span data-lang="en">Ports tab</span></h3>
+<div data-lang="en">
+  <p>Shows the <strong>current availability of key TCP ports</strong> (SMB:445, RDP:3389, Kerberos:88, DNS:53, …) on the watched PCs, as a grid (PC in rows × port in columns):</p>
+  <ul>
+    <li><strong>● open</strong> — the port answered; the cell also shows the <strong>latency</strong> in ms.</li>
+    <li><strong>○ closed</strong> — the machine is up but the port did not answer (service down, firewall, role missing).</li>
+    <li><strong>— offline / unknown</strong> — the machine is not reachable, or it has not been probed yet.</li>
+    <li>The <strong>list of ports and the per-port timeout</strong> come from <strong>Settings</strong> (the phase-2 port checks). Add or remove a port there and the grid columns follow — remove a port from Settings and it disappears here.</li>
+    <li>A <strong>background probe</strong> keeps the grid fresh on its own; you do not have to refresh by hand.</li>
+    <li><strong>Aktualizovat / Refresh</strong> — re-probes the <strong>whole fleet</strong> on demand (every PC × every configured port).</li>
+    <li><strong>📡 Ping</strong> (per row) — <strong>live-tests one machine right now</strong> (ICMP ping + the TCP ports) and opens a console window with the <strong>real ping output</strong>, so you see the actual round-trip times and any packet loss.</li>
+    <li><strong>jen problémy / only issues</strong> filter — narrows the grid to PCs that have <strong>at least one closed port</strong>. The 🔌 Ports dashboard tile opens this tab with this filter already on.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p>Ukazuje <strong>aktuální dostupnost klíčových TCP portů</strong> (SMB:445, RDP:3389, Kerberos:88, DNS:53, …) na sledovaných PC jako mřížku (PC v řádcích × port ve sloupcích):</p>
+  <ul>
+    <li><strong>● otevřený</strong> — port odpověděl; buňka navíc ukazuje <strong>latenci</strong> v ms.</li>
+    <li><strong>○ zavřený</strong> — stroj běží, ale port neodpověděl (služba spadlá, firewall, chybí role).</li>
+    <li><strong>— offline / neznámý</strong> — stroj je nedostupný, nebo ještě nebyl odsondovaný.</li>
+    <li><strong>Seznam portů a timeout</strong> na port se berou z <strong>Nastavení</strong> (port checky fáze 2). Přidáš/odebereš port tam a sloupce mřížky se přizpůsobí — odebraný port z Nastavení tady zmizí.</li>
+    <li><strong>Sonda na pozadí</strong> drží mřížku čerstvou sama; nemusíš ručně refreshovat.</li>
+    <li><strong>Aktualizovat / Refresh</strong> — na vyžádání znovu odsonduje <strong>celou flotilu</strong> (každé PC × každý nakonfigurovaný port).</li>
+    <li><strong>📡 Ping</strong> (u řádku) — <strong>živě otestuje jeden stroj teď hned</strong> (ICMP ping + TCP porty) a otevře konzolové okno se <strong>skutečným výstupem pingu</strong>, takže vidíš reálné odezvy i ztrátovost.</li>
+    <li>Filtr <strong>jen problémy / only issues</strong> — zúží mřížku na PC, která mají <strong>aspoň jeden zavřený port</strong>. Dashboard dlaždice 🔌 Porty otevírá tuto záložku rovnou s tímto filtrem.</li>
+  </ul>
+</div>
+
+<h3 id="devices"><span data-lang="cs">Záložka Zařízení</span><span data-lang="en">Devices tab</span></h3>
+<div data-lang="en">
+  <p>A <strong>network device inventory</strong> built from <strong>MikroTik DHCP leases</strong> — shows everything that has an IP on the network, not just AD computers (printers, phones, IoT, switches…). Per device: IP, hostname, MAC and the site it lives at.</p>
+  <ul>
+    <li><strong>Pairing with AD</strong> — each lease is matched to its AD computer by <strong>hostname</strong> (falling back to <strong>IP</strong>). A matched device shows a <strong>"✓ &lt;name&gt;" link</strong> to its AD computer and <strong>reuses the main monitor's online/offline</strong> state (no extra probe). <strong>Unmatched</strong> devices (printers, phones, IoT — things that aren't in AD) are <strong>pinged here</strong> instead.</li>
+    <li><strong>Category dropdown</strong> per device — Tiskárna Canon / Kyocera / Zebra / HP / jiná (printer), Telefon (phone), PC, Server, Síťový prvek (network device), IoT, Jiné (other). The dashboard shows an <strong>auto suggestion</strong> (clickable to accept). The category you choose is <strong>saved by MAC</strong> and <strong>re-applied on every refresh</strong>, so it sticks even as leases come and go.</li>
+    <li><strong>Filters</strong> — site, <strong>jen mimo AD / not in AD only</strong> (devices with no AD match), <strong>jen tiskárny / printers only</strong>.</li>
+    <li><strong>Aktualizovat / Refresh</strong> — pulls the <strong>current leases</strong> from the routers.</li>
+    <li><strong>📡 Ping</strong> (per row) — opens the console window with the live ping output, same as on the Ports tab.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p><strong>Inventář síťových zařízení</strong> postavený z <strong>MikroTik DHCP leases</strong> — ukazuje vše, co má na síti IP, ne jen AD počítače (tiskárny, telefony, IoT, switche…). U zařízení: IP, hostname, MAC a lokalita, ve které je.</p>
+  <ul>
+    <li><strong>Párování s AD</strong> — každý lease se napáruje na svůj AD počítač podle <strong>hostname</strong> (fallback na <strong>IP</strong>). Napárované zařízení ukáže <strong>odkaz „✓ &lt;jméno&gt;"</strong> na AD počítač a <strong>přebírá online/offline z hlavního monitoru</strong> (žádná sonda navíc). <strong>Nenapárovaná</strong> zařízení (tiskárny, telefony, IoT — věci mimo AD) se <strong>pingují tady</strong>.</li>
+    <li><strong>Rozbalovátko Kategorie</strong> u zařízení — Tiskárna Canon / Kyocera / Zebra / HP / jiná, Telefon, PC, Server, Síťový prvek, IoT, Jiné. Dashboard ukáže <strong>automatický návrh</strong> (kliknutím přijmeš). Zvolená kategorie se <strong>ukládá podle MAC</strong> a <strong>znovu aplikuje při každém refreshi</strong>, takže drží i když leases přibývají a mizí.</li>
+    <li><strong>Filtry</strong> — lokalita, <strong>jen mimo AD / not in AD only</strong> (zařízení bez AD shody), <strong>jen tiskárny / printers only</strong>.</li>
+    <li><strong>Aktualizovat / Refresh</strong> — stáhne <strong>aktuální leases</strong> z routerů.</li>
+    <li><strong>📡 Ping</strong> (u řádku) — otevře konzolové okno s živým výstupem pingu, stejně jako v záložce Porty.</li>
+  </ul>
+</div>
+
 <h2 id="pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></h2>
+<div class="callout callout-warn" data-lang="en">
+  <strong>Changed at operator request:</strong> the per-PC action (the per-row <strong>🔄 Aktualizovat / Refresh</strong> button in the Computers tab, formerly the ⚡ Akce modal) <strong>no longer contains the remote-management launchers</strong>. The launcher actions described below — <em>Vzdálená MMC správa (Computer Management / Services / Event Viewer / Task Scheduler), RDP, PsExec, PowerShell Remote, Admin drive shares, Kopírovat</em> — were <strong>removed from this modal</strong>. The modal now holds <strong>only a single-PC refresh</strong>: it re-collects <strong>everything monitored for that one PC at once — disk, services, eventlog, perf AND ports</strong>. The launcher reference below is kept for historical context.
+</div>
+<div class="callout callout-warn" data-lang="cs">
+  <strong>Změněno na žádost operátora:</strong> per-PC akce (tlačítko <strong>🔄 Aktualizovat / Refresh</strong> u řádku v záložce Počítače, dřív modal ⚡ Akce) <strong>už neobsahuje launchery vzdálené správy</strong>. Akce popsané níže — <em>Vzdálená MMC správa (Správa počítače / Služby / Prohlížeč událostí / Plánovač úloh), RDP, PsExec, PowerShell Remote, Admin drive shares, Kopírovat</em> — byly z tohoto modalu <strong>odebrány</strong>. Modal teď obsahuje <strong>jen refresh jednoho PC</strong>: znovu sebere <strong>všechno, co se u toho jednoho PC sleduje, najednou — disk, služby, eventlog, perf I porty</strong>. Reference launcherů níže zůstává jen pro historický kontext.
+</div>
 <div data-lang="en">
   <p>The Computers tab has a per-row <strong>Actions</strong> button for common remote-admin launch workflows. The dashboard remains an observer: these actions open admin tools for the operator; they do not automatically remediate or mutate the target PC.</p>
   <table>
@@ -643,6 +703,8 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
     <li><strong>AD sync defaults</strong> — toggle "New PCs default to monitored (Monitor = on)". Applied only on INSERT — existing PCs keep their flag.</li>
     <li><strong>Dashboard UI access</strong> — frontend whitelist + Windows Firewall mirror; banner shows Domain profile state with remedy command</li>
     <li><strong>Disk space thresholds</strong> — Mode (Percent free / GB free / Either most-strict), Critical & Warning values for both % and GB</li>
+    <li><strong>Port checks</strong> — the list of key TCP ports and the per-port timeout that drive the <a href="#ports">Ports tab</a> grid; add/remove a port here and the grid columns follow</li>
+    <li><strong>MikroTik DHCP</strong> — routers (Site=IP list), the RouterOS read-only user and an encrypted password; feeds the <a href="#devices">Devices tab</a> (see the <a href="#settings-mikrotik">MikroTik DHCP</a> section)</li>
     <li>Save button only enabled when there are unsaved changes</li>
   </ul>
 </div>
@@ -653,6 +715,8 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
     <li><strong>AD sync defaults</strong> — toggle "Nové PC defaultně monitorované (Monitor = on)". Aplikuje se jen na INSERT — existující PC si ponechají flag.</li>
     <li><strong>Dashboard UI access</strong> — frontend whitelist + Windows Firewall mirror; banner zobrazuje stav Domain profile s remedy commandem</li>
     <li><strong>Disk space thresholdy</strong> — Mode (Procento volného / GB volného / Oboje most-strict), Critical & Warning hodnoty pro % i GB</li>
+    <li><strong>Port checky</strong> — seznam klíčových TCP portů a timeout na port, podle kterých se plní mřížka na <a href="#ports">záložce Porty</a>; přidáš/odebereš port tady a sloupce mřížky se přizpůsobí</li>
+    <li><strong>MikroTik DHCP</strong> — routery (seznam Lokalita=IP), RouterOS read-only uživatel a šifrované heslo; napájí <a href="#devices">záložku Zařízení</a> (viz sekce <a href="#settings-mikrotik">MikroTik DHCP</a>)</li>
     <li>Tlačítko Save se aktivuje až když jsou neuložené změny</li>
   </ul>
 </div>
@@ -1315,7 +1379,30 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td><code>email.recipients</code></td><td>(empty)</td><td>Shared default recipients for all agendas</td></tr>
   <tr><td><code>alerts.dashboard_url</code></td><td>(empty)</td><td>"Open ITDashboard" link in every email</td></tr>
   <tr><td><code>alerts.disk.recipients</code> / <code>alerts.services.recipients</code> / <code>alerts.ports.recipients</code> / <code>report.recipients</code></td><td>(empty)</td><td>Per-agenda recipients override — <strong>empty = fall back to <code>email.recipients</code></strong></td></tr>
+  <tr><td><code>mikrotik.routers</code></td><td>(empty)</td><td>Routers as <code>Site=IP</code> list (see "MikroTik DHCP" section) — drives DHCP-lease collection for the Devices tab</td></tr>
+  <tr><td><code>mikrotik.user</code></td><td>(empty)</td><td>RouterOS read-only username</td></tr>
+  <tr><td><code>mikrotik.password</code></td><td>(empty)</td><td>RouterOS password — <strong>stored encrypted</strong>, shown masked; only overwrite to change</td></tr>
 </table>
+
+<h3 id="settings-mikrotik"><span data-lang="cs">MikroTik DHCP</span><span data-lang="en">MikroTik DHCP</span></h3>
+<div data-lang="en">
+  <p>Settings has a <strong>"MikroTik DHCP"</strong> section that configures where the <a href="#devices">Devices tab</a> gets its network-device inventory from:</p>
+  <ul>
+    <li><strong>Routers</strong> — a <strong>Site = IP</strong> list, e.g. <code>Brno=10.8.2.207, Zastavka=10.10.181.2</code>. Each router is polled for its current DHCP leases and the site name is what shows up in the Devices "site" column and filter.</li>
+    <li><strong>User</strong> — a <strong>RouterOS read-only user</strong> (it only needs to read DHCP leases — do not give it write access).</li>
+    <li><strong>Password</strong> — the RouterOS password. It is <strong>stored encrypted</strong> (shown masked as <code>••••</code>, never in plaintext). <strong>Leave it as the dots to keep the current password</strong>; only type a new value when you actually want to change it.</li>
+  </ul>
+  <p>DHCP-lease collection runs <strong>automatically about every 5 minutes</strong>; the Devices tab's <strong>Refresh</strong> button pulls the current leases on demand.</p>
+</div>
+<div data-lang="cs">
+  <p>V Nastavení je sekce <strong>„MikroTik DHCP"</strong>, která určuje, odkud <a href="#devices">záložka Zařízení</a> bere inventář síťových zařízení:</p>
+  <ul>
+    <li><strong>Routery</strong> — seznam <strong>Lokalita = IP</strong>, např. <code>Brno=10.8.2.207, Zastavka=10.10.181.2</code>. Z každého routeru se stahují aktuální DHCP leases a název lokality je to, co se objeví ve sloupci i filtru „lokalita" na záložce Zařízení.</li>
+    <li><strong>Uživatel</strong> — <strong>RouterOS read-only uživatel</strong> (stačí mu číst DHCP leases — nedávej mu zápis).</li>
+    <li><strong>Heslo</strong> — heslo k RouterOS. Ukládá se <strong>šifrovaně</strong> (zobrazené maskované jako <code>••••</code>, nikdy v plaintextu). <strong>Necháš-li tečky, ponecháš stávající heslo</strong>; nové napiš jen když ho chceš opravdu změnit.</li>
+  </ul>
+  <p>Sběr DHCP leases běží <strong>automaticky zhruba každých 5 minut</strong>; tlačítko <strong>Aktualizovat</strong> na záložce Zařízení stáhne aktuální leases na vyžádání.</p>
+</div>
 
 <h2 id="api"><span data-lang="cs">API reference</span><span data-lang="en">API reference</span></h2>
 <table>

@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-12 (per-agenda + report recipients · standalone Email/SMTP settings · structured fleet report + email from Computers · severity tile colours · two-level service monitoring with per-PC exceptions · machine-readable email subjects · service-filter exit_code fix · critical-service exceptions in tab/tile · first automated test suites + CI gate · oponentura doc)
+Last updated: 2026-06-15 (Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042)
 
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in
@@ -18,9 +18,131 @@ Last updated: 2026-06-12 (per-agenda + report recipients · standalone Email/SMT
 - Runtime path on server: `C:\Apps\ITDashboard`
 - SQL server: `10.8.2.225`
 - Database: `ITDashboard`
-- Live commit: `b7e03e2`
+- Live commit: `604f8f4` (docs sweep commit lands on top — update to deployed hash after push)
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
+
+## Session 2026-06-15 — Ports tab, MikroTik DHCP "Devices" tab, refresh-trim, encrypted secrets
+
+A feature session. Migrations **041–042**. Commits `dcac10b` → `604f8f4` (current
+live before this docs sweep). Two new tabs (Ports, Devices), a cmd-like ping
+console, dashboard tile + tile-click filters, the Per-PC Actions modal trimmed to
+refresh-only, and MikroTik DHCP config moved into Settings with an AES-encrypted
+password.
+
+### Ports availability tab (migration 041)
+
+A live per-port reachability grid, distinct from the phase-2 port ALERTS
+(`port_check_state` is the alert state machine; this is the display snapshot).
+
+- **Migration 041** adds table **`port_status`** (PK computer_id+check_name:
+  is_open, latency_ms, checked_at) + settings `checks.run_port_status` (default 1)
+  and `port_status.interval_sec` (default 300). The probe **reuses** the existing
+  port list + timeout (`alerts.services.port_checks`, `alerts.services.port_timeout_ms`)
+  so the grid works even with phase-2 alert emails off.
+- **`port-status-collector.ts`** — standalone scheduler (mirrors reachability),
+  TCP-probes each enabled/non-excluded PC's configured ports, measures connect
+  latency, **skips** PCs flagged offline (`computers.reachable = 0`), and **prunes**
+  rows for ports removed from the config so the grid always follows Settings.
+  Exports `runPortStatusProbeOnce`, `probeOnePcPorts` (used by single-PC refresh),
+  `probeComputerNow` (ICMP ping + ports → cmd-like console transcript), and
+  `configuredCheckNames` (used by the route to filter the grid to current config).
+- **Routes**: `GET /port-status` (grid feed; LEFT JOIN + OUTER APPLY-style match to
+  `computers`, filtered to currently-configured check names), `POST /port-status/run`
+  (probe fleet now), `POST /computers/:id/probe` (live ICMP ping + per-port TCP).
+- **Desktop `PortsPage`**: grid PC × port (● open + latency / ○ closed / — offline),
+  "only issues" filter, "Refresh" button (renamed from "Probe now"), per-row "📡 Ping".
+
+### Per-PC refresh now covers ports + cmd-like ping console
+
+- **`refresh-single-pc.ts`** gained a 5th step calling `probeOnePcPorts`, so the
+  per-row **🔄 Aktualizovat** in Computers refreshes everything monitored: disk,
+  services, eventlog, perf, **and ports** (operator: "aktualizovat vše … prostě vše
+  co se sleduje").
+- The per-row **Ping** (Ports + Devices tabs) opens a **console modal** showing the
+  real `ping.exe` output. The server runs it via `cmd /c chcp 65001 & ping -n 4`
+  so the localized (Czech) output returns as UTF-8 and renders correctly, plus
+  per-port open/closed/latency lines.
+
+### Per-PC Actions trimmed to refresh-only
+
+The ⚡ Akce modal's launcher / remote-management content was **removed** at operator
+request ("ponecháme jen aktualizovat teď"): Remote MMC (compmgmt/services/eventvwr/
+taskschd), Remote access (RDP/PsExec/PS Remote), Admin shares, Copy helpers, and the
+URL-handler installer banner — plus all the dead helper code. The modal now contains
+only the single-PC refresh; the button is renamed **🔄 Aktualizovat**. The
+launcher-only `actions.*` i18n keys were deleted (CS+EN). The server `/actions/*`
+install-handler routes + scripts are **retained but unused** from the UI.
+
+### Dashboard Ports tile + tile-click filter pre-select
+
+- New **"🔌 Porty"** tile in `SummaryCards` (PCs with a closed port / total) → opens
+  the Ports tab.
+- Clicking a tile now **pre-checks the relevant filter** (one-shot, via an
+  `initial*`/`on*Consumed` prop pair so the top-nav entry is unaffected): Ports tile →
+  "only issues"; Critical-services tile → "only down (not Running)"; Stopped-services
+  tile → "only ExitCode != 0".
+
+### Devices tab — MikroTik DHCP inventory (migration 042)
+
+Operator wanted the dashboard to pull device info (IP, name, MAC, online state) from
+the MikroTik routers — "například tiskárny". The core (RouterOS REST reachable +
+field shape) was verified live before building.
+
+- **Migration 042** adds **`dhcp_leases`** (PK site+mac_address: ip, host_name, server,
+  comment, status, dynamic, expires_after, first_seen/last_seen, reachable/
+  last_reachable_at/reach_checked_at) and **`device_categories`** (PK mac_address —
+  operator-assigned category, **persists by MAC** across reloads and sites).
+- **`mikrotik-collector.ts`** pulls bound DHCP leases from each configured RouterOS v7
+  router (`/rest/ip/dhcp-server/lease`, HTTP Basic), upserts per (site, mac), pairs each
+  lease to an AD computer by **host_name (fallback IP)**, and pings **only the unmatched**
+  devices (matched ones reuse the reachability collector — "máme spoustu pořešeno").
+  `suggestCategory(hostname, mac)` is a UI hint (printer-vendor OUI map for Zebra/Canon/
+  Kyocera + hostname keywords for HP/Epson/… + phones); operator override wins.
+  `probeDeviceNow` powers the per-row live ping console.
+- **Routes**: `GET /devices` (leases + best-match computer via OUTER APPLY by host_name
+  then IP + category + computed `suggested`), `PATCH /devices/category` (set/clear by
+  MAC), `POST /devices/run`, `POST /devices/probe`.
+- **Desktop `DevicesPage`**: site/IP/hostname/MAC grid, per-row **category dropdown**
+  (Canon/Kyocera/Zebra/HP/other printer, phone, pc, server, network, iot, other) with a
+  clickable **suggestion**, online/offline (matched = AD computer's reachable, unmatched =
+  lease ping), AD link, filters (site / "not in AD only" / "printers only"), Refresh,
+  per-row Ping console.
+
+### MikroTik config in Settings + AES-encrypted password
+
+- **Settings → "MikroTik DHCP"** section: routers (`Site=IP` comma list), RouterOS user,
+  and password. No hardcoding in any script (operator: "nechci to mít natvrdo … ve scriptu").
+- **`secret-crypto.ts`** — reversible **AES-256-CBC** (key = SHA-256 of env
+  **`MIKROTIK_SECRET`**), format `enc:v1:base64(iv||ct)`, with a marked `plain:` fallback +
+  warning if the key is unset. A one-way **hash is intentionally NOT used** — Basic auth
+  needs the real password back (operator asked for "zahešované"; corrected to encrypted).
+- Settings route hooks: `mikrotik.password` is never stored in plaintext — PUT encrypts to
+  **`mikrotik.password_enc`**, GET masks it (`••••`) and omits the ciphertext. Submitted
+  mask = leave unchanged; empty = clear.
+
+### MikroTik collection deployment model (important for ops)
+
+The RouterOS read-only account (`dhcp-reader`) is **source-IP restricted** — allowed from
+the SQL host **10.8.2.225** but **not** the API host **10.8.2.213** (the in-process
+collector on .213 gets HTTP 401). Operator chose **not** to touch the routers. So the
+reference deployment runs the DHCP pull as an **external scheduled PowerShell job on
+10.8.2.225** (`C:\Scripts\itd-dhcp-sync.ps1`, every 5 min) that:
+- reads the router list + user from the DB `settings` (`mikrotik.routers`, `mikrotik.user`),
+- decrypts `mikrotik.password_enc` with the same **`MIKROTIK_SECRET`** (machine env on .225),
+- pulls bound leases and writes `dhcp_leases` **directly to the local DB**, then
+- pings the unmatched devices and writes `reachable`.
+
+The dashboard (API on .213) just **reads** `dhcp_leases` via `GET /devices` — no server
+change is needed for the external-sync model. `MIKROTIK_SECRET` must be **identical** on
+the API host (`apps/server/.env`, so the UI can encrypt on save) and on the sync host
+(so the script can decrypt). `.env.example` documents it. **Alternative**: allow .213 on
+the routers and use the built-in in-process collector (`startMikrotikSchedule`, env-driven).
+
+> Open follow-up: the built-in in-process collector still reads routers from the
+> `MIKROTIK_*` **env** vars, not from the new DB settings. If the operator ever allows the
+> API host on the routers, wire `mikrotik-collector` to read the Settings config +
+> `decryptSecret` so the in-process path becomes fully UI-driven (no script).
 
 ## Session 2026-06-12 (batch 2) — recipients, reporting, two-level services, exit_code, tests
 
