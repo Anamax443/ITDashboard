@@ -51,6 +51,9 @@ export function App() {
   const [serviceProblems, setServiceProblems] = useState<ServiceProblem[]>([]);
   const [criticalServices, setCriticalServices] = useState<CriticalServiceStatus[]>([]);
   const [ports, setPorts] = useState<PortStatusComputer[]>([]);
+  // One-shot: arriving on the Ports tab via the dashboard tile pre-checks the
+  // "only issues" filter so the operator lands on the problem machines.
+  const [portsInitialOnlyIssues, setPortsInitialOnlyIssues] = useState(false);
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [inactiveStats, setInactiveStats] = useState<InactiveStats | null>(null);
   const [pcHealth, setPcHealth] = useState<PcHealthResult | null>(null);
@@ -276,7 +279,7 @@ export function App() {
             onClickCriticalServices={() => setView('critsvc')}
             portsWithIssues={portsWithIssues}
             portsTotal={portsTotal}
-            onClickPorts={() => setView('ports')}
+            onClickPorts={() => { setPortsInitialOnlyIssues(true); setView('ports'); }}
             perfSummary={perfSummary}
             inactiveStats={inactiveStats}
             onClickMonitoredDisks={() => { setComputersPreFilter('disk-email'); setView('computers'); }}
@@ -350,7 +353,7 @@ export function App() {
 
       {view === 'ports' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <PortsPage onJumpToComputer={jumpToComputer} />
+          <PortsPage onJumpToComputer={jumpToComputer} initialOnlyIssues={portsInitialOnlyIssues} onOnlyIssuesConsumed={() => setPortsInitialOnlyIssues(false)} />
         </div>
       )}
 

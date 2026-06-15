@@ -21,7 +21,11 @@ function lastChecked(pc: PortStatusComputer): string | null {
   return max;
 }
 
-export function PortsPage({ onJumpToComputer }: { onJumpToComputer?: (name: string) => void } = {}) {
+export function PortsPage({ onJumpToComputer, initialOnlyIssues, onOnlyIssuesConsumed }: {
+  onJumpToComputer?: (name: string) => void;
+  initialOnlyIssues?: boolean;
+  onOnlyIssuesConsumed?: () => void;
+} = {}) {
   const { t } = useI18n();
   const [items, setItems] = useState<PortStatusComputer[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +41,14 @@ export function PortsPage({ onJumpToComputer }: { onJumpToComputer?: (name: stri
     const id = setInterval(refresh, 30_000);
     return () => clearInterval(id);
   }, []);
+
+  // Pre-check "only issues" when opened from the dashboard tile (one-shot).
+  useEffect(() => {
+    if (initialOnlyIssues) {
+      setOnlyIssues(true);
+      onOnlyIssuesConsumed?.();
+    }
+  }, [initialOnlyIssues, onOnlyIssuesConsumed]);
 
   const probeAll = async () => {
     if (probing) return;
@@ -127,7 +139,7 @@ export function PortsPage({ onJumpToComputer }: { onJumpToComputer?: (name: stri
             {t('ports.onlyIssues')}
           </label>
           <button className="refresh-btn" onClick={probeAll} disabled={probing} style={{ fontWeight: 600 }}>
-            {probing ? t('ports.probing') : `⚡ ${t('ports.probeNow')}`}
+            {probing ? t('ports.probing') : `🔄 ${t('ports.probeNow')}`}
           </button>
           <button className="refresh-btn" onClick={refresh}>↻</button>
         </div>
