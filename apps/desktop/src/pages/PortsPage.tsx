@@ -29,7 +29,7 @@ export function PortsPage({ onJumpToComputer }: { onJumpToComputer?: (name: stri
   const [onlyIssues, setOnlyIssues] = useState(false);
   const [probing, setProbing] = useState(false);
   const [rowBusy, setRowBusy] = useState<Record<number, boolean>>({});
-  const [pingResult, setPingResult] = useState<Record<number, string>>({});
+  const [consoleOut, setConsoleOut] = useState<{ name: string; text: string | null; error?: boolean } | null>(null);
 
   const refresh = () => { api.portStatus().then((r) => setItems(r.items)).catch((e) => setError(String(e))); };
   useEffect(() => {
@@ -54,13 +54,15 @@ export function PortsPage({ onJumpToComputer }: { onJumpToComputer?: (name: stri
   const pingOne = async (pc: PortStatusComputer) => {
     if (rowBusy[pc.id]) return;
     setRowBusy((m) => ({ ...m, [pc.id]: true }));
+    // Open the console modal immediately with a "running" placeholder so the
+    // operator sees that something is happening (the probe takes a few seconds).
+    setConsoleOut({ name: pc.name, text: null });
     try {
       const r = await api.probeComputer(pc.id);
-      const open = r.ports.filter((p) => p.open).length;
-      setPingResult((m) => ({ ...m, [pc.id]: `${r.ping ? '✓' : '✗'} ping · ${open}/${r.ports.length}` }));
+      setConsoleOut({ name: pc.name, text: r.console });
       refresh();
     } catch (e) {
-      setPingResult((m) => ({ ...m, [pc.id]: `⚠ ${String(e).slice(0, 40)}` }));
+      setConsoleOut({ name: pc.name, text: String(e), error: true });
     } finally {
       setRowBusy((m) => ({ ...m, [pc.id]: false }));
     }
@@ -167,7 +169,6 @@ export function PortsPage({ onJumpToComputer }: { onJumpToComputer?: (name: stri
                       <button className="refresh-btn" onClick={() => pingOne(pc)} disabled={rowBusy[pc.id]} style={{ padding: '2px 8px', fontSize: 11 }}>
                         {rowBusy[pc.id] ? t('ports.pinging') : `📡 ${t('ports.ping')}`}
                       </button>
-                      {pingResult[pc.id] && <span style={{ marginLeft: 6, color: 'var(--text-dim)' }}>{pingResult[pc.id]}</span>}
                     </td>
                   </tr>
                 );
@@ -176,6 +177,26 @@ export function PortsPage({ onJumpToComputer }: { onJumpToComputer?: (name: stri
           </table>
         )}
       </div>
+
+      {consoleOut && (
+        <div
+          onClick={() => setConsoleOut(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#0c0c0c', border: '1px solid #333', borderRadius: 6, width: 760, maxWidth: '92vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #333', background: '#1a1a1a' }}>
+              <span style={{ color: '#ccc', fontFamily: 'Consolas, monospace', fontSize: 12 }}>📡 ping — {consoleOut.name}</span>
+              <button onClick={() => setConsoleOut(null)} style={{ background: 'transparent', border: 'none', color: '#ccc', fontSize: 16, cursor: 'pointer' }}>×</button>
+            </div>
+            <pre style={{ margin: 0, padding: 14, overflow: 'auto', color: consoleOut.error ? '#ff6b6b' : '#d4d4d4', fontFamily: 'Consolas, monospace', fontSize: 12, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {consoleOut.text ?? `${t('ports.pinging')} ${consoleOut.name} ▌`}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

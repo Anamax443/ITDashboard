@@ -515,6 +515,8 @@ export interface PerPcProbeResult {
   host: string;
   ping: boolean;
   ports: PortProbeResult[];
+  /** cmd-like transcript (raw ping output + per-port lines) for the console modal. */
+  console: string;
 }
 
 async function jget<T>(path: string): Promise<T> {

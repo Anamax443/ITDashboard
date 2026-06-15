@@ -1,8 +1,8 @@
 import { Socket } from 'node:net';
+import { spawn } from 'node:child_process';
 import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
 import { getAllSettings } from './settings.js';
-import { icmpPing } from './reachability-collector.js';
 
 // Live per-port availability for the "Ports" tab. Independent of the phase-2
 // port ALERTS (alerts.ts): here we just TCP-connect each configured port of
@@ -112,20 +112,69 @@ export interface PerPcProbeResult {
   host: string;
   ping: boolean;
   ports: PortProbeResult[];
+  /** cmd-like transcript (raw ping.exe output + per-port lines) for display. */
+  console: string;
 }
 
-// On-demand probe for a single PC: ICMP ping (reused from the reachability
-// collector) + every configured TCP port. Persists the port results so the
-// grid reflects the freshly observed state. The ping is live-only (not stored).
+// Hostnames come from AD (computer name / FQDN): letters, digits, dot, dash,
+// underscore only. Reject anything else so we never pass operator-unseen input
+// into the cmd line below.
+const HOST_RE = /^[A-Za-z0-9._-]{1,255}$/;
+
+// Run ping.exe and capture its FULL stdout for display. We go through
+// `cmd /c chcp 65001 & ping …` so the (localized, e.g. Czech) output comes back
+// as UTF-8 and renders correctly in the console modal — a bare ping.exe spawn
+// emits the OEM codepage (cp852) which would mangle accents. TTL= in the output
+// marks a genuine echo reply (not a router "host unreachable", which exits 0).
+function pingWithOutput(host: string, count: number, timeoutMs: number): Promise<{ alive: boolean; output: string }> {
+  return new Promise((resolve) => {
+    if (!HOST_RE.test(host)) { resolve({ alive: false, output: `Invalid host: ${host}` }); return; }
+    let out = '';
+    let settled = false;
+    const done = (alive: boolean) => { if (!settled) { settled = true; resolve({ alive, output: out }); } };
+    try {
+      const proc = spawn('cmd.exe', ['/d', '/s', '/c', `chcp 65001>nul & ping -n ${count} -w ${timeoutMs} ${host}`], { windowsHide: true });
+      proc.stdout?.on('data', (b) => (out += b.toString('utf8')));
+      proc.stderr?.on('data', (b) => (out += b.toString('utf8')));
+      proc.on('error', (e) => { out += String(e); done(false); });
+      proc.on('close', () => done(/TTL=/i.test(out)));
+      // Hard guard: count replies, each up to timeoutMs, plus slack.
+      setTimeout(() => { try { proc.kill(); } catch { /* ignore */ } done(/TTL=/i.test(out)); }, count * (timeoutMs + 1000) + 2000);
+    } catch (e) {
+      out += String(e);
+      done(false);
+    }
+  });
+}
+
+// On-demand probe for a single PC: ICMP ping (4 echoes, like cmd) + every
+// configured TCP port. Persists the port results so the grid reflects the
+// freshly observed state, and returns a cmd-like transcript for the UI console.
 export async function probeComputerNow(computerId: number, host: string): Promise<PerPcProbeResult> {
   const settings = await getAllSettings();
   const timeoutMs = Number(settings['alerts.services.port_timeout_ms'] ?? 2000) || 2000;
   const pingEnabled = boolSetting(settings['reachability.ping'], true);
-  const [ping, portRes] = await Promise.all([
-    pingEnabled ? icmpPing(host, timeoutMs) : Promise.resolve(false),
+  const [pingRes, portRes] = await Promise.all([
+    pingEnabled ? pingWithOutput(host, 4, timeoutMs) : Promise.resolve({ alive: false, output: '(ping disabled in settings)' }),
     probeOnePcPorts(computerId, host),
   ]);
-  return { computerId, host, ping, ports: portRes.results };
+
+  const lines: string[] = [];
+  lines.push(`> ping -n 4 ${host}`);
+  lines.push('');
+  lines.push(pingRes.output.replace(/\r\n/g, '\n').trimEnd());
+  lines.push('');
+  lines.push(`> port check (TCP, timeout ${timeoutMs} ms)`);
+  if (portRes.results.length === 0) {
+    lines.push('(no ports configured)');
+  } else {
+    for (const p of portRes.results) {
+      const label = `${p.checkName}:${p.port}`.padEnd(16);
+      lines.push(`${label} ${p.open ? `open${p.latencyMs != null ? ` (${p.latencyMs} ms)` : ''}` : 'closed'}`);
+    }
+  }
+
+  return { computerId, host, ping: pingRes.alive, ports: portRes.results, console: lines.join('\n') };
 }
 
 export interface PortStatusRunResult {
