@@ -18,7 +18,7 @@ Last updated: 2026-06-16 (decision: MikroTik DHCP collection simplified to IN-AP
 - Runtime path on server: `C:\Apps\ITDashboard`
 - SQL server: `10.8.2.225`
 - Database: `ITDashboard`
-- Live commit: `1f28b31` (this docs/i18n commit lands on top — update to deployed hash after push)
+- Live commit: `9742b94`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
 
