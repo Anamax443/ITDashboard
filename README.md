@@ -70,7 +70,7 @@ this repo into a different environment you only change access/config, not code:
    | `AD_LDAP_URL` | comma-separated DC LDAP URLs (edit-tier login) |
    | `AD_LDAP_DOMAIN` | default UPN suffix for bare usernames |
    | `AD_LDAP_BASE_DN` / `AD_EDIT_GROUP` | search root + edit-tier group DN |
-   | `MIKROTIK_SECRET` | AES-256-CBC key material (SHA-256'd) for the encrypted RouterOS password — **must match** on the API host and on any external sync host that decrypts it |
+   | `MIKROTIK_SECRET` | AES-256-CBC key material (SHA-256'd) for the encrypted RouterOS password — set on the **application host** (10.8.2.213), where the in-process collector decrypts it |
 
 2. **GitHub Actions variables** (only if you use the auto-deploy pipeline) — set
    `SQL_HOST`, `SQL_INSTANCE`, `SQL_DATABASE` as repository *Variables*; the
@@ -90,15 +90,19 @@ this repo into a different environment you only change access/config, not code:
    `GET /settings` masks it (••••); `PUT` encrypts it into
    `mikrotik.password_enc` (a submitted mask = leave unchanged, empty = clear).
    If `MIKROTIK_SECRET` is unset it falls back to a clearly-marked `plain:`
-   prefix with a warning. **Deployment note:** in the reference deployment the
-   RouterOS account is restricted by source IP to the SQL host (10.8.2.225), not
-   the API host (10.8.2.213), so the DHCP pull runs as an **external scheduled
-   PowerShell job on the SQL server** — it reads the router list/user from the DB
-   settings, decrypts the password with the same `MIKROTIK_SECRET`, writes
-   `dhcp_leases`, and pings unmatched devices. (Alternative: allow the API host
-   on the routers and use the built-in in-process collector.) Routes: `GET
-   /devices`, `PATCH /devices/category`, `POST /devices/run`, `POST
-   /devices/probe`.
+   prefix with a warning. **Deployment model (2026-06-16):** DHCP collection runs
+   **in-process on the application server (10.8.2.213)**, exactly like every other
+   collector — the database (10.8.2.225) is storage only and there are no
+   PowerShell scripts on other servers. `MIKROTIK_SECRET` therefore lives only on
+   the application host, which reads the router list/user from the DB settings,
+   decrypts the password, writes `dhcp_leases`, and pings unmatched devices.
+   **Prerequisite (pending):** the RouterOS `dhcp-reader` account is source-IP
+   restricted (currently allowed only from 10.8.2.225), so the app on 10.8.2.213
+   gets HTTP 401; the application server's IP (10.8.2.213, or 10.8.2.0/24) must be
+   added to `dhcp-reader`'s allowed-address on **both** routers (Brno 10.8.2.207,
+   Zastavka 10.10.181.2). Until that change lands, the Devices feature/tables/UI/
+   Settings are deployed but **no leases are collected**. Routes: `GET /devices`,
+   `PATCH /devices/category`, `POST /devices/run`, `POST /devices/probe`.
 
 ## Layout
 
@@ -198,7 +202,7 @@ New `itd-ps://` launcher for remote PowerShell via `Enter-PSSession`. Registered
 - **Ping console** — the per-row "Ping" (Ports and Devices tabs) opens a cmd-style console modal with the real `ping.exe` output (run via `cmd /c chcp 65001 & ping -n 4` for UTF-8 localized output) plus per-port open/closed/latency lines.
 - **Dashboard tiles** — new tile "🔌 Ports" (PCs with a closed port / total) opens the Ports tab. Clicking a dashboard tile now also pre-checks the relevant filter (one-shot): Ports → "only issues"; Critical services → "only down (not Running)"; Stopped services → "only ExitCode != 0".
 - **Devices tab** (migration 042 adds `dhcp_leases` — PK site+mac_address: ip, host_name, server, comment, status, dynamic, expires_after, first_seen/last_seen, reachable/reach_checked_at — and `device_categories` — PK mac_address, operator-assigned category persisting by MAC across reloads/sites). MikroTik DHCP lease inventory; each lease is paired with an AD `computers` row by host_name (fallback IP): matched devices reuse the reachability collector's online/offline, unmatched devices (printers, phones, IoT) are pinged. A `suggestCategory` hint guesses printer vendors (Canon/Kyocera/Zebra/HP via OUI/hostname) and phones — operator override is authoritative. Routes: `GET /devices` (leases + matched computer + category + suggestion), `PATCH /devices/category`, `POST /devices/run`, `POST /devices/probe`. Desktop `DevicesPage`: site / IP / hostname / MAC grid, per-row category dropdown (clickable suggestion), online/offline, AD link, filters (site / "not in AD only" / "printers only"), Refresh, per-row Ping console.
-- **MikroTik config + encrypted password** — Settings → "MikroTik DHCP" (routers as `Site=IP` comma list, RouterOS user, password). Password stored **encrypted** via `secret-crypto.ts` (AES-256-CBC, key = SHA-256 of env `MIKROTIK_SECRET`); `GET /settings` masks it (••••), `PUT` encrypts into `mikrotik.password_enc` (mask = unchanged, empty = clear); `plain:`-prefixed fallback with a warning if `MIKROTIK_SECRET` is unset. Because the RouterOS read-only account is restricted by source IP to the SQL host (10.8.2.225), the reference deployment pulls DHCP via an **external scheduled PowerShell job on the SQL server** (reads router list/user from DB settings, decrypts with the same `MIKROTIK_SECRET`, writes `dhcp_leases`, pings unmatched devices); the built-in in-process collector is the alternative if the API host is allowed on the routers. New env var `MIKROTIK_SECRET` documented in `.env.example` (must match on the API host and the sync host).
+- **MikroTik config + encrypted password** — Settings → "MikroTik DHCP" (routers as `Site=IP` comma list, RouterOS user, password). Password stored **encrypted** via `secret-crypto.ts` (AES-256-CBC, key = SHA-256 of env `MIKROTIK_SECRET`); `GET /settings` masks it (••••), `PUT` encrypts into `mikrotik.password_enc` (mask = unchanged, empty = clear); `plain:`-prefixed fallback with a warning if `MIKROTIK_SECRET` is unset. New env var `MIKROTIK_SECRET` documented in `.env.example` (set on the application host). **Superseded (2026-06-16):** an earlier draft documented the DHCP pull as an external scheduled PowerShell job on the SQL server (10.8.2.225); the operator decision is a strict two-tier model — all operativa runs in-process on the application server (10.8.2.213), the DB is storage only, no scripts on other servers — so MikroTik collection runs in-app like every other collector. MikroTik collection is currently **pending the router allowed-address change**: `dhcp-reader` must allow 10.8.2.213 (or 10.8.2.0/24) on both routers (Brno 10.8.2.207, Zastavka 10.10.181.2) before any leases flow. **Open follow-up:** the in-process collector currently reads `MIKROTIK_*` env vars and will be wired to read the Settings config + decrypt the password (and honour a master enable toggle) once the routers are opened.
 
 ## Testing
 

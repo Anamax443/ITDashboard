@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-15 (Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042)
+Last updated: 2026-06-16 (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
 
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in
@@ -18,9 +18,46 @@ Last updated: 2026-06-15 (Ports availability tab + per-port latency · per-PC re
 - Runtime path on server: `C:\Apps\ITDashboard`
 - SQL server: `10.8.2.225`
 - Database: `ITDashboard`
-- Live commit: `1f28b31`
+- Live commit: `1f28b31` (this docs/i18n commit lands on top — update to deployed hash after push)
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
+
+## Session 2026-06-16 — MikroTik collection model simplified to in-app (decision, docs only)
+
+No code/runtime change this session — an **architecture decision** plus a docs/i18n
+correction. The operator set a guiding principle: keep the system **simple, two-tier**
+— the **application server `10.8.2.213` performs ALL operativa** (every collector/probe
+runs in-app), the **DB `10.8.2.225` is storage only**, and there are **no extra
+PowerShell scripts on other servers**.
+
+Consequence for MikroTik DHCP: the **external `.225` sync-script** model documented in
+the 2026-06-15 session (a scheduled PowerShell job on the SQL host that pulled leases
+and wrote `dhcp_leases` directly) is **retired** — do not resurrect it. MikroTik
+collection will run **in-process on `.213`** like every other collector.
+
+**The one blocker (pending a colleague):** the RouterOS read-only account `dhcp-reader`
+is **source-IP restricted to `10.8.2.225`**, so the app on `.213` (and the operator's
+workstation `.181`) gets **HTTP 401**; from `.225` it returns OK (~92/33 bound). Fix =
+add `10.8.2.213` (or `10.8.2.0/24`) to `dhcp-reader`'s **allowed-address on BOTH routers**
+(Brno `10.8.2.207`, Zastávka `10.10.181.2`): `/user set dhcp-reader address=10.8.2.225,10.8.2.213`.
+Until then **MikroTik collection is INACTIVE** — the Devices tab, tables (`dhcp_leases`,
+`device_categories`), routes and the Settings → "MikroTik DHCP" config are all deployed,
+but **no leases are collected yet**, and nothing is actively erroring (the in-process
+collector is idle; the `.225` script is not scheduled).
+
+**Remaining code work once the routers allow `.213`** (open follow-up):
+- Refactor `apps/server/src/services/mikrotik-collector.ts` to read routers/user/password
+  from **DB Settings** (`mikrotik.routers`, `mikrotik.user`, `mikrotik.password_enc` →
+  `decryptSecret`) instead of the legacy `MIKROTIK_*` **env** vars.
+- Add a **master enable toggle** in Settings so the collector doesn't 401-spam before the
+  routers are open.
+- `MIKROTIK_SECRET` stays only on `.213` (already in `apps/server/.env`); drop any `.225`
+  script / scheduled task / `setx` if it was created.
+
+Docs/i18n corrected this session to the in-app model: `README.md`, `docs/ARCHITECTURE.md`
+(deployment-model section + `MIKROTIK_SECRET` scope), `docs/dashboard.html` (CS+EN MikroTik
+settings chapter), `docs/project-status.html` (config row + new 2026-06-16 note), and the
+`settings.field.mikrotikHelp` i18n string (CS+EN).
 
 ## Session 2026-06-15 — Ports tab, MikroTik DHCP "Devices" tab, refresh-trim, encrypted secrets
 

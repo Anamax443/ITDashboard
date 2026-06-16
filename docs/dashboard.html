@@ -1392,7 +1392,8 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
     <li><strong>User</strong> — a <strong>RouterOS read-only user</strong> (it only needs to read DHCP leases — do not give it write access).</li>
     <li><strong>Password</strong> — the RouterOS password. It is <strong>stored encrypted</strong> (shown masked as <code>••••</code>, never in plaintext). <strong>Leave it as the dots to keep the current password</strong>; only type a new value when you actually want to change it.</li>
   </ul>
-  <p>DHCP-lease collection runs <strong>automatically about every 5 minutes</strong>; the Devices tab's <strong>Refresh</strong> button pulls the current leases on demand.</p>
+  <p>DHCP-device collection runs <strong>inside the application on the application server</strong> (there is no external script and it does not run on the SQL server) — consistent with the rest of the system. The router IPs, the RouterOS user and the encrypted password configured here in Settings are all it needs. It collects <strong>automatically about every 5 minutes</strong>; the Devices tab's <strong>Refresh</strong> button pulls the current leases on demand.</p>
+  <p><strong>Note:</strong> the application server must be permitted on the MikroTik — add it to the read-only user's <code>allowed-address</code> — otherwise the routers reject the connection and no leases come in.</p>
 </div>
 <div data-lang="cs">
   <p>V Nastavení je sekce <strong>„MikroTik DHCP"</strong>, která určuje, odkud <a href="#devices">záložka Zařízení</a> bere inventář síťových zařízení:</p>
@@ -1401,7 +1402,8 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
     <li><strong>Uživatel</strong> — <strong>RouterOS read-only uživatel</strong> (stačí mu číst DHCP leases — nedávej mu zápis).</li>
     <li><strong>Heslo</strong> — heslo k RouterOS. Ukládá se <strong>šifrovaně</strong> (zobrazené maskované jako <code>••••</code>, nikdy v plaintextu). <strong>Necháš-li tečky, ponecháš stávající heslo</strong>; nové napiš jen když ho chceš opravdu změnit.</li>
   </ul>
-  <p>Sběr DHCP leases běží <strong>automaticky zhruba každých 5 minut</strong>; tlačítko <strong>Aktualizovat</strong> na záložce Zařízení stáhne aktuální leases na vyžádání.</p>
+  <p>Sběr DHCP zařízení běží <strong>uvnitř aplikace na aplikačním serveru</strong> (žádný externí skript, neběží na SQL serveru) — stejně jako zbytek systému. Stačí mu IP routerů, RouterOS uživatel a šifrované heslo nastavené zde v Nastavení. Sbírá <strong>automaticky zhruba každých 5 minut</strong>; tlačítko <strong>Aktualizovat</strong> na záložce Zařízení stáhne aktuální leases na vyžádání.</p>
+  <p><strong>Poznámka:</strong> aplikační server musí být na MikroTiku povolen — přidej ho do <code>allowed-address</code> read-only uživatele — jinak routery spojení odmítnou a žádné leases nepřijdou.</p>
 </div>
 
 <h2 id="api"><span data-lang="cs">API reference</span><span data-lang="en">API reference</span></h2>
