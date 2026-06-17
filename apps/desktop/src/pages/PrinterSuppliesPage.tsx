@@ -133,9 +133,11 @@ export function PrinterSuppliesPage({ settings = {} }: { settings?: Record<strin
               return (
                 <div
                   key={p.mac_address}
+                  onClick={() => ip && window.open(deviceWebUrl(ip), '_blank')}
+                  title={ip ? `${t('supplies.openWeb')} — ${ip}` : undefined}
                   style={{
                     background: 'var(--surface)', border: `1px solid ${st === 'crit' ? 'var(--critical)' : 'var(--border)'}`,
-                    borderRadius: 10, padding: '12px 14px',
+                    borderRadius: 10, padding: '12px 14px', cursor: ip ? 'pointer' : 'default',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
@@ -144,24 +146,7 @@ export function PrinterSuppliesPage({ settings = {} }: { settings?: Record<strin
                       <div style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 2 }}>
                         {ip ?? '—'}{p.host_name && p.host_name !== name ? ` · ${p.host_name}` : ''}{p.site ? ` · ${p.site}` : ''}
                       </div>
-                      {ip && (
-                        <div style={{ fontSize: 11, marginTop: 2 }}>
-                          <a
-                            onClick={(e) => { e.stopPropagation(); window.open(deviceWebUrl(ip), '_blank'); }}
-                            title={t('supplies.openWeb')}
-                            style={{ color: 'var(--accent)', cursor: 'pointer' }}
-                          >{t('supplies.openProxy')} ↗</a>
-                          <span style={{ color: 'var(--text-dim)' }}> · </span>
-                          <a
-                            href={`http://${ip}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            title={t('supplies.openDirectTip')}
-                            style={{ color: 'var(--accent)', textDecoration: 'none' }}
-                          >{t('supplies.openDirect')} ↗</a>
-                        </div>
-                      )}
+                      {ip && <div style={{ color: 'var(--accent)', fontSize: 11, marginTop: 2 }}>{t('supplies.openProxy')} ↗</div>}
                     </div>
                     {badge(st)}
                   </div>
@@ -192,6 +177,18 @@ export function PrinterSuppliesPage({ settings = {} }: { settings?: Record<strin
                       {Array.from(new Set(p.supplies.map((s) => s.source))).join('+')}
                     </span>
                   </div>
+                  {ip && (
+                    <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--border)', fontSize: 11, textAlign: 'center' }}>
+                      <a
+                        href={`http://${ip}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title={t('supplies.openDirectTip')}
+                        style={{ color: 'var(--accent)', textDecoration: 'none' }}
+                      >{t('supplies.openDirect')} — {ip} ↗</a>
+                    </div>
+                  )}
                 </div>
               );
             })}
