@@ -352,23 +352,23 @@ async function pingStats(ip: string, count: number, timeoutMs: number): Promise<
   return { alive: received > 0, lossPct };
 }
 
-// Like pingStats but with -a so ping ALSO reverse-resolves the host name. The
-// name always sits right before "[ip]" in the output regardless of locale (CS
-// "…na NAME [ip]" / EN "Pinging NAME [ip]"), so we parse that token. Only ASCII
-// host names are accepted (mac/IP fallbacks rejected).
-function pingResolve(ip: string, count: number, timeoutMs: number): Promise<{ alive: boolean; lossPct: number; host: string | null }> {
+// Reverse-resolve a device's name. `ping -a` only works if the app host can do a
+// DNS PTR / NetBIOS lookup (the app server often can't), so we query the device
+// DIRECTLY over NetBIOS with `nbtstat -A <ip>` — peer-to-peer, no DNS needed.
+// The node-status table lists the machine name under the "<00>" type. Returns
+// null for devices that don't speak NetBIOS (many IoT) — name just stays unknown.
+function resolveName(ip: string, timeoutMs: number): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile('ping', ['-a', '-n', String(count), '-w', String(timeoutMs), ip],
-      { windowsHide: true, timeout: count * (timeoutMs + 1000) + 3000, maxBuffer: 1 << 20 },
-      (_err, stdout) => {
-        const out = stdout || '';
-        const received = (out.match(/TTL=/gi) ?? []).length;
-        const lossPct = Math.max(0, Math.min(100, Math.round(((count - received) / count) * 100)));
-        let host: string | null = null;
-        const m = out.match(new RegExp(`(\\S+)\\s+\\[${ip.replace(/\./g, '\\.')}\\]`));
-        if (m && m[1] && m[1] !== ip && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(m[1])) host = m[1];
-        resolve({ alive: received > 0, lossPct, host });
-      });
+    execFile('nbtstat', ['-A', ip], { windowsHide: true, timeout: timeoutMs, maxBuffer: 1 << 20 }, (_err, stdout) => {
+      const out = stdout || '';
+      for (const line of out.split(/\r?\n/)) {
+        // "   EPSONB523FE    <00>  UNIQUE      Registered" — capture the name
+        // before <00> (status word is locale-dependent, so we don't match it).
+        const m = line.match(/^\s*([A-Za-z0-9][A-Za-z0-9._-]{0,14})\s+<00>/i);
+        if (m && m[1]) { resolve(m[1].trim()); return; }
+      }
+      resolve(null);
+    });
   });
 }
 
@@ -543,8 +543,8 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
         for (const a of aliveList) {
           const mac = arpMap.get(a.ip);
           if (!mac) continue; // alive but no MAC resolved — can't key it
-          const st = await pingResolve(a.ip, 4, 1500); // reverse-resolve host name (+ loss)
-          await upsertDevice({ site: a.site, mac, ip: a.ip, host: st.host, server: null, comment: null, status: 'scan', dynamic: false, exp: null, rls: null, source: 'scan' });
+          const [st, host] = await Promise.all([pingStats(a.ip, 4, 1500), resolveName(a.ip, 2500)]);
+          await upsertDevice({ site: a.site, mac, ip: a.ip, host, server: null, comment: null, status: 'scan', dynamic: false, exp: null, rls: null, source: 'scan' });
           if (known.ips.has(a.ip)) {
             await pool.request().input('site', a.site).input('mac', mac)
               .query(`UPDATE dhcp_leases SET reachable = NULL, reach_checked_at = NULL WHERE site = @site AND mac_address = @mac`);
@@ -567,15 +567,12 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
             const r = refresh[ri++];
             if (!r || !r.ip_address) continue;
             try {
-              // Already-named device → cheap loss-only ping; nameless → ping -a to
-              // also fill the host name (so suggestCategory can spot printers etc.).
-              if (r.host_name) {
-                const st = await pingStats(r.ip_address, 4, 1500);
-                await persistReachable(r.site, r.mac_address, st.alive, st.lossPct);
-              } else {
-                const st = await pingResolve(r.ip_address, 4, 1500);
-                await persistReachable(r.site, r.mac_address, st.alive, st.lossPct, st.host);
-              }
+              // Loss-only ping always; a nameless device also gets a NetBIOS name
+              // lookup (so suggestCategory can spot printers etc.) — once named, no
+              // more lookups.
+              const st = await pingStats(r.ip_address, 4, 1500);
+              const host = r.host_name ? null : await resolveName(r.ip_address, 2500);
+              await persistReachable(r.site, r.mac_address, st.alive, st.lossPct, host);
             } catch { /* keep last */ }
           }
         };

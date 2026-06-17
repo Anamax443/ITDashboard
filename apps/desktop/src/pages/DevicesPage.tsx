@@ -44,6 +44,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const [site, setSite] = useState('');
   const [onlyUnmanaged, setOnlyUnmanaged] = useState(false);
   const [onlyPrinters, setOnlyPrinters] = useState(false);
+  const [catFilter, setCatFilter] = useState('');
   const [running, setRunning] = useState(false);
   const [rowBusy, setRowBusy] = useState<Record<string, boolean>>({});
   const [consoleOut, setConsoleOut] = useState<{ name: string; text: string | null; error?: boolean } | null>(null);
@@ -115,6 +116,10 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     if (site && d.site !== site) return false;
     if (onlyUnmanaged && d.computer_id != null) return false;
     if (onlyPrinters && !isPrinterish(d)) return false;
+    if (catFilter) {
+      if (catFilter === '__none') { if (d.category) return false; }
+      else if ((d.category ?? '') !== catFilter) return false;
+    }
     if (search) {
       const q = search.toLowerCase();
       return (d.ip_address ?? '').toLowerCase().includes(q)
@@ -167,6 +172,13 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
               {sites.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
+          <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} style={{ fontSize: 12 }} title={t('devices.category')}>
+            <option value="">{t('devices.allCats')}</option>
+            <option value="__none">{t('devices.noCat')}</option>
+            {CATEGORY_KEYS.filter((k) => k).map((k) => (
+              <option key={k} value={k} style={{ color: CAT_COLOR[k] ?? 'var(--text)' }}>{catLabel(k)}</option>
+            ))}
+          </select>
           <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <input type="checkbox" checked={onlyUnmanaged} onChange={(e) => setOnlyUnmanaged(e.target.checked)} />
             {t('devices.onlyUnmanaged')}
