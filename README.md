@@ -15,6 +15,7 @@ Internal IT operations dashboard for the **AXINETWORK** domain. Eventlog analyti
 - **Performance events** — pulls slow boot / shutdown / standby / resume records from the `Microsoft-Windows-Diagnostics-Performance/Operational` channel with named culprits and timings (observer of Windows' own diagnostics, no continuous polling).
 - **Port availability (Ports tab)** — a standalone collector TCP-probes each monitored PC's configured ports on its **own interval** (`port_status.interval_sec`, default 300 s; toggle `checks.run_port_status`), reusing the existing port list and timeout (`alerts.services.port_checks`, `alerts.services.port_timeout_ms`) so it works even when the phase-2 service/port alert emails are off. Offline PCs (`computers.reachable=0`) are skipped. The Ports tab is a grid of PC × port (● open + latency / ○ closed / — offline) with an "only issues" filter, a "Refresh" button (whole-fleet probe now), and a per-row "Ping" button. Removing a port from the Settings list drops it from the grid (the feed filters to currently-configured names and the probe prunes stale rows). Dashboard tile "🔌 Ports" (PCs with a closed port / total) opens it.
 - **Device inventory (Devices tab)** — multi-source network inventory merged by MAC: MikroTik DHCP leases (dynamic leases **and** static reservations), the router ARP table, and an active subnet scan run from the app server (ping-sweep + local/router ARP). Each row carries its `source` (dhcp / arp / scan). Scan ranges are operator-configurable in Settings (CIDR `10.8.2.0/24` or wildcard `10.8.2.*`, optional `Site=` label; a leading `!`/`<>` excludes a whole subnet); discovery caches known IP↔MAC and a MAC reappearing at a new IP releases the old one, while remote subnets resolve MACs via the router ARP table. Each device is paired with an AD computer by host name (fallback IP): matched devices reuse the reachability collector's online/offline and pre-select pc/server from AD; unmatched devices (printers, phones, IoT) are pinged directly. Device names are resolved via NetBIOS (`nbtstat -A`) for scanned/ARP devices — with known printer NetBIOS prefixes (NPI/BRN/BRW/RNP/KMBT) feeding a printer/phone category suggestion — and the operator can manually edit a name (stored by MAC). An operator-assigned category is authoritative and **persists by MAC** across reloads and sites; categories themselves are operator-configurable in Settings (`devices.categories`, `key=Label`), with a generic "Printer" category collapsing per-vendor variants. The reachability ping also records per-device packet loss and average latency, shown as a compact `ms / %` column (e.g. `<5/0`). The Devices tab is a site / IP / hostname / MAC grid with a per-row category dropdown (clickable suggestion), Static/Dynamic Type column, online/offline, loss/latency, AD link, filters (site / "not in AD only" / "printers only" / "issues only"), Refresh, and a per-row Ping console.
+- **Printer supplies (Stav tiskáren tab)** — per-printer ink / toner / maintenance-box / drum / belt levels read straight from the network printers. Primary source is **SNMP Printer-MIB** (`prtMarkerSupplies`: description / max capacity / level → %; `sysDescr` for the model) — uniform across HP / Epson / Brother / Kyocera, and it also yields HP cartridge part-numbers and laser drum/belt life — read by a **self-contained SNMP v1 client over `node:dgram`** (no external dependency). Two gaps found by live probing are filled by a best-effort scrape of the printer's own web UI: Brother numeric toner % (SNMP reports only "some remaining") from `/general/status.html`, and the Epson maintenance (waste) box (omitted by SNMP) from the Web Config page. The collector (`printer-supplies-collector.ts`, migration 048) probes **only devices the operator categorized `printer`**, runs on its own self-rescheduling timer, and upserts/prunes the `printer_supplies` table. The tab is a card per printer with coloured supply bars + %, a status badge (OK / Dochází / Prázdná), part-codes and drum/belt; the whole card opens the printer's web UI via the cert-bypass proxy and a bottom-row link opens the raw `http://IP`. Dashboard tile "🖨 Náplně" (printers with a low/empty supply) drills in pre-filtered to problems; a light supply flag (● NN%) shows on confirmed-printer rows in the Devices tab. Settings (`printer_supplies.*` — enable / interval 900 s / SNMP community `public` / low % 15 / HTTP fallback, seeded on) are DB-tunable. Routes: `GET /printer-supplies`, `POST /printer-supplies/run`.
 - **Database tab** — DB size plus per-table footprint (rows / reserved / data) read from the SQL system catalog.
 - **Reachability classification** — every collector run categorises each PC as `online` / `offline` / `rpc_unavailable` / `access_denied`. Dashboard surfaces breakdown.
 - **Live reachability probe** — a standalone probe marks every enabled, non-excluded PC reachable if any of TCP 135 / TCP 445 / an ICMP ping fallback (`reachability.ping`, on by default — catches hosts that block RPC/SMB but answer ping) responds, on its **own interval** (`reachability.interval_sec`, default 300 s), independent of monitoring, the collector failure cap, **and the main-scan window** — so Status stays fresh 24/7. Drives the Computers **Status** column as live "is this PC on the network now": `Active` = reachable (dim "logs" marker if up but event log unreadable), `Offline` = not reachable, `Disabled` = AD account disabled. New **offline** filter chip/dropdown; toggle + interval in Settings → "Network reachability (Status)".
@@ -102,8 +103,12 @@ this repo into a different environment you only change access/config, not code:
    categories (`devices.categories`) are likewise Settings-driven; loss/latency
    "problem" thresholds tune the dashboard tile and "issues only" filter
    (`devices.problem_loss_pct` default 1, `devices.problem_latency_ms` default 50).
-   Optional cert-bypassing printer web-UI proxy via `devices.web_proxy`
-   (best-effort). Routes: `GET /devices`, `PATCH /devices/category`,
+   Cert-bypassing printer web-UI proxy via `devices.web_proxy` (now **on by
+   default**, migration 049) — the dashboard fetches the printer's embedded web
+   page server-side (ignoring its self-signed cert) and serves it from the
+   trusted origin, so the card click / IP link don't trip
+   `NET::ERR_CERT_AUTHORITY_INVALID`; verified across Epson / HP / Brother EWS.
+   Routes: `GET /devices`, `PATCH /devices/category`,
    `PATCH /devices/name`, `POST /devices/run`, `POST /devices/probe`.
 
 ## Layout
@@ -113,7 +118,7 @@ ITDashboard/
   apps/
     desktop/                       # Electron + React UI (Dashboard, Events, Computers, Services, Ports, Devices, Database, Activity, Settings)
     server/                        # Fastify API + collectors + AD sync
-      migrations/                  # MSSQL migrations 001–047
+      migrations/                  # MSSQL migrations 001–049
   packages/
     ad-bridge/                     # AD wrapper (Get-ADComputer)
     eventlog-collector/            # standalone wrapper (currently inlined in server)
@@ -218,15 +223,18 @@ New `itd-ps://` launcher for remote PowerShell via `Enter-PSSession`. Registered
 - **Database tab** — DB size + per-table footprint (rows / reserved / data) read from the system catalog.
 - **Deploy fix** — the deploy's robocopy `/MIR` now excludes `dist`, so the live frontend is no longer deleted mid-deploy (previously caused a transient "frontend build not found").
 
+**Printer supplies + EWS proxy hardening (G2, 2026-06-17, migrations 048–049):** a new **"Stav tiskáren" / "Printer status"** tab + **"🖨 Náplně"** dashboard tile reading per-printer ink / toner / maintenance-box / drum / belt levels — **SNMP Printer-MIB primary + targeted HTTP fallback** (Brother numeric toner %, Epson maintenance box), verified live against the real Epson / HP / Brother fleet *before* building. Self-contained SNMP v1 client over `node:dgram` (no dependency); the collector (`printer-supplies-collector.ts`) probes only `category=printer` devices and upserts/prunes `printer_supplies` (migration 048, settings seeded on). The page is a card per printer (colour supply bars + %, badge OK / Dochází / Prázdná, part-codes, drum/belt); the whole card opens the printer web UI via the proxy, a bottom-row link opens the raw `http://IP`, the tile drills in pre-filtered to "only problematic", and a supply flag (● NN%) appears on Devices-tab printer rows. The **device web-UI cert-bypass proxy is now ON by default** (migration 049, `devices.web_proxy=1`) and was reworked to actually render printer EWS through the dashboard: it buffers and returns the upstream body (was an empty 200), injects a `<base>` at the document's directory, rewrites root-absolute `href/src/action` URLs through the proxy, relaxes the CSP + drops `nosniff` for proxied content, corrects `Content-Type` from the path extension, and bounces upstream redirects back to the browser — verified across Epson (EM-C7100, WF-C5790/C5890), HP (M401dne, M451dn, Color M552) and Brother (MFC-L8690CDW). Open follow-ups: a Settings UI panel for the supply collector, an optional low-supply email alert, and a non-SNMP HP fallback (`/DevMgmt/ConsumableConfigDyn.xml`) for one old HP without SNMP supplies.
+
 ## Testing
 
 ```powershell
-npm test          # runs every workspace's Vitest suite (desktop + server), 54 cases
+npm test          # runs every workspace's Vitest suite (desktop + server), 74 cases
 ```
 
 Covers the deterministic pure logic (service crash/exception classification, disk
 threshold + drive-scope evaluation, OS bucketing, alert subject markers,
-maintenance window, debounce/throttle). Runs in CI after typecheck — a failing
+maintenance window, debounce/throttle, SNMP BER encode/decode, printer-supply
+classification + Brother/Epson web parsers). Runs in CI after typecheck — a failing
 test stops the deploy before build/migrate.
 
 ## Setup

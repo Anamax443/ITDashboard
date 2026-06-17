@@ -110,6 +110,7 @@ a.external { color: var(--accent); }
     <li><a href="#ui-tour"><span data-lang="cs">UI prohlídka</span><span data-lang="en">UI tour</span></a></li>
     <li><a href="#ports"><span data-lang="cs">Záložka Porty</span><span data-lang="en">Ports tab</span></a></li>
     <li><a href="#devices"><span data-lang="cs">Záložka Zařízení</span><span data-lang="en">Devices tab</span></a></li>
+    <li><a href="#printer-supplies"><span data-lang="cs">Stav tiskáren</span><span data-lang="en">Printer status</span></a></li>
     <li><a href="#dbtab"><span data-lang="cs">Záložka Databáze</span><span data-lang="en">Database tab</span></a></li>
     <li><a href="#pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></a></li>
     <li><a href="#collector">Eventlog collector</a></li>
@@ -547,7 +548,8 @@ service restarts on new dist/, in-memory state cleared</div>
     <li><strong>Categories</strong> are <strong>operator-configurable in Settings</strong> as a <code>key=Label</code> list and are <strong>colour-coded</strong> in the grid. AD-matched devices <strong>pre-select pc / server</strong>. The dashboard shows an <strong>auto suggestion</strong> (clickable to accept). The category you choose is <strong>saved by MAC</strong> and <strong>re-applied on every refresh</strong>, so it sticks even as leases come and go.</li>
     <li><strong>ms / % column</strong> — a compact per-device <strong>latency / packet-loss</strong> readout, e.g. <code>&lt;5/0</code> = under 5 ms / 0 % loss, <code>120/25</code> = 120 ms / 25 % loss. It is <strong>only meaningful while the device is online</strong>. Note: a host that returns only "Destination host unreachable" gateway errors (no real reply) is <strong>OFFLINE</strong>, not "partial loss".</li>
     <li><strong>"jen problémy / issues only" filter</strong> and the homepage <strong>"Loss / latency" tile</strong> surface <strong>degraded</strong> devices — ones that are online but whose loss / latency is at or above the Settings thresholds (<code>devices.problem_loss_pct</code>, default 1 %, and <code>devices.problem_latency_ms</code>, default 50 ms).</li>
-    <li><strong>Printers</strong> get a dedicated homepage <strong>"Printers" tile</strong> (online / offline) and an <strong>email alert when a printer goes offline</strong> (configured under Settings). A printer's <strong>IP links to its web UI</strong>; an optional Settings toggle routes that link through a <strong>server-side proxy that bypasses the printer's self-signed certificate</strong> (best-effort).</li>
+    <li><strong>Printers</strong> get a dedicated homepage <strong>"Printers" tile</strong> (online / offline) and an <strong>email alert when a printer goes offline</strong> (configured under Settings). A printer's <strong>IP links to its web UI</strong> through a <strong>server-side proxy that bypasses the printer's self-signed certificate</strong> (Settings <code>devices.web_proxy</code>, now <strong>on by default</strong> — verified working across Epson, HP and Brother EWS; the operator can still turn it off).</li>
+    <li><strong>Supply flag</strong> — a row confirmed as a <strong>Printer</strong> shows a light supply indicator (<code>● NN%</code>) reflecting its lowest consumable; clicking it jumps straight to the <a href="#printer-supplies">Printer status</a> page. See that chapter for the full per-printer ink / toner / maintenance view.</li>
     <li><strong>Filters</strong> — site, <strong>jen mimo AD / not in AD only</strong> (devices with no AD match), <strong>jen tiskárny / printers only</strong>, <strong>jen problémy / issues only</strong>.</li>
     <li><strong>Aktualizovat / Refresh</strong> — re-runs the merge: pulls the <strong>current leases + ARP</strong> from the routers and a fresh <strong>active scan</strong>.</li>
     <li><strong>📡 Ping</strong> (per row) — opens the console window with the live ping output, same as on the Ports tab.</li>
@@ -569,11 +571,66 @@ service restarts on new dist/, in-memory state cleared</div>
     <li><strong>Kategorie</strong> jsou <strong>konfigurovatelné operátorem v Nastavení</strong> jako seznam <code>key=Label</code> a jsou v mřížce <strong>barevně odlišené</strong>. Napárovaná AD zařízení mají <strong>předvolené pc / server</strong>. Dashboard ukáže <strong>automatický návrh</strong> (kliknutím přijmeš). Zvolená kategorie se <strong>ukládá podle MAC</strong> a <strong>znovu aplikuje při každém refreshi</strong>, takže drží i když leases přibývají a mizí.</li>
     <li><strong>Sloupec ms / %</strong> — kompaktní <strong>latence / ztrátovost</strong> na zařízení, např. <code>&lt;5/0</code> = pod 5 ms / 0 % ztráta, <code>120/25</code> = 120 ms / 25 % ztráta. Má smysl <strong>jen když je zařízení online</strong>. Pozor: host, který vrací jen chyby brány „Destination host unreachable" (žádnou skutečnou odpověď), je <strong>OFFLINE</strong>, ne „částečná ztráta".</li>
     <li>Filtr <strong>jen problémy / issues only</strong> a dlaždice <strong>„Loss / latency"</strong> na úvodní stránce vytahují <strong>degradovaná</strong> zařízení — taková, která jsou online, ale jejich ztráta / latence je na úrovni nebo nad prahy v Nastavení (<code>devices.problem_loss_pct</code>, výchozí 1 %, a <code>devices.problem_latency_ms</code>, výchozí 50 ms).</li>
-    <li><strong>Tiskárny</strong> mají vlastní dlaždici <strong>„Printers"</strong> na úvodní stránce (online / offline) a <strong>e-mailový alert, když tiskárna spadne offline</strong> (nastavuje se v Nastavení). <strong>IP tiskárny odkazuje na její webové rozhraní</strong>; volitelný přepínač v Nastavení vede tento odkaz přes <strong>serverovou proxy, která obchází self-signed certifikát tiskárny</strong> (best-effort).</li>
+    <li><strong>Tiskárny</strong> mají vlastní dlaždici <strong>„Printers"</strong> na úvodní stránce (online / offline) a <strong>e-mailový alert, když tiskárna spadne offline</strong> (nastavuje se v Nastavení). <strong>IP tiskárny odkazuje na její webové rozhraní</strong> přes <strong>serverovou proxy, která obchází self-signed certifikát tiskárny</strong> (Nastavení <code>devices.web_proxy</code>, nově <strong>zapnuto ve výchozím stavu</strong> — ověřeno funkční na EWS Epson, HP i Brother; operátor ji může vypnout).</li>
+    <li><strong>Indikátor náplní</strong> — řádek potvrzený jako <strong>Tiskárna</strong> ukazuje lehký indikátor náplní (<code>● NN%</code>) odpovídající nejnižší spotřební náplni; kliknutím přejdeš rovnou na stránku <a href="#printer-supplies">Stav tiskáren</a>. Celý přehled inkoustu / toneru / údržby po tiskárnách viz tato kapitola.</li>
     <li><strong>Filtry</strong> — lokalita, <strong>jen mimo AD / not in AD only</strong> (zařízení bez AD shody), <strong>jen tiskárny / printers only</strong>, <strong>jen problémy / issues only</strong>.</li>
     <li><strong>Aktualizovat / Refresh</strong> — znovu spustí sloučení: stáhne <strong>aktuální leases + ARP</strong> z routerů a čerstvý <strong>aktivní sken</strong>.</li>
     <li><strong>📡 Ping</strong> (u řádku) — otevře konzolové okno s živým výstupem pingu, stejně jako v záložce Porty.</li>
   </ul>
+</div>
+
+<h3 id="printer-supplies"><span data-lang="cs">Stav tiskáren</span><span data-lang="en">Printer status</span></h3>
+<div data-lang="en">
+  <p>A dedicated <strong>"🖨 Náplně / Supplies" tab</strong> (with a matching <strong>homepage tile</strong>) that reads <strong>ink / toner / maintenance-box / drum / belt levels straight from the network printers</strong> and shows them per printer. The collector probes <strong>only devices the operator has categorised as "Printer"</strong> (<code>category=printer</code>); it is fully <strong>DB-driven</strong> and runs on its own <strong>self-rescheduling timer</strong>.</p>
+  <h4>How the levels are read</h4>
+  <ul>
+    <li><strong>Primary source — SNMP Printer-MIB.</strong> Supply levels come from <code>prtMarkerSupplies</code> (description <code>.6</code>, max capacity <code>.8</code>, current level <code>.9</code>; the percentage is <code>level / max</code>), and <code>sysDescr</code> gives the model. This is <strong>uniform across HP, Epson, Brother and Kyocera</strong> and also yields <strong>HP cartridge part-numbers</strong> plus <strong>laser drum / belt life</strong>. It is implemented with a <strong>self-contained SNMP v1 client over <code>node:dgram</code></strong> — no external dependency.</li>
+    <li><strong>HTTP fallback (best-effort)</strong> for two gaps found by live probing: <strong>Brother</strong> reports toner over SNMP only as "some remaining" (no percentage), so the numeric % is scraped from its <strong>web status page</strong> (<code>/general/status.html</code>); <strong>Epson</strong> omits the <strong>maintenance (waste) box</strong> over SNMP, so it is read from the <strong>Epson Web Config</strong> page.</li>
+  </ul>
+  <h4>The page</h4>
+  <ul>
+    <li><strong>One card per printer</strong> with <strong>coloured supply bars + percent</strong>, a <strong>status badge OK / Low (Dochází) / Empty (Prázdná)</strong>, and the printer's <strong>model</strong>, <strong>part-codes</strong>, and <strong>maintenance box / drum / belt</strong>.</li>
+    <li><strong>Whole-card click</strong> opens the printer's own web UI through the dashboard's <a href="#devices">cert-bypass proxy</a>. A bottom-row link <strong>"přímo na IP / direct to IP"</strong> instead opens the raw <code>http://IP</code>.</li>
+    <li>The <strong>homepage tile</strong> drills into this page <strong>pre-filtered to "only problematic"</strong> printers.</li>
+  </ul>
+  <h4>Thresholds</h4>
+  <ul>
+    <li><strong>Empty (red)</strong> — level ≤ 0 %.</li>
+    <li><strong>Low (amber)</strong> — level &lt; <code>low_pct</code> (default 15 %).</li>
+    <li><strong>OK</strong> — otherwise.</li>
+    <li>A <strong>NULL level</strong> ("some remaining", e.g. Brother toner over SNMP) is shown as <strong>"remaining / zbývá"</strong> and is <strong>not counted as low</strong>.</li>
+  </ul>
+  <div class="callout callout-warn">
+    <p><strong>Current limitation:</strong> the printer-supplies settings (see below) are <strong>seeded by migration 048</strong> and work on their defaults, but there is <strong>no Settings UI panel for them yet</strong> — they are <strong>DB-tunable only</strong>.</p>
+  </div>
+  <p><strong>Settings (seeded by migration 048):</strong> <code>printer_supplies.enabled</code> (default ON), <code>printer_supplies.interval_sec</code> (default 900 s), <code>printer_supplies.snmp_community</code> (default <code>public</code>), <code>printer_supplies.low_pct</code> (default 15), <code>printer_supplies.http_fallback</code> (default ON).</p>
+  <p><strong>Routes:</strong> <code>GET /printer-supplies</code> (the page data) and <code>POST /printer-supplies/run</code> (trigger a probe on demand).</p>
+</div>
+<div data-lang="cs">
+  <p>Samostatná <strong>záložka „🖨 Náplně / Supplies"</strong> (s odpovídající <strong>dlaždicí na úvodní stránce</strong>), která čte <strong>hladiny inkoustu / toneru / údržbové schránky / válce / pásu přímo ze síťových tiskáren</strong> a zobrazuje je po jednotlivých tiskárnách. Sběr sonduje <strong>jen zařízení, která operátor zařadil do kategorie „Tiskárna"</strong> (<code>category=printer</code>); je plně <strong>řízený z databáze</strong> a běží na vlastním <strong>samo-přeplánujícím se časovači</strong>.</p>
+  <h4>Jak se hladiny čtou</h4>
+  <ul>
+    <li><strong>Primární zdroj — SNMP Printer-MIB.</strong> Hladiny náplní pocházejí z <code>prtMarkerSupplies</code> (popis <code>.6</code>, maximální kapacita <code>.8</code>, aktuální hladina <code>.9</code>; procento je <code>hladina / max</code>), model dává <code>sysDescr</code>. Funguje to <strong>jednotně napříč HP, Epson, Brother i Kyocera</strong> a navíc poskytuje <strong>čísla dílů HP kazet</strong> a <strong>životnost laserového válce / pásu</strong>. Implementováno <strong>samostatným SNMP v1 klientem nad <code>node:dgram</code></strong> — bez externí závislosti.</li>
+    <li><strong>HTTP fallback (best-effort)</strong> na dvě mezery zjištěné živým sondováním: <strong>Brother</strong> hlásí toner přes SNMP jen jako „nějaké zbývá" (bez procent), takže se číselné % stahuje z jeho <strong>webové stavové stránky</strong> (<code>/general/status.html</code>); <strong>Epson</strong> přes SNMP neuvádí <strong>údržbovou (odpadní) schránku</strong>, takže se čte ze stránky <strong>Epson Web Config</strong>.</li>
+  </ul>
+  <h4>Stránka</h4>
+  <ul>
+    <li><strong>Jedna karta na tiskárnu</strong> s <strong>barevnými pruhy náplní + procenty</strong>, <strong>stavovým odznakem OK / Dochází (Low) / Prázdná (Empty)</strong> a <strong>modelem</strong>, <strong>kódy dílů</strong> a <strong>údržbovou schránkou / válcem / pásem</strong>.</li>
+    <li><strong>Kliknutí na celou kartu</strong> otevře webové rozhraní tiskárny přes <a href="#devices">proxy obcházející certifikát</a>. Odkaz v dolním řádku <strong>„přímo na IP / direct to IP"</strong> naopak otevře holé <code>http://IP</code>.</li>
+    <li><strong>Dlaždice na úvodní stránce</strong> přejde na tuto stránku <strong>předfiltrovanou na „jen problematické"</strong> tiskárny.</li>
+  </ul>
+  <h4>Prahy</h4>
+  <ul>
+    <li><strong>Prázdná (červená)</strong> — hladina ≤ 0 %.</li>
+    <li><strong>Dochází (oranžová)</strong> — hladina &lt; <code>low_pct</code> (výchozí 15 %).</li>
+    <li><strong>OK</strong> — jinak.</li>
+    <li><strong>Hladina NULL</strong> („nějaké zbývá", např. toner Brother přes SNMP) se zobrazí jako <strong>„zbývá / remaining"</strong> a <strong>nepočítá se jako docházející</strong>.</li>
+  </ul>
+  <div class="callout callout-warn">
+    <p><strong>Současné omezení:</strong> nastavení náplní (viz níže) jsou <strong>nasazena migrací 048</strong> a fungují na výchozích hodnotách, ale <strong>zatím nemají panel v Nastavení</strong> — lze je ladit <strong>jen v databázi</strong>.</p>
+  </div>
+  <p><strong>Nastavení (nasazeno migrací 048):</strong> <code>printer_supplies.enabled</code> (výchozí ZAP), <code>printer_supplies.interval_sec</code> (výchozí 900 s), <code>printer_supplies.snmp_community</code> (výchozí <code>public</code>), <code>printer_supplies.low_pct</code> (výchozí 15), <code>printer_supplies.http_fallback</code> (výchozí ZAP).</p>
+  <p><strong>Routy:</strong> <code>GET /printer-supplies</code> (data stránky) a <code>POST /printer-supplies/run</code> (spuštění sondy na vyžádání).</p>
 </div>
 
 <h3 id="dbtab"><span data-lang="cs">Záložka Databáze</span><span data-lang="en">Database tab</span></h3>
@@ -1429,9 +1486,14 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td><code>mikrotik.interval_sec</code></td><td>300</td><td>How often the DHCP/ARP + active-scan collection runs</td></tr>
   <tr><td><code>mikrotik.scan_ranges</code></td><td>(empty)</td><td>Active-scan ranges (CIDR or wildcard, optional <code>Site=</code>, leading <code>!</code> excludes a subnet) — see <a href="#devices">Devices tab</a></td></tr>
   <tr><td><code>devices.categories</code></td><td>(built-in)</td><td>Operator-editable category list as <code>key=Label</code> rows; colour-coded in the Devices grid</td></tr>
-  <tr><td><code>devices.web_proxy</code></td><td><code>0</code></td><td>Route a device's web-UI IP link through a server proxy that bypasses its self-signed certificate (best-effort)</td></tr>
+  <tr><td><code>devices.web_proxy</code></td><td><code>1</code></td><td>Route a device's web-UI IP link through a server proxy that bypasses its self-signed certificate. <strong>On by default (migration 049)</strong>; verified across Epson/HP/Brother EWS — operator can turn it off</td></tr>
   <tr><td><code>devices.problem_loss_pct</code></td><td>1</td><td>Packet-loss % at/above which an online device counts as degraded (Loss/latency tile + issues filter)</td></tr>
   <tr><td><code>devices.problem_latency_ms</code></td><td>50</td><td>Latency in ms at/above which an online device counts as degraded</td></tr>
+  <tr><td><code>printer_supplies.enabled</code></td><td><code>1</code></td><td>Enable/disable the printer ink/toner supply collector (seeded by migration 048). <strong>No Settings UI yet — DB-tunable only</strong></td></tr>
+  <tr><td><code>printer_supplies.interval_sec</code></td><td>900</td><td>How often the supply probe runs (self-rescheduling timer)</td></tr>
+  <tr><td><code>printer_supplies.snmp_community</code></td><td><code>public</code></td><td>SNMP v1 read community used to read <code>prtMarkerSupplies</code></td></tr>
+  <tr><td><code>printer_supplies.low_pct</code></td><td>15</td><td>Supply % below which a consumable counts as "Low / Dochází" (≤ 0 % = Empty)</td></tr>
+  <tr><td><code>printer_supplies.http_fallback</code></td><td><code>1</code></td><td>Best-effort HTTP scrape for gaps SNMP misses (Brother toner %, Epson maintenance box)</td></tr>
 </table>
 
 <h3 id="settings-mikrotik"><span data-lang="cs">MikroTik DHCP</span><span data-lang="en">MikroTik DHCP</span></h3>
@@ -1464,7 +1526,7 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
 <div data-lang="en">
   <p>Settings also has a <strong>"Devices — web &amp; categories"</strong> group that tunes the <a href="#devices">Devices tab</a>:</p>
   <ul>
-    <li><strong>Web-UI proxy toggle</strong> — route a device's web-UI IP link through a <strong>server proxy that bypasses the self-signed certificate</strong> (best-effort).</li>
+    <li><strong>Web-UI proxy toggle</strong> (<code>devices.web_proxy</code>) — route a device's web-UI IP link through a <strong>server proxy that bypasses the self-signed certificate</strong>. It is <strong>on by default (migration 049)</strong> and verified working across Epson (EM-C7100, WF-C5790/C5890), HP (M401dne, M451dn, Color M552) and Brother (MFC-L8690CDW) EWS; the operator can turn it off. The proxy buffers and returns the upstream body, injects a <code>&lt;base&gt;</code>, rewrites root-absolute <code>href/src/action</code> URLs back through itself, sets a permissive CSP and drops <code>nosniff</code> so the printer's inline scripts run, corrects the Content-Type from the path extension, and bounces upstream redirects back as proxied paths.</li>
     <li><strong>Categories</strong> — the operator-editable category list (<code>key=Label</code> rows), colour-coded in the grid.</li>
     <li><strong>Problem thresholds</strong> — the <strong>packet-loss %</strong> and <strong>latency (ms)</strong> at/above which an online device is flagged as degraded (drives the "Loss / latency" tile and the "issues only" filter).</li>
   </ul>
@@ -1473,7 +1535,7 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
 <div data-lang="cs">
   <p>V Nastavení je také skupina <strong>„Zařízení — web a kategorie"</strong>, která ladí <a href="#devices">záložku Zařízení</a>:</p>
   <ul>
-    <li><strong>Přepínač webové proxy</strong> — vede odkaz na webové rozhraní zařízení přes <strong>serverovou proxy, která obchází self-signed certifikát</strong> (best-effort).</li>
+    <li><strong>Přepínač webové proxy</strong> (<code>devices.web_proxy</code>) — vede odkaz na webové rozhraní zařízení přes <strong>serverovou proxy, která obchází self-signed certifikát</strong>. Je <strong>zapnutá ve výchozím stavu (migrace 049)</strong> a ověřena funkční na EWS Epson (EM-C7100, WF-C5790/C5890), HP (M401dne, M451dn, Color M552) i Brother (MFC-L8690CDW); operátor ji může vypnout. Proxy uloží a vrátí tělo z upstreamu, vloží <code>&lt;base&gt;</code>, přepíše root-absolutní URL <code>href/src/action</code> zpět přes sebe, nastaví benevolentní CSP a odebere <code>nosniff</code>, aby inline skripty tiskárny běžely, opraví Content-Type podle přípony cesty a přesměrování z upstreamu odrazí zpět jako proxy cesty.</li>
     <li><strong>Kategorie</strong> — operátorem editovatelný seznam kategorií (řádky <code>key=Label</code>), barevně odlišený v mřížce.</li>
     <li><strong>Prahy problémů</strong> — <strong>% ztráty</strong> a <strong>latence (ms)</strong>, na úrovni nebo nad kterými je online zařízení označeno za degradované (pohání dlaždici „Loss / latency" a filtr „jen problémy").</li>
   </ul>
@@ -1515,6 +1577,9 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td><span class="tag tag-patch">PATCH</span></td><td><code>/computers/:id/excluded</code></td><td>Toggle permanent exclude flag</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/firewall/whitelist</code></td><td>Current API IP whitelist</td></tr>
   <tr><td><span class="tag tag-put">PUT</span></td><td><code>/firewall/whitelist</code></td><td>Replace whitelist (validates IP/CIDR)</td></tr>
+  <tr><td colspan="3" style="background:var(--surface)">Printer supplies</td></tr>
+  <tr><td><span class="tag tag-get">GET</span></td><td><code>/printer-supplies</code></td><td>Per-printer ink/toner/maintenance/drum/belt levels (Printer status page)</td></tr>
+  <tr><td><span class="tag tag-post">POST</span></td><td><code>/printer-supplies/run</code></td><td>Trigger a supply probe on demand (SNMP + best-effort HTTP fallback)</td></tr>
   <tr><td colspan="3" style="background:var(--surface)">Other</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/activity/log?limit&amp;sinceSeq</code></td><td>Recent activity log (in-memory ring buffer)</td></tr>
   <tr><td><span class="tag tag-get">GET</span></td><td><code>/settings</code></td><td>All settings</td></tr>
@@ -1536,7 +1601,7 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td><code>credentials</code></td><td>DPAPI-encrypted credential blobs (opaque to DB; decrypted by service account)</td></tr>
   <tr><td><code>service_problems</code></td><td>Per-PC snapshot of stopped auto-services + classification (trigger/delayed/per-user) + drift status vs policy</td></tr>
   <tr><td><code>service_policy</code></td><td>Operator-defined rules: pattern, expected start mode/state, priority, reason</td></tr>
-  <tr><td><code>schema_migrations</code></td><td>Migration tracking (applied <code>id</code> + timestamp)</td></tr>
+  <tr><td><code>schema_migrations</code></td><td>Migration tracking (applied <code>id</code> + timestamp). Latest: <strong>048</strong> (printer-supplies settings) and <strong>049</strong> (<code>devices.web_proxy</code> on by default)</td></tr>
 </table>
 
 <h2 id="retention"><span data-lang="cs">Retention policy</span><span data-lang="en">Retention policy</span></h2>

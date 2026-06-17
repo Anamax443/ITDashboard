@@ -42,7 +42,7 @@
 <body>
 <main>
   <h1>ITDashboard <span class="badge live">LIVE</span></h1>
-  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-17</span> <span class="pill">commit 62c9f26</span></p>
+  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-17</span> <span class="pill">commit e456fd0</span></p>
 
   <h2>Stav nasazení</h2>
   <div class="grid">
@@ -77,7 +77,8 @@
     <li><strong>Zařízení (Devices)</strong> — víceztrojový inventář slučovaný podle MAC ze tří zdrojů (sloupec <code>source</code> = dhcp/arp/scan): MikroTik DHCP (dynamické leasy + statické rezervace), ARP tabulka routerů a aktivní sken podsítí z aplikačního serveru. Konfigurovatelné rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť); discovery cache; vzdálené podsítě přes router ARP. Párováno s AD počítači podle hostname/IP; per-zařízení kategorie s auto-návrhem a operátorem editovatelný název (dle MAC).</li>
     <li><strong>Rozlišení názvů + auto-návrh tiskáren</strong> — NetBIOS (<code>nbtstat</code>) rozlišení názvu zařízení → auto-návrh tiskáren podle prefixů (NPI/BRN/BRW/RNP/KMBT); operátorem editovatelný název zařízení dle MAC. Sloupec „Type" (statický/dynamický), AD-odvozený předvýběr pc/server, generická kategorie „Printer", operátorem konfigurovatelné kategorie.</li>
     <li><strong>Packet loss + latence per zařízení</strong> — kompaktní sloupec <code>ms / %</code> (např. <code>&lt;5/0</code>) se ztrátovostí a průměrnou latencí; laditelné prahy „problému"; dlaždice „Loss / latence" na homepage + filtr „jen problémy".</li>
-    <li><strong>Email alerty tiskáren</strong> — agenda upozornění na offline tiskárny; dlaždice „Tiskárny" na homepage; proklik z IP tiskárny na webové UI s volitelným serverovým proxy obcházejícím certifikát.</li>
+    <li><strong>Email alerty tiskáren</strong> — agenda upozornění na offline tiskárny; dlaždice „Tiskárny" na homepage; proklik z IP tiskárny na webové UI se serverovým proxy obcházejícím certifikát (nově zapnuto defaultně).</li>
+    <li><strong>Stav tiskáren (náplně)</strong> — per-tiskárna hladiny inkoustu / toneru / maintenance boxu / drumu / beltu čtené přímo z tiskáren přes <strong>SNMP Printer-MIB</strong> (primární cesta, jednotná napříč HP/Epson/Brother) s cíleným <strong>HTTP fallbackem</strong> pro číselné % toneru Brother a maintenance box Epsonu. Nová záložka „Stav tiskáren", homepage dlaždice „🖨 Náplně" a vlajka náplní v záložce Zařízení. Vlastní SNMP v1 klient (<code>node:dgram</code>, bez závislosti); sonduje jen zařízení kategorie tiskárna.</li>
     <li><strong>Záložka „Databáze"</strong> — velikost DB + footprint per tabulka.</li>
     <li><strong>Per-PC „Obnovit teď"</strong> — jednorázová obnova jednoho stroje napříč všemi checky: disky, služby, eventlog, perf, porty.</li>
     <li><strong>Settings</strong> — frekvence, časové okno, zapnuté checky, prahy — aplikováno živě bez restartu služby.</li>
@@ -100,6 +101,33 @@
     <tr><td>Sken podsítí (Devices)</td><td>Settings → rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť). Aktivní sken běží z aplikačního serveru; vzdálené podsítě přes ARP routerů. Nic v <code>.env</code>.</td></tr>
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
+
+  <h2>Poslední změny (2026-06-17) — Stav tiskáren (náplně) + cert-bypass proxy defaultně</h2>
+  <p class="sub" style="margin:0 0 .75rem">Nová agenda <strong>G2 — Stav tiskáren / Printer status</strong>: per-tiskárna hladiny náplní čtené přes SNMP Printer-MIB s cíleným HTTP fallbackem; cert-bypass proxy na web UI tiskáren je nově zapnut defaultně a ověřen napříč Epson/HP/Brother. Zásahy do DB — <strong>migrace 048–049</strong>. Živý commit <span class="pill">e456fd0</span>.</p>
+  <p style="margin:0 0 4px"><strong>Stav tiskáren / Printer status (náplně)</strong> <span class="pill">e456fd0</span> <span class="pill">G2</span> <span class="pill">migrace 048</span></p>
+  <ul>
+    <li>Per-tiskárna hladiny <strong>inkoustu / toneru / maintenance boxu / drumu / beltu</strong> čtené přímo z tiskáren přes <strong>SNMP Printer-MIB</strong> — primární cesta, jednotná napříč HP / Epson / Brother.</li>
+    <li>Cílený <strong>HTTP fallback</strong> pro číselné % toneru u <strong>Brother</strong> a pro maintenance box u <strong>Epsonu</strong>, kde je SNMP nedostatečné.</li>
+    <li>Nová záložka <strong>„Stav tiskáren"</strong> + homepage dlaždice <strong>„🖨 Náplně / Supplies"</strong> + vlajka náplní v záložce <strong>Zařízení</strong>.</li>
+    <li>Vlastní <strong>SNMP v1 klient</strong> (<code>node:dgram</code>, <strong>bez externí závislosti</strong>); sonduje <strong>jen</strong> zařízení kategorie tiskárna.</li>
+    <li>Nastavení naseedováno (<code>printer_supplies.*</code>), <strong>laditelné v DB</strong> — Settings UI panel zatím není (viz otevřené body).</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Cert-bypass proxy web UI tiskáren defaultně ZAPNUTO</strong> <span class="pill">e456fd0</span> <span class="pill">migrace 049</span></p>
+  <ul>
+    <li>Serverový proxy obcházející certifikát web UI zařízení je nově <strong>zapnut defaultně</strong> (<code>devices.web_proxy=1</code>) a ověřen napříč web rozhraními tiskáren <strong>Epson / HP / Brother</strong>.</li>
+    <li>Proxy bufferuje a vrací tělo, opravuje <code>&lt;base&gt;</code>, přepisuje absolutní URL, uvolňuje CSP, koriguje MIME a dělá client-side redirecty.</li>
+  </ul>
+  <div class="note">
+    <strong>Migrace:</strong> nyní 001–049 — přidány <strong>048</strong> (stav tiskáren / náplně, seed <code>printer_supplies.*</code>) a <strong>049</strong> (<code>devices.web_proxy</code> defaultně zapnuto).
+  </div>
+  <div class="note">
+    <strong>Otevřené body (follow-ups):</strong>
+    <ul style="margin:.4rem 0 0">
+      <li>Settings UI panel pro kolektor náplní tiskáren (zatím jen DB-tunable).</li>
+      <li>Volitelný emailový alert na docházející náplně.</li>
+      <li>Non-SNMP HP fallback (<code>/DevMgmt/ConsumableConfigDyn.xml</code>) pro jednu starší HP bez SNMP náplní.</li>
+    </ul>
+  </div>
 
   <h2>Poslední změny (2026-06-17) — Devices: víceztrojový inventář, packet loss, tiskárny, DB tab</h2>
   <p class="sub" style="margin:0 0 .75rem">Sběr MikroTik DHCP je <strong>živý a plně DB-driven ze Settings</strong>; záložka Zařízení rozšířena na víceztrojový inventář slučovaný podle MAC, packet loss / latenci, rozlišení názvů a alerty tiskáren. Zásahy do DB — <strong>migrace 043–047</strong>. Živý commit <span class="pill">62c9f26</span>.</p>
@@ -208,7 +236,7 @@
   </ul>
   <p style="margin:8px 0 4px"><strong>První automatizované testy jako deploy gate</strong> <span class="pill">b7e03e2</span></p>
   <ul>
-    <li>První testovací sady (Vitest, <strong>54 případů</strong> napříč desktopem + serverem) zapojené do CI jako deploy gate — odpověď na výtku „žádné testy" z oponentury.</li>
+    <li>První testovací sady (Vitest, <strong>74 případů</strong> napříč desktopem + serverem) zapojené do CI jako deploy gate — odpověď na výtku „žádné testy" z oponentury.</li>
   </ul>
   <p style="margin:8px 0 4px"><strong>Dokumentace — oponentura</strong> <span class="pill">b7e03e2</span></p>
   <ul>
@@ -321,7 +349,7 @@
     <a href="SETUP-SERVER.md">SETUP-SERVER.md</a> ·
     <a href="../HANDOFF.md">HANDOFF.md</a> ·
     <a href="../README.md">README.md</a><br>
-    Generováno jako statický status snapshot — 2026-06-17 (commit 62c9f26).<br>
+    Generováno jako statický status snapshot — 2026-06-17 (commit e456fd0).<br>
     © 2026 Milan Trnka, IT
   </footer>
 </main>
