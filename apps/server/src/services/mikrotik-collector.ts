@@ -338,7 +338,9 @@ async function persistReachable(site: string, mac: string, reachable: boolean, l
   await pool.request().input('site', site).input('mac', mac).input('r', reachable ? 1 : 0).input('loss', lossPct).input('host', host).query(`
     UPDATE dhcp_leases
     SET reachable = @r,
-        packet_loss = @loss,
+        -- packet loss only matters while ONLINE; offline = 100% is just restating
+        -- "offline", so store NULL there (nothing to show / count).
+        packet_loss = CASE WHEN @r = 1 THEN @loss ELSE NULL END,
         host_name = COALESCE(@host, host_name),
         reach_checked_at = SYSUTCDATETIME(),
         last_reachable_at = CASE WHEN @r = 1 THEN SYSUTCDATETIME() ELSE last_reachable_at END

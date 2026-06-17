@@ -45,6 +45,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const [onlyUnmanaged, setOnlyUnmanaged] = useState(false);
   const [onlyPrinters, setOnlyPrinters] = useState(false);
   const [catFilter, setCatFilter] = useState('');
+  const [onlyLossy, setOnlyLossy] = useState(false);
   const [editName, setEditName] = useState<{ mac: string; value: string } | null>(null);
   const [running, setRunning] = useState(false);
   const [rowBusy, setRowBusy] = useState<Record<string, boolean>>({});
@@ -130,6 +131,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
       if (catFilter === '__none') { if (d.category) return false; }
       else if ((d.category ?? '') !== catFilter) return false;
     }
+    if (onlyLossy && !(effectiveReachable(d) === true && (d.packet_loss ?? 0) > 0)) return false;
     if (search) {
       const q = search.toLowerCase();
       return (d.ip_address ?? '').toLowerCase().includes(q)
@@ -197,6 +199,10 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
           <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <input type="checkbox" checked={onlyPrinters} onChange={(e) => setOnlyPrinters(e.target.checked)} />
             {t('devices.onlyPrinters')}
+          </label>
+          <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }} title={t('devices.lossTip')}>
+            <input type="checkbox" checked={onlyLossy} onChange={(e) => setOnlyLossy(e.target.checked)} />
+            {t('devices.onlyLossy')}
           </label>
           <button className="refresh-btn" onClick={runAll} disabled={running} style={{ fontWeight: 600 }}>
             {running ? t('devices.running') : `🔄 ${t('devices.refreshNow')}`}
