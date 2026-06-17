@@ -18,7 +18,7 @@ Last updated: 2026-06-17 (MikroTik allowed-address now permits .213/.181 — col
 - Runtime path on server: `C:\Apps\ITDashboard`
 - SQL server: `10.8.2.225`
 - Database: `ITDashboard`
-- Live commit: `9726302`
+- Live commit: `37a5cf2`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
 
@@ -126,6 +126,14 @@ returns `source`; `runMikrotikCollectOnce` returns `scanned`.
 
 Default: scan is **OFF** (it's active network probing) — operator enables it and
 enters the ranges (`10.8.2.0/24` + Zastávka) in Settings → MikroTik DHCP.
+
+**Live-verified after deploy `37a5cf2`:** scan enabled for `Brno=10.8.2.0/24`, a
+collect run pulled `leases=154`, `scanned=98`, 0 errors in 15.6s. The inventory
+grew 161 → **269 devices** (`dhcp=163 · arp=8 · scan=98`), and the static printer
+**`10.8.2.100`** now appears (`source=scan`, `dynamic=false`, reachable). **TODO
+for operator:** add the Zastávka CIDR(s) to `mikrotik.scan_ranges` in Settings —
+only the Brno `/24` is configured so far (Zastávka spans several subnets:
+10.10.181 / 10.90.181 / 10.130.181 — confirm the exact ranges before adding).
 
 ## Session 2026-06-16 — MikroTik collection model simplified to in-app (decision, docs only)
 
