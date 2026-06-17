@@ -18,7 +18,7 @@ Last updated: 2026-06-17 (MikroTik allowed-address now permits .213/.181 — col
 - Runtime path on server: `C:\Apps\ITDashboard`
 - SQL server: `10.8.2.225`
 - Database: `ITDashboard`
-- Live commit: `9742b94`
+- Live commit: `9726302`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
 
@@ -87,8 +87,16 @@ New `DatabasePage` renders summary cards + a sortable-by-size table with a usage
 bar, so the operator sees which tables eat the space. Read-only; loads on demand.
 Nav entry between Devices and Perf.
 
-Typecheck clean across all workspaces; 54/54 tests pass. Migration 043 applies on
-deploy. Live commit to be set after this push.
+Typecheck clean across all workspaces; 54/54 tests pass. Deployed `9726302`
+(migration 043 applied; deploy green; smoke test = running binary SHA matches).
+Live-verified: `/version`=9726302, `/devices`=161 rows (leases persisted in
+`dhcp_leases`), `/database` works (DB 656 MB, 23 tables, `events` ≈ 295 MB the
+largest — candidate for the retention review).
+
+> Router data persistence (operator Q): yes — the collector upserts every pulled
+> lease into **`dhcp_leases`** (MERGE by site+mac); operator categories live in
+> **`device_categories`** (by MAC). The Devices tab + Printers tile read from
+> `dhcp_leases` via `GET /devices`.
 
 ## Session 2026-06-16 — MikroTik collection model simplified to in-app (decision, docs only)
 
