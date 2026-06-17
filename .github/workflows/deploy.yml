@@ -27,8 +27,14 @@ jobs:
         # Mirror the checked-out tree into C:\Apps\ITDashboard so the NSSM-managed
         # service picks up the new code. Exclude node_modules (workspace-installed
         # in runtime dir) and .env (operator-owned at runtime).
+        #
+        # IMPORTANT: also exclude `dist`. It's gitignored (built later in this job),
+        # so /MIR would DELETE the live build right away — leaving the still-running
+        # old service with NO frontend ("frontend build not found") for the whole
+        # install+build window. Keeping the old dist lets it serve continuously
+        # until the Build steps overwrite it in place, then the restart swaps over.
         run: |
-          robocopy . %RUNTIME_DIR% /MIR /XD node_modules _diag _work /XF .env /NFL /NDL /NJH /NJS /NC /NS
+          robocopy . %RUNTIME_DIR% /MIR /XD node_modules _diag _work dist /XF .env /NFL /NDL /NJH /NJS /NC /NS
           if %ERRORLEVEL% GEQ 8 exit /b %ERRORLEVEL%
           exit /b 0
 
