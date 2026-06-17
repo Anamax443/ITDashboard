@@ -330,12 +330,13 @@ async function upsertDevice(d: NormDevice): Promise<{ mac: string; ip: string | 
   return { mac: d.mac, ip: d.ip, host: d.host };
 }
 
-async function persistReachable(site: string, mac: string, reachable: boolean, lossPct: number | null = null): Promise<void> {
+async function persistReachable(site: string, mac: string, reachable: boolean, lossPct: number | null = null, host: string | null = null): Promise<void> {
   const pool = await getPool();
-  await pool.request().input('site', site).input('mac', mac).input('r', reachable ? 1 : 0).input('loss', lossPct).query(`
+  await pool.request().input('site', site).input('mac', mac).input('r', reachable ? 1 : 0).input('loss', lossPct).input('host', host).query(`
     UPDATE dhcp_leases
     SET reachable = @r,
         packet_loss = @loss,
+        host_name = COALESCE(@host, host_name),
         reach_checked_at = SYSUTCDATETIME(),
         last_reachable_at = CASE WHEN @r = 1 THEN SYSUTCDATETIME() ELSE last_reachable_at END
     WHERE site = @site AND mac_address = @mac;
@@ -349,6 +350,26 @@ async function pingStats(ip: string, count: number, timeoutMs: number): Promise<
   const received = (output.match(/TTL=/gi) ?? []).length;
   const lossPct = Math.max(0, Math.min(100, Math.round(((count - received) / count) * 100)));
   return { alive: received > 0, lossPct };
+}
+
+// Like pingStats but with -a so ping ALSO reverse-resolves the host name. The
+// name always sits right before "[ip]" in the output regardless of locale (CS
+// "…na NAME [ip]" / EN "Pinging NAME [ip]"), so we parse that token. Only ASCII
+// host names are accepted (mac/IP fallbacks rejected).
+function pingResolve(ip: string, count: number, timeoutMs: number): Promise<{ alive: boolean; lossPct: number; host: string | null }> {
+  return new Promise((resolve) => {
+    execFile('ping', ['-a', '-n', String(count), '-w', String(timeoutMs), ip],
+      { windowsHide: true, timeout: count * (timeoutMs + 1000) + 3000, maxBuffer: 1 << 20 },
+      (_err, stdout) => {
+        const out = stdout || '';
+        const received = (out.match(/TTL=/gi) ?? []).length;
+        const lossPct = Math.max(0, Math.min(100, Math.round(((count - received) / count) * 100)));
+        let host: string | null = null;
+        const m = out.match(new RegExp(`(\\S+)\\s+\\[${ip.replace(/\./g, '\\.')}\\]`));
+        if (m && m[1] && m[1] !== ip && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(m[1])) host = m[1];
+        resolve({ alive: received > 0, lossPct, host });
+      });
+  });
 }
 
 export interface MikrotikRunResult {
@@ -479,8 +500,8 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
         // Everything currently stored with an IP (any source) is already known →
         // not re-discovered. (Runs after Phase 1, so this cycle's router rows are
         // included.)
-        const stored = (await pool.request().query<{ site: string; mac_address: string; ip_address: string | null; source: string | null }>(
-          `SELECT site, mac_address, ip_address, source FROM dhcp_leases WHERE ip_address IS NOT NULL`)).recordset;
+        const stored = (await pool.request().query<{ site: string; mac_address: string; ip_address: string | null; source: string | null; host_name: string | null }>(
+          `SELECT site, mac_address, ip_address, source, host_name FROM dhcp_leases WHERE ip_address IS NOT NULL`)).recordset;
         const knownIps = new Set<string>();
         for (const r of stored) if (r.ip_address) knownIps.add(r.ip_address);
 
@@ -522,12 +543,13 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
         for (const a of aliveList) {
           const mac = arpMap.get(a.ip);
           if (!mac) continue; // alive but no MAC resolved — can't key it
-          await upsertDevice({ site: a.site, mac, ip: a.ip, host: null, server: null, comment: null, status: 'scan', dynamic: false, exp: null, rls: null, source: 'scan' });
+          const st = await pingResolve(a.ip, 4, 1500); // reverse-resolve host name (+ loss)
+          await upsertDevice({ site: a.site, mac, ip: a.ip, host: st.host, server: null, comment: null, status: 'scan', dynamic: false, exp: null, rls: null, source: 'scan' });
           if (known.ips.has(a.ip)) {
             await pool.request().input('site', a.site).input('mac', mac)
               .query(`UPDATE dhcp_leases SET reachable = NULL, reach_checked_at = NULL WHERE site = @site AND mac_address = @mac`);
           } else {
-            await persistReachable(a.site, mac, true);
+            await persistReachable(a.site, mac, st.alive, st.lossPct);
           }
           scanned++;
         }
@@ -544,7 +566,17 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
           while (ri < refresh.length) {
             const r = refresh[ri++];
             if (!r || !r.ip_address) continue;
-            try { const st = await pingStats(r.ip_address, 4, 1500); await persistReachable(r.site, r.mac_address, st.alive, st.lossPct); } catch { /* keep last */ }
+            try {
+              // Already-named device → cheap loss-only ping; nameless → ping -a to
+              // also fill the host name (so suggestCategory can spot printers etc.).
+              if (r.host_name) {
+                const st = await pingStats(r.ip_address, 4, 1500);
+                await persistReachable(r.site, r.mac_address, st.alive, st.lossPct);
+              } else {
+                const st = await pingResolve(r.ip_address, 4, 1500);
+                await persistReachable(r.site, r.mac_address, st.alive, st.lossPct, st.host);
+              }
+            } catch { /* keep last */ }
           }
         };
         await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, refresh.length || 1) }, refreshWorker));
