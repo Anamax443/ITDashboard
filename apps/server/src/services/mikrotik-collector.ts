@@ -622,10 +622,10 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
 // On-demand ICMP ping of one device IP (per-row "Ping" in the Devices tab).
 // Returns a cmd-like transcript and persists the verdict on the lease.
 export async function probeDeviceNow(site: string, mac: string, ip: string): Promise<{ alive: boolean; console: string }> {
-  const res = await pingWithOutput(ip, 4, 2000);
-  const st = parsePing(res.output, 4);
+  const res = await pingWithOutput(ip, 10, 2000);
+  const st = parsePing(res.output, 10);
   try { await persistReachable(site, mac, res.alive, st.lossPct, null, st.latencyMs); } catch { /* best effort */ }
-  const lines = [`> ping -n 4 ${ip}`, '', res.output.replace(/\r\n/g, '\n').trimEnd()];
+  const lines = [`> ping -n 10 ${ip}`, '', res.output.replace(/\r\n/g, '\n').trimEnd()];
   return { alive: res.alive, console: lines.join('\n') };
 }
 

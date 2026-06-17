@@ -565,9 +565,22 @@ export function deviceReachable(d: DeviceItem): boolean | null {
   return d.computer_id != null ? d.computer_reachable : d.reachable;
 }
 
-/** A "degraded" device = online but with packet loss or high latency (>=50ms). */
-export function deviceDegraded(d: DeviceItem): boolean {
-  return deviceReachable(d) === true && ((d.packet_loss ?? 0) > 0 || (d.latency_ms ?? 0) >= 50);
+/** Operator-tunable "problem" thresholds (Settings); defaults: any loss, >=50ms. */
+export interface ProblemThresholds { lossPct: number; latencyMs: number }
+export function deviceProblemThresholds(settings: Record<string, string>): ProblemThresholds {
+  const lossPct = Number(settings['devices.problem_loss_pct']);
+  const latencyMs = Number(settings['devices.problem_latency_ms']);
+  return {
+    lossPct: Number.isFinite(lossPct) && lossPct > 0 ? lossPct : 1,
+    latencyMs: Number.isFinite(latencyMs) && latencyMs > 0 ? latencyMs : 50,
+  };
+}
+
+/** A "degraded"/problematic device = online but with loss or latency at/above the thresholds. */
+export function deviceDegraded(d: DeviceItem, th?: ProblemThresholds): boolean {
+  const lossT = th?.lossPct ?? 1;
+  const latT = th?.latencyMs ?? 50;
+  return deviceReachable(d) === true && ((d.packet_loss ?? 0) >= lossT || (d.latency_ms ?? 0) >= latT);
 }
 
 async function jget<T>(path: string): Promise<T> {

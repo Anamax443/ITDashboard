@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
 import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem } from './api.js';
-import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions, deviceDegraded } from './api.js';
+import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions, deviceDegraded, deviceProblemThresholds } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { HealthCards } from './components/HealthCards.js';
 import { EventsTable } from './components/EventsTable.js';
@@ -154,8 +154,9 @@ export function App() {
     const r = d.computer_id != null ? d.computer_reachable : d.reachable;
     return r === false;
   }).length;
-  // Degraded devices: online but with packet loss or high latency (>=50ms).
-  const degradedDevices = devices.filter(deviceDegraded).length;
+  // Degraded devices: online but with loss/latency at/above the Settings thresholds.
+  const problemTh = deviceProblemThresholds(settingsMap);
+  const degradedDevices = devices.filter((d) => deviceDegraded(d, problemTh)).length;
 
   const refreshComputers = useCallback(async () => {
     try {

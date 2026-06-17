@@ -525,8 +525,19 @@ export function SettingsPage() {
               style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }}
             />
           </Field>
-          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 12px 0', lineHeight: 1.5 }}>
             {t('settings.field.deviceCatsHelp')}
+          </p>
+          <FieldGroup>
+            <Field label={t('settings.field.problemLoss')}>
+              <NumberInput v={value('devices.problem_loss_pct', '1')} onChange={(v) => set('devices.problem_loss_pct', v)} suffix="%" />
+            </Field>
+            <Field label={t('settings.field.problemLatency')}>
+              <NumberInput v={value('devices.problem_latency_ms', '50')} onChange={(v) => set('devices.problem_latency_ms', v)} suffix="ms" />
+            </Field>
+          </FieldGroup>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+            {t('settings.field.problemHelp')}
           </p>
         </Section>
 

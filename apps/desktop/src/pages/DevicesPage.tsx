@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { DeviceItem } from '../api.js';
-import { api, timeAgo, deviceDegraded, API_BASE } from '../api.js';
+import { api, timeAgo, deviceDegraded, deviceProblemThresholds, API_BASE } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { useI18n } from '../i18n.js';
 
@@ -60,6 +60,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const catLabel = (k: string) => cats.find((c) => c.key === k)?.label
     ?? (BUILTIN_CATS.includes(k) ? t(`cat.${k}` as Parameters<typeof t>[0]) : k);
   // Web link: route through the cert-bypassing server proxy when enabled.
+  const problemTh = deviceProblemThresholds(settings);
   const webProxy = ['1', 'true', 'yes', 'on'].includes((settings['devices.web_proxy'] ?? '').toLowerCase());
   const deviceWebUrl = (ip: string) => webProxy ? `${API_BASE}/devices/web/${ip}` : `http://${ip}`;
   const [items, setItems] = useState<DeviceItem[]>([]);
@@ -161,7 +162,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
       if (catFilter === '__none') { if (d.category) return false; }
       else if ((d.category ?? '') !== catFilter) return false;
     }
-    if (onlyLossy && !deviceDegraded(d)) return false;
+    if (onlyLossy && !deviceDegraded(d, problemTh)) return false;
     if (search) {
       const q = search.toLowerCase();
       return (d.ip_address ?? '').toLowerCase().includes(q)
@@ -180,20 +181,23 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const statusCell = (d: DeviceItem) => {
     const r = effectiveReachable(d);
     if (r == null) return <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>—</span>;
-    const loss = d.packet_loss;
+    return <span style={{ color: r ? 'var(--ok)' : 'var(--critical)', fontSize: 11, fontWeight: 700 }}>{r ? '● online' : '○ offline'}</span>;
+  };
+
+  // Compact latency/loss cell, e.g. "<5/0" = <5 ms / 0% loss, "120/25" = 120 ms /
+  // 25% loss. Only meaningful while online.
+  const qualityCell = (d: DeviceItem) => {
+    if (effectiveReachable(d) !== true) return <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>—</span>;
+    const lat = d.latency_ms;
+    const loss = d.packet_loss ?? 0;
+    const latStr = lat == null ? '?' : lat < 5 ? '<5' : String(lat);
+    const latColor = lat != null && lat >= 50 ? 'var(--warning, #d97706)' : 'var(--text-dim)';
+    const lossColor = loss >= 50 ? 'var(--critical)' : loss > 0 ? 'var(--warning, #d97706)' : 'var(--text-dim)';
     return (
-      <span style={{ fontSize: 11 }}>
-        <span style={{ color: r ? 'var(--ok)' : 'var(--critical)', fontWeight: 700 }}>{r ? '● online' : '○ offline'}</span>
-        {r && d.latency_ms != null && d.latency_ms >= 5 && (
-          <span style={{ color: d.latency_ms >= 50 ? 'var(--warning, #d97706)' : 'var(--text-dim)', fontSize: 10, marginLeft: 4 }} title={t('devices.latencyTip')}>
-            · {d.latency_ms} ms
-          </span>
-        )}
-        {r && loss != null && loss > 0 && (
-          <span style={{ color: loss >= 50 ? 'var(--critical)' : 'var(--warning, #d97706)', fontSize: 10, marginLeft: 4, fontWeight: 600 }} title={t('devices.lossTip')}>
-            · {loss}% {t('devices.loss')}
-          </span>
-        )}
+      <span style={{ fontSize: 11, fontFamily: 'Consolas, monospace' }} title={`${t('devices.latencyTip')} · ${t('devices.lossTip')}`}>
+        <span style={{ color: latColor }}>{latStr}</span>
+        <span style={{ color: 'var(--text-dim)' }}>/</span>
+        <span style={{ color: lossColor, fontWeight: loss > 0 ? 700 : 400 }}>{loss}</span>
       </span>
     );
   };
@@ -261,6 +265,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                 <th style={{ width: 95 }}>{t('devices.type')}</th>
                 <th style={{ width: 170 }}>{t('devices.category')}</th>
                 <th style={{ width: 90 }}>{t('devices.status')}</th>
+                <th style={{ width: 80 }} title={t('devices.qualityTip')}>{t('devices.quality')}</th>
                 <th style={{ width: 130 }}>AD</th>
                 <th style={{ width: 100 }}>{t('devices.lastSeen')}</th>
                 <th style={{ width: 120 }} />
@@ -349,6 +354,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                     })()}
                   </td>
                   <td>{statusCell(d)}</td>
+                  <td>{qualityCell(d)}</td>
                   <td style={{ fontSize: 11 }}>
                     {d.computer_id != null ? (
                       onJumpToComputer ? (
