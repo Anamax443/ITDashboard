@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import type { DeviceItem } from '../api.js';
+import type { DeviceItem, PrinterSuppliesResult } from '../api.js';
 import { api, timeAgo, deviceDegraded, deviceProblemThresholds, API_BASE } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { useI18n } from '../i18n.js';
@@ -42,13 +42,15 @@ function effectiveReachable(d: DeviceItem): boolean | null {
   return d.computer_id != null ? d.computer_reachable : d.reachable;
 }
 
-export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrintersConsumed, initialOnlyLossy, onOnlyLossyConsumed, settings = {} }: {
+export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrintersConsumed, initialOnlyLossy, onOnlyLossyConsumed, settings = {}, printerSupplies, onJumpToPrinters }: {
   onJumpToComputer?: (name: string) => void;
   initialOnlyPrinters?: boolean;
   onOnlyPrintersConsumed?: () => void;
   initialOnlyLossy?: boolean;
   onOnlyLossyConsumed?: () => void;
   settings?: Record<string, string>;
+  printerSupplies?: PrinterSuppliesResult | null;
+  onJumpToPrinters?: () => void;
 } = {}) {
   const { t } = useI18n();
   // Categories: operator-configured list, or the built-in keys (labels from i18n).
@@ -182,6 +184,27 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     const r = effectiveReachable(d);
     if (r == null) return <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>—</span>;
     return <span style={{ color: r ? 'var(--ok)' : 'var(--critical)', fontSize: 11, fontWeight: 700 }}>{r ? '● online' : '○ offline'}</span>;
+  };
+
+  // Lightweight supply flag for confirmed printers: a coloured dot + the lowest
+  // ink/toner level. Click jumps to the "Stav tiskáren" page for the graphics.
+  const supByMac = new Map((printerSupplies?.printers ?? []).map((p) => [p.mac_address, p]));
+  const lowPct = printerSupplies?.lowPct ?? 15;
+  const supplyFlag = (d: DeviceItem) => {
+    if (d.category !== 'printer') return null;
+    const p = supByMac.get(d.mac_address);
+    if (!p) return null;
+    const pcts = p.supplies.map((s) => s.level_pct).filter((x): x is number => x != null);
+    if (!pcts.length) return null;
+    const min = Math.min(...pcts);
+    const color = min <= 0 ? 'var(--critical)' : min < lowPct ? 'var(--warning)' : 'var(--ok)';
+    return (
+      <span
+        onClick={() => onJumpToPrinters?.()}
+        title={t('devices.supplyFlagTip')}
+        style={{ cursor: onJumpToPrinters ? 'pointer' : 'default', marginLeft: 6, fontSize: 11, color, fontWeight: 700 }}
+      >● {min}%</span>
+    );
   };
 
   // Compact latency/loss cell, e.g. "<5/0" = <5 ms / 0% loss, "120/25" = 120 ms /
@@ -353,7 +376,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                       );
                     })()}
                   </td>
-                  <td>{statusCell(d)}</td>
+                  <td>{statusCell(d)}{supplyFlag(d)}</td>
                   <td>{qualityCell(d)}</td>
                   <td style={{ fontSize: 11 }}>
                     {d.computer_id != null ? (

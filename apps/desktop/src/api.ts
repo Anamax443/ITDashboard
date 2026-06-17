@@ -545,6 +545,35 @@ export interface DeviceItem {
   suggested: string;                    // UI-only category hint ('' = none)
 }
 
+/** One ink/toner/maintenance supply of a printer (Stav tiskáren page). */
+export interface PrinterSupply {
+  key: string;                          // K/C/M/Y/MAINT/DRUM/BELT/FUSER/OTHER
+  description: string | null;           // raw device description
+  colorant: string | null;              // black/cyan/magenta/yellow/none
+  type: string | null;                  // ink/toner/maintenance/drum/belt/...
+  level_pct: number | null;             // 0..100 (null = unknown / "some remaining")
+  part_code: string | null;             // order code, when exposed
+  source: string | null;                // 'snmp' | 'http'
+}
+
+/** A printer with its supplies (grouped by MAC). */
+export interface PrinterDevice {
+  mac_address: string;
+  ip_address: string | null;
+  host_name: string | null;
+  operator_name: string | null;
+  site: string | null;
+  model: string | null;
+  collected_at: string;
+  supplies: PrinterSupply[];
+}
+
+/** Response of GET /printer-supplies. */
+export interface PrinterSuppliesResult {
+  lowPct: number;                       // "running low" threshold (%) from Settings
+  printers: PrinterDevice[];
+}
+
 /** Per-table footprint for the Database tab. */
 export interface DbTableStat {
   table_name: string;
@@ -720,6 +749,8 @@ export const api = {
   portStatusRun: () => jpost<{ pcs: number; probed: number; skippedOffline: number; openPorts: number; durationMs: number }>('/port-status/run'),
   probeComputer: (computerId: number) => jpost<PerPcProbeResult>(`/computers/${computerId}/probe`),
   devices: () => jget<{ items: DeviceItem[] }>('/devices'),
+  printerSupplies: () => jget<PrinterSuppliesResult>('/printer-supplies'),
+  printerSuppliesRun: () => jpost<{ printers: number; read: number; supplies: number; errors: string[]; durationMs: number }>('/printer-supplies/run'),
   database: () => jget<DatabaseOverview>('/database'),
   devicesRun: () => jpost<{ routers: number; leases: number; unmatchedPinged: number; reachable: number; scanned: number; errors: string[]; durationMs: number }>('/devices/run'),
   setDeviceCategory: async (mac: string, category: string) => {

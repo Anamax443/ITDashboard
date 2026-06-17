@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem, PrinterSuppliesResult } from './api.js';
 import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions, deviceDegraded, deviceProblemThresholds } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { HealthCards } from './components/HealthCards.js';
@@ -18,6 +18,7 @@ import { ServicesPage } from './pages/ServicesPage.js';
 import { CriticalServicesPage } from './pages/CriticalServicesPage.js';
 import { PortsPage } from './pages/PortsPage.js';
 import { DevicesPage } from './pages/DevicesPage.js';
+import { PrinterSuppliesPage } from './pages/PrinterSuppliesPage.js';
 import { DatabasePage } from './pages/DatabasePage.js';
 import { PerfPage } from './pages/PerfPage.js';
 import { HelpBox } from './components/HelpBox.js';
@@ -27,7 +28,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'database' | 'perf' | 'activity' | 'settings';
+type View = 'dashboard' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'printers' | 'database' | 'perf' | 'activity' | 'settings';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -54,6 +55,7 @@ export function App() {
   const [criticalServices, setCriticalServices] = useState<CriticalServiceStatus[]>([]);
   const [ports, setPorts] = useState<PortStatusComputer[]>([]);
   const [devices, setDevices] = useState<DeviceItem[]>([]);
+  const [printerSupplies, setPrinterSupplies] = useState<PrinterSuppliesResult | null>(null);
   // One-shot: arriving on the Ports tab via the dashboard tile pre-checks the
   // "only issues" filter so the operator lands on the problem machines.
   const [portsInitialOnlyIssues, setPortsInitialOnlyIssues] = useState(false);
@@ -93,6 +95,7 @@ export function App() {
     api.criticalServices().then((r) => setCriticalServices(r.items)).catch(() => {});
     api.portStatus().then((r) => setPorts(r.items)).catch(() => {});
     api.devices().then((r) => setDevices(r.items)).catch(() => {});
+    api.printerSupplies().then(setPrinterSupplies).catch(() => {});
     api.perfSummary(7).then(setPerfSummary).catch(() => {});
     api.inactiveStats().then(setInactiveStats).catch(() => {});
     api.pcHealth().then(setPcHealth).catch(() => {});
@@ -157,6 +160,12 @@ export function App() {
   // Degraded devices: online but with loss/latency at/above the Settings thresholds.
   const problemTh = deviceProblemThresholds(settingsMap);
   const degradedDevices = devices.filter((d) => deviceDegraded(d, problemTh)).length;
+  // Printer supplies tile: printers with any ink/toner/maintenance at or below the
+  // "low" threshold (or empty). NULL levels ("some remaining") are not counted.
+  const suppliesTotal = printerSupplies?.printers.length ?? 0;
+  const suppliesLow = printerSupplies
+    ? printerSupplies.printers.filter((p) => p.supplies.some((s) => s.level_pct != null && s.level_pct < printerSupplies.lowPct)).length
+    : 0;
 
   const refreshComputers = useCallback(async () => {
     try {
@@ -219,6 +228,7 @@ export function App() {
             <button className={view === 'critsvc' ? 'active' : ''} onClick={() => setView('critsvc')}>{t('nav.critsvc')}</button>
             <button className={view === 'ports' ? 'active' : ''} onClick={() => setView('ports')}>{t('nav.ports')}</button>
             <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}>{t('nav.devices')}</button>
+            <button className={view === 'printers' ? 'active' : ''} onClick={() => setView('printers')}>{t('nav.printers')}</button>
             <button className={view === 'database' ? 'active' : ''} onClick={() => setView('database')}>{t('nav.database')}</button>
             <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>{t('nav.perf')}</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>{t('nav.activity')}</button>
@@ -312,6 +322,9 @@ export function App() {
             degradedDevices={degradedDevices}
             devicesTotal={devices.length}
             onClickDegraded={() => { setDevicesInitialOnlyLossy(true); setView('devices'); }}
+            suppliesLow={suppliesLow}
+            suppliesTotal={suppliesTotal}
+            onClickSupplies={() => setView('printers')}
             perfSummary={perfSummary}
             inactiveStats={inactiveStats}
             onClickMonitoredDisks={() => { setComputersPreFilter('disk-email'); setView('computers'); }}
@@ -391,7 +404,13 @@ export function App() {
 
       {view === 'devices' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <DevicesPage onJumpToComputer={jumpToComputer} settings={settingsMap} initialOnlyPrinters={devicesInitialOnlyPrinters} onOnlyPrintersConsumed={() => setDevicesInitialOnlyPrinters(false)} initialOnlyLossy={devicesInitialOnlyLossy} onOnlyLossyConsumed={() => setDevicesInitialOnlyLossy(false)} />
+          <DevicesPage onJumpToComputer={jumpToComputer} settings={settingsMap} initialOnlyPrinters={devicesInitialOnlyPrinters} onOnlyPrintersConsumed={() => setDevicesInitialOnlyPrinters(false)} initialOnlyLossy={devicesInitialOnlyLossy} onOnlyLossyConsumed={() => setDevicesInitialOnlyLossy(false)} printerSupplies={printerSupplies} onJumpToPrinters={() => setView('printers')} />
+        </div>
+      )}
+
+      {view === 'printers' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <PrinterSuppliesPage settings={settingsMap} />
         </div>
       )}
 

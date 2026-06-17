@@ -23,12 +23,14 @@ import { registerReportsRoutes } from './routes/reports.js';
 import { registerPortStatusRoutes } from './routes/port-status.js';
 import { registerDevicesRoutes } from './routes/devices.js';
 import { registerDeviceWebProxyRoutes } from './routes/device-web-proxy.js';
+import { registerPrinterSuppliesRoutes } from './routes/printer-supplies.js';
 import { registerDatabaseRoutes } from './routes/database.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
 import { startReachabilitySchedule } from './services/reachability-collector.js';
 import { startPortStatusSchedule } from './services/port-status-collector.js';
 import { startMikrotikSchedule } from './services/mikrotik-collector.js';
+import { startPrinterSuppliesSchedule } from './services/printer-supplies-collector.js';
 import { refreshIpGuard } from './services/ip-guard.js';
 import { startRetentionSchedule } from './services/retention-runner.js';
 
@@ -70,6 +72,7 @@ await registerReportsRoutes(app);
 await registerPortStatusRoutes(app);
 await registerDevicesRoutes(app);
 await registerDeviceWebProxyRoutes(app);
+await registerPrinterSuppliesRoutes(app);
 await registerDatabaseRoutes(app);
 await registerFrontendRoutes(app);
 
@@ -87,6 +90,7 @@ app.listen({ port: PORT, host: BIND }).then(async () => {
   await startReachabilitySchedule();
   await startPortStatusSchedule();
   await startMikrotikSchedule();
+  await startPrinterSuppliesSchedule();
   await startRetentionSchedule();
 }).catch((err) => {
   app.log.error(err);

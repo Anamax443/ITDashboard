@@ -25,6 +25,9 @@ interface Props {
   degradedDevices?: number;
   devicesTotal?: number;
   onClickDegraded?: () => void;
+  suppliesLow?: number;
+  suppliesTotal?: number;
+  onClickSupplies?: () => void;
   perfSummary: PerfSummary | null;
   inactiveStats: InactiveStats | null;
   onClickCritical?: () => void;
@@ -42,7 +45,7 @@ interface Props {
 }
 
 export function SummaryCards({
-  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, portsWithIssues = 0, portsTotal = 0, onClickPorts, printersOffline = 0, printersTotal = 0, onClickPrinters, degradedDevices = 0, devicesTotal = 0, onClickDegraded, perfSummary, inactiveStats,
+  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, portsWithIssues = 0, portsTotal = 0, onClickPorts, printersOffline = 0, printersTotal = 0, onClickPrinters, degradedDevices = 0, devicesTotal = 0, onClickDegraded, suppliesLow = 0, suppliesTotal = 0, onClickSupplies, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
   onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
 }: Props) {
@@ -161,6 +164,13 @@ export function SummaryCards({
         sub={devicesTotal === 0 ? '—' : degradedDevices > 0 ? t('cards.degradedSub') : t('cards.degradedOk')}
         kind={devicesTotal === 0 ? 'info' : degradedDevices > 0 ? 'warning' : 'ok'}
         onClick={degradedDevices > 0 ? onClickDegraded : undefined}
+      />
+      <Card
+        label={`🖨 ${t('cards.supplies')}`}
+        value={suppliesTotal === 0 ? '—' : `${suppliesLow}/${suppliesTotal}`}
+        sub={suppliesTotal === 0 ? t('cards.suppliesNone') : suppliesLow > 0 ? `${suppliesLow} ${t('cards.suppliesLow')}` : t('cards.suppliesOk')}
+        kind={suppliesTotal === 0 ? 'info' : suppliesLow > 0 ? 'warning' : 'ok'}
+        onClick={suppliesTotal > 0 ? onClickSupplies : undefined}
       />
       <Card
         label={t('cards.slowBootShutdown')}

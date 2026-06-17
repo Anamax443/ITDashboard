@@ -9,6 +9,60 @@ Last updated: 2026-06-17 (LIVE `62c9f26`; full doc sweep done — README, ARCHIT
 > Variables) only, never code. See [Config externalization (2026-06-11)](#config-externalization-2026-06-11)
 > below and `.env.example` (single source of truth).
 
+## Session 2026-06-17 (batch 2) — G2 printer supplies (ink/toner levels) LIVE
+
+New **"Stav tiskáren" / "Printer status"** tab + dashboard tile: per-printer ink /
+toner / maintenance-box / drum / belt levels, read **straight from the printers**.
+Core was verified live against real printers BEFORE building (rule: verify core
+before building): probed the whole printer fleet (Epson EM-C7100 + WF series, HP
+LaserJet NPI, Brother MFC) over SNMP and the printers' own web UIs.
+
+**Architecture decision (verified by live probing): SNMP Printer-MIB primary +
+targeted HTTP fallback.** SNMP `prtMarkerSupplies` (desc `.6` / max `.8` / level
+`.9`; % = level/max) is uniform across HP/Epson/Brother/Kyocera and also yields
+HP cartridge part-numbers + laser drum/belt life + sysDescr model. Two live-found
+gaps are filled from the printer's own web page:
+- **Brother** SNMP reports toner only as `-3` "some remaining" (no %) → numeric %
+  from `/general/status.html` (`tonerremain` image height /50). SNMP still gives
+  Brother drum/belt %.
+- **Epson** SNMP omits the maintenance (waste) box → % from the Web Config page
+  `/PRESENTATION/ADVANCED/INFO_PRTINFO/TOP` (olive `#636311` gradient or
+  `Ink_Waste.PNG` height). Epson Web Config has 3 markup variants (EM-C gradient /
+  WF image-height / WF-C5890 vertical gradient) handled in the full-page fallback.
+
+**Implementation (migration 048).**
+- `services/snmp.ts` — self-contained SNMP v1 client (GET/GETNEXT walk) over
+  `node:dgram`; pure BER encode/decode (NO external dependency — matches the
+  app's hand-rolled ethos). Unit-tested.
+- `services/printer-supplies-http.ts` — pure parsers (Brother toner, Epson maint,
+  Epson full ink) + classification (`classifyDescription` / `extractPartCode` /
+  `computeLevelPct` / `colorKey`) + an insecure (cert-bypass) GET. Unit-tested.
+- `services/printer-supplies-collector.ts` — `resolveConfig` (DB-driven) →
+  `runPrinterSuppliesOnce` (SNMP walk + classify + vendor HTTP supplement, merged)
+  → upsert into **`printer_supplies`** (MERGE by mac+supply_key, prunes vanished
+  supplies) → `startPrinterSuppliesSchedule` (own timer, re-reads enable/interval).
+  Probes ONLY devices the operator categorized `printer`.
+- `routes/printer-supplies.ts` — `GET /printer-supplies` (grouped per MAC + joined
+  to dhcp_leases/categories, returns `lowPct`), `POST /printer-supplies/run`.
+- Settings seeded: `printer_supplies.enabled` (default **1**), `.interval_sec`
+  (900), `.snmp_community` (public), `.low_pct` (15), `.http_fallback` (1).
+- Frontend: **`PrinterSuppliesPage.tsx`** (card per printer, colour supply bars +
+  %, badge OK/Dochází/Prázdná, **click card → printer web UI** via the existing
+  `devices.web_proxy` cert-bypass), dashboard **🖨 Náplně** tile + nav entry, and a
+  light **supply-flag** (●NN%) on confirmed-printer rows in the Devices tab that
+  jumps to the page. i18n CS+EN.
+
+Live-verified (the shipped Node code, not just the probe): SNMP+HTTP returns
+correct levels for Epson/HP/Brother incl. part-numbers + Epson maint box +
+Brother HTTP toner. Typecheck clean both apps; **74 tests pass** (was 54: +8 SNMP
+BER, +12 supply parse/classify). No new env var (community is a DB setting).
+
+> Open follow-ups: Settings UI section for the supply collector (works on the
+> seeded defaults today, but enable/community/threshold are DB-only until a
+> Settings panel is added); optional low-supply email alert under the printer
+> agenda; non-SNMP HP fallback (`/DevMgmt/ConsumableConfigDyn.xml`) for the one
+> old HP that lacks SNMP supplies.
+
 ## Current Live State
 
 - Project: ITDashboard
