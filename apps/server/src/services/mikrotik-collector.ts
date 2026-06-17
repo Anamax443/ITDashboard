@@ -204,19 +204,49 @@ function intToIp(n: number): string {
   return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
 }
 
+// Accepts CIDR ("10.8.2.0/24") OR wildcard ("10.8.2.*" = /24, "10.8.*.*" = /16).
+// Returns the masked network base, the prefix, and a short network label.
+// Capped to /16../30 so a typo can't launch a /8 (16M-host) sweep.
+function parseCidrOrWildcard(s: string): { base: number; prefix: number; netLabel: string } | null {
+  const str = s.trim();
+  if (str.includes('*')) {
+    const parts = str.split('.');
+    if (parts.length !== 4) return null;
+    const octs: number[] = [];
+    let fixed = 0;
+    let seenStar = false;
+    for (const p of parts) {
+      if (p === '*') { seenStar = true; octs.push(0); continue; }
+      if (seenStar) return null;            // a number after a '*' is invalid
+      const n = Number(p);
+      if (!Number.isInteger(n) || n < 0 || n > 255) return null;
+      octs.push(n); fixed++;
+    }
+    const prefix = fixed * 8;
+    if (prefix < 16 || prefix > 24) return null;
+    const base = (((octs[0]! << 24) >>> 0) + (octs[1]! << 16) + (octs[2]! << 8) + octs[3]!) >>> 0;
+    return { base, prefix, netLabel: octs.slice(0, fixed).join('.') };
+  }
+  const m = str.match(/^(\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})$/);
+  if (!m) return null;
+  const ip = ipToInt(m[1]!);
+  const prefix = Number(m[2]);
+  if (ip == null || prefix < 16 || prefix > 30) return null;
+  const base = (ip & ((~0 << (32 - prefix)) >>> 0)) >>> 0;
+  return { base, prefix, netLabel: intToIp(base).replace(/(\.0)+$/, '') };
+}
+
+// "Site=range" per line/comma; the "Site=" is OPTIONAL (label derived from the
+// network when omitted). range = CIDR or wildcard.
 function parseScanRanges(raw: string | undefined): ScanRange[] {
   const out: ScanRange[] = [];
   for (const tok of (raw ?? '').split(/[,;\r\n]+/).map((s) => s.trim()).filter(Boolean)) {
     const eq = tok.indexOf('=');
-    if (eq <= 0) continue;
-    const site = tok.slice(0, eq).trim();
-    const cidr = tok.slice(eq + 1).trim();
-    const m = cidr.match(/^(\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})$/);
-    if (!m) continue;
-    const base = ipToInt(m[1]!);
-    const prefix = Number(m[2]);
-    if (base == null || prefix < 8 || prefix > 30) continue; // cap range size (≤ /8 .. ≥ a few hosts)
-    out.push({ site, base: base & (prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0), prefix });
+    const site = eq > 0 ? tok.slice(0, eq).trim() : '';
+    const rangeStr = eq > 0 ? tok.slice(eq + 1).trim() : tok;
+    const p = parseCidrOrWildcard(rangeStr);
+    if (!p) continue;
+    out.push({ site: site || p.netLabel, base: p.base, prefix: p.prefix });
   }
   return out;
 }
@@ -338,13 +368,11 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
     // Unmatched (site, mac, ip) to ping after upserts; router-owned IPs (so the
     // scan skips them).
     const toPing: Array<{ site: string; mac: string; ip: string }> = [];
-    const routerOwnedIps = new Set<string>();
 
     const handleDevice = async (d: NormDevice): Promise<void> => {
       const up = await upsertDevice(d);
       if (!up) return;
       leases++;
-      if (up.ip) routerOwnedIps.add(up.ip);
       const matched = (up.host != null && known.names.has(up.host.toLowerCase()))
         || (up.ip != null && known.ips.has(up.ip));
       if (matched) {
@@ -398,27 +426,32 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
     };
     await Promise.all(Array.from({ length: Math.min(PING_CONCURRENCY, toPing.length || 1) }, worker));
 
-    // Phase 2 — active scan from the app server: ping every host in the
-    // configured ranges that the routers don't already account for, read the
-    // local ARP cache, and register the responders as statically-addressed
-    // (source='scan'). Catches same-subnet static devices the router never sees.
+    // Phase 2 — active scan from the app server. DISCOVERY only pings UNKNOWN
+    // IPs: once an IP↔MAC is in the DB it's cached and never re-discovered. MAC is
+    // the cache key — if a static device later appears at a NEW IP, the upsert by
+    // (site,mac) moves its row's ip_address there, so the OLD IP is no longer
+    // stored and automatically falls back into the discovery pool. A separate
+    // light up/down re-ping refreshes known static (scan/arp) devices so Status +
+    // the printer-offline alert stay current, WITHOUT re-discovering them.
     if (cfg.scanEnabled && scanRanges.length > 0) {
       try {
         const pool = await getPool();
-        // Seed router-owned IPs with everything currently stored from the routers
-        // so the scan doesn't re-ping device the routers already cover.
-        const owned = await pool.request().query<{ ip_address: string | null }>(
-          `SELECT ip_address FROM dhcp_leases WHERE ip_address IS NOT NULL AND source <> 'scan'`);
-        for (const r of owned.recordset) if (r.ip_address) routerOwnedIps.add(r.ip_address);
+        // Everything currently stored with an IP (any source) is already known →
+        // not re-discovered. (Runs after Phase 1, so this cycle's router rows are
+        // included.)
+        const stored = (await pool.request().query<{ site: string; mac_address: string; ip_address: string | null; source: string | null }>(
+          `SELECT site, mac_address, ip_address, source FROM dhcp_leases WHERE ip_address IS NOT NULL`)).recordset;
+        const knownIps = new Set<string>();
+        for (const r of stored) if (r.ip_address) knownIps.add(r.ip_address);
 
+        // Discovery: ping only the UNKNOWN host IPs in the configured ranges.
         const targets: Array<{ site: string; ip: string }> = [];
         const targetIps = new Set<string>();
         for (const range of scanRanges) {
           for (const ip of hostsOf(range)) {
-            if (!routerOwnedIps.has(ip) && !targetIps.has(ip)) { targets.push({ site: range.site, ip }); targetIps.add(ip); }
+            if (!knownIps.has(ip) && !targetIps.has(ip)) { targets.push({ site: range.site, ip }); targetIps.add(ip); }
           }
         }
-
         const aliveIps = new Set<string>();
         const aliveList: Array<{ site: string; ip: string }> = [];
         let si = 0;
@@ -431,8 +464,19 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
         };
         await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, targets.length || 1) }, scanWorker));
 
-        // Resolve MACs from the local ARP cache (the pings above populated it).
+        // Resolve MACs: local ARP cache (.213's own subnet) merged with each
+        // router's ARP (remote subnets — the last-hop router ARPs the target when
+        // delivering our ping). Local takes precedence.
         const arpMap = await readLocalArp();
+        for (const router of routers) {
+          try {
+            for (const a of await fetchArp(router, user, pass, timeoutMs)) {
+              const aip = (a['address'] ?? '').trim();
+              const amac = normMac(a['mac-address']);
+              if (aip && amac && !arpMap.has(aip)) arpMap.set(aip, amac);
+            }
+          } catch { /* skip a router that fails ARP */ }
+        }
         for (const a of aliveList) {
           const mac = arpMap.get(a.ip);
           if (!mac) continue; // alive but no MAC resolved — can't key it
@@ -446,15 +490,22 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
           scanned++;
         }
 
-        // Previously-scanned devices that were in scope this run but didn't
-        // respond → mark offline (so the printer-offline alert can fire).
-        const prevScan = await pool.request().query<{ site: string; mac_address: string; ip_address: string | null }>(
-          `SELECT site, mac_address, ip_address FROM dhcp_leases WHERE source = 'scan'`);
-        for (const r of prevScan.recordset) {
-          if (r.ip_address && targetIps.has(r.ip_address) && !aliveIps.has(r.ip_address) && !known.ips.has(r.ip_address)) {
-            await persistReachable(r.site, r.mac_address, false);
+        // Reachability refresh for ALREADY-KNOWN static devices (scan/arp) not
+        // matched to an AD computer — a targeted up/down re-ping by stored IP, NOT
+        // re-discovery. Skips ones just pinged in discovery and AD-matched ones
+        // (those use the computer's reachable).
+        const refresh = stored.filter((r) =>
+          (r.source === 'scan' || r.source === 'arp') && r.ip_address
+          && !known.ips.has(r.ip_address) && !aliveIps.has(r.ip_address));
+        let ri = 0;
+        const refreshWorker = async () => {
+          while (ri < refresh.length) {
+            const r = refresh[ri++];
+            if (!r || !r.ip_address) continue;
+            try { await persistReachable(r.site, r.mac_address, await icmpPing(r.ip_address, 1500)); } catch { /* keep last */ }
           }
-        }
+        };
+        await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, refresh.length || 1) }, refreshWorker));
       } catch (err) {
         errors.push(`scan: ${String(err).split('\n')[0]}`);
       }
