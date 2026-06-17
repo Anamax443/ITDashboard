@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { DeviceItem } from '../api.js';
-import { api, timeAgo, deviceDegraded } from '../api.js';
+import { api, timeAgo, deviceDegraded, API_BASE } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { useI18n } from '../i18n.js';
 
@@ -8,12 +8,12 @@ import { useI18n } from '../i18n.js';
 // host_name / IP); matched devices reuse the computer's reachability, unmatched
 // ones (printers, phones, IoT) are pinged here and categorized by the operator.
 
-const CATEGORY_KEYS = [
-  '', 'printer', 'phone', 'pc', 'server', 'network', 'iot', 'other',
-];
+// Built-in category keys (their labels come from i18n). The operator can override
+// the whole list in Settings (devices.categories, "key=Label" per line).
+const BUILTIN_CATS = ['printer', 'phone', 'pc', 'server', 'network', 'iot', 'other'];
 
 // Per-category colour so an assigned category pops in the grid (Electron =
-// Chromium, so <option> colours render in the dropdown too).
+// Chromium, so <option> colours render in the dropdown too). Custom keys → grey.
 const CAT_COLOR: Record<string, string> = {
   printer: '#3b9eff', // blue — the focus category
   server: '#c084fc',  // violet
@@ -24,21 +24,44 @@ const CAT_COLOR: Record<string, string> = {
   other: '#9ca3af',   // grey
 };
 
+interface Cat { key: string; label: string }
+
+// Parse the operator's "key=Label" lines; a bare line becomes both key (slugged)
+// and label. Empty config → built-in list (labels from i18n, filled in below).
+function parseCats(raw: string | undefined): Cat[] {
+  const out: Cat[] = [];
+  for (const line of (raw ?? '').split(/[,\r\n]+/).map((s) => s.trim()).filter(Boolean)) {
+    const eq = line.indexOf('=');
+    if (eq > 0) out.push({ key: line.slice(0, eq).trim(), label: line.slice(eq + 1).trim() });
+    else out.push({ key: line.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), label: line });
+  }
+  return out.filter((c) => c.key);
+}
+
 function effectiveReachable(d: DeviceItem): boolean | null {
   return d.computer_id != null ? d.computer_reachable : d.reachable;
 }
 
-export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrintersConsumed, initialOnlyLossy, onOnlyLossyConsumed }: {
+export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrintersConsumed, initialOnlyLossy, onOnlyLossyConsumed, settings = {} }: {
   onJumpToComputer?: (name: string) => void;
   initialOnlyPrinters?: boolean;
   onOnlyPrintersConsumed?: () => void;
   initialOnlyLossy?: boolean;
   onOnlyLossyConsumed?: () => void;
+  settings?: Record<string, string>;
 } = {}) {
   const { t } = useI18n();
-  // Category keys are dynamic, but t() is typed to a literal-key union — cast the
-  // computed key to t's parameter type so the dynamic lookup type-checks.
-  const catLabel = (k: string) => t(`cat.${k}` as Parameters<typeof t>[0]);
+  // Categories: operator-configured list, or the built-in keys (labels from i18n).
+  const custom = parseCats(settings['devices.categories']);
+  const cats: Cat[] = custom.length
+    ? custom
+    : BUILTIN_CATS.map((k) => ({ key: k, label: t(`cat.${k}` as Parameters<typeof t>[0]) }));
+  const catKeys = ['', ...cats.map((c) => c.key)];
+  const catLabel = (k: string) => cats.find((c) => c.key === k)?.label
+    ?? (BUILTIN_CATS.includes(k) ? t(`cat.${k}` as Parameters<typeof t>[0]) : k);
+  // Web link: route through the cert-bypassing server proxy when enabled.
+  const webProxy = ['1', 'true', 'yes', 'on'].includes((settings['devices.web_proxy'] ?? '').toLowerCase());
+  const deviceWebUrl = (ip: string) => webProxy ? `${API_BASE}/devices/web/${ip}` : `http://${ip}`;
   const [items, setItems] = useState<DeviceItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -200,8 +223,8 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
           <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)} style={{ fontSize: 12 }} title={t('devices.category')}>
             <option value="">{t('devices.allCats')}</option>
             <option value="__none">{t('devices.noCat')}</option>
-            {CATEGORY_KEYS.filter((k) => k).map((k) => (
-              <option key={k} value={k} style={{ color: CAT_COLOR[k] ?? 'var(--text)' }}>{catLabel(k)}</option>
+            {cats.map((c) => (
+              <option key={c.key} value={c.key} style={{ color: CAT_COLOR[c.key] ?? 'var(--text)' }}>{c.label}</option>
             ))}
           </select>
           <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -250,7 +273,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                   <td style={{ fontFamily: 'Consolas, monospace', fontSize: 11 }}>
                     {d.ip_address
                       ? (isPrinterish(d)
-                          ? <a href={`http://${d.ip_address}`} target="_blank" rel="noreferrer" title={t('devices.openWeb')} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{d.ip_address}</a>
+                          ? <a href={deviceWebUrl(d.ip_address)} target="_blank" rel="noreferrer" title={t('devices.openWeb')} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{d.ip_address}</a>
                           : d.ip_address)
                       : '—'}
                   </td>
@@ -306,7 +329,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                               color: d.category ? (CAT_COLOR[d.category] ?? 'var(--text)') : 'var(--text-dim)',
                             }}
                           >
-                            {CATEGORY_KEYS.map((k) => (
+                            {catKeys.map((k) => (
                               <option key={k || 'none'} value={k} style={{ color: k && CAT_COLOR[k] ? CAT_COLOR[k] : 'var(--text)', fontWeight: k ? 600 : 400 }}>
                                 {k === '' ? '—' : catLabel(k)}
                               </option>

@@ -3,11 +3,9 @@ import { z } from 'zod';
 import { getPool } from '../db/pool.js';
 import { runMikrotikCollectOnce, probeDeviceNow, suggestCategory } from '../services/mikrotik-collector.js';
 
-// Allowed operator device categories (empty string clears the assignment).
-// Printers are one generic `printer` bucket (no per-vendor split).
-const CATEGORIES = [
-  'printer', 'phone', 'pc', 'server', 'network', 'iot', 'other',
-] as const;
+// Device categories are operator-configurable (Settings → devices.categories),
+// so any non-empty string up to 32 chars is accepted; '' clears the assignment.
+const categorySchema = z.string().max(32);
 
 interface DeviceRow {
   site: string;
@@ -73,7 +71,7 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
   app.patch('/devices/category', async (req, reply) => {
     const body = z.object({
       mac: z.string().min(1).max(32),
-      category: z.union([z.enum(CATEGORIES), z.literal('')]),
+      category: categorySchema,
       note: z.string().max(255).optional(),
     }).parse(req.body);
     const mac = body.mac.trim().toUpperCase();

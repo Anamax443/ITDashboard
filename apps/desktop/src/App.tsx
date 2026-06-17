@@ -390,7 +390,7 @@ export function App() {
 
       {view === 'devices' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <DevicesPage onJumpToComputer={jumpToComputer} initialOnlyPrinters={devicesInitialOnlyPrinters} onOnlyPrintersConsumed={() => setDevicesInitialOnlyPrinters(false)} initialOnlyLossy={devicesInitialOnlyLossy} onOnlyLossyConsumed={() => setDevicesInitialOnlyLossy(false)} />
+          <DevicesPage onJumpToComputer={jumpToComputer} settings={settingsMap} initialOnlyPrinters={devicesInitialOnlyPrinters} onOnlyPrintersConsumed={() => setDevicesInitialOnlyPrinters(false)} initialOnlyLossy={devicesInitialOnlyLossy} onOnlyLossyConsumed={() => setDevicesInitialOnlyLossy(false)} />
         </div>
       )}
 

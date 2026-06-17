@@ -22,6 +22,7 @@ import { registerAlertsRoutes } from './routes/alerts.js';
 import { registerReportsRoutes } from './routes/reports.js';
 import { registerPortStatusRoutes } from './routes/port-status.js';
 import { registerDevicesRoutes } from './routes/devices.js';
+import { registerDeviceWebProxyRoutes } from './routes/device-web-proxy.js';
 import { registerDatabaseRoutes } from './routes/database.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
@@ -68,6 +69,7 @@ await registerAlertsRoutes(app);
 await registerReportsRoutes(app);
 await registerPortStatusRoutes(app);
 await registerDevicesRoutes(app);
+await registerDeviceWebProxyRoutes(app);
 await registerDatabaseRoutes(app);
 await registerFrontendRoutes(app);
 

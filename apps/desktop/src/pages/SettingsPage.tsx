@@ -507,6 +507,29 @@ export function SettingsPage() {
           </p>
         </Section>
 
+        <Section title={t('settings.section.deviceWeb')} description={t('settings.section.deviceWebDesc')}>
+          <CheckField
+            label={t('settings.field.webProxy')}
+            checked={value('devices.web_proxy', '0') === '1'}
+            onChange={(checked) => set('devices.web_proxy', checked ? '1' : '0')}
+          />
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 12px 0', lineHeight: 1.5 }}>
+            {t('settings.field.webProxyHelp')}
+          </p>
+          <Field label={t('settings.field.deviceCats')}>
+            <textarea
+              value={value('devices.categories', '')}
+              onChange={(e) => set('devices.categories', e.target.value)}
+              rows={6}
+              placeholder={"printer=Tiskárna\nnetwork=Síťový prvek\nserver=Server\n…"}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+            {t('settings.field.deviceCatsHelp')}
+          </p>
+        </Section>
+
         <Section
           title={t('settings.section.perfLookback')}
           description={t('settings.section.perfLookbackDesc')}
