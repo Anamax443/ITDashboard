@@ -45,7 +45,7 @@ function statusOf(p: PrinterDevice, lowPct: number): Status {
 
 export function PrinterSuppliesPage({ settings = {} }: { settings?: Record<string, string> } = {}) {
   const { t } = useI18n();
-  const webProxy = ['1', 'true', 'yes', 'on'].includes((settings['devices.web_proxy'] ?? '').toLowerCase());
+  const webProxy = ['1', 'true', 'yes', 'on'].includes((settings['devices.web_proxy'] ?? '1').toLowerCase());
   const deviceWebUrl = (ip: string) => webProxy ? `${API_BASE}/devices/web/${ip}` : `http://${ip}`;
 
   const [printers, setPrinters] = useState<PrinterDevice[]>([]);

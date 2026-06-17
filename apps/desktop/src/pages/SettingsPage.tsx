@@ -510,7 +510,7 @@ export function SettingsPage() {
         <Section title={t('settings.section.deviceWeb')} description={t('settings.section.deviceWebDesc')}>
           <CheckField
             label={t('settings.field.webProxy')}
-            checked={value('devices.web_proxy', '0') === '1'}
+            checked={value('devices.web_proxy', '1') === '1'}
             onChange={(checked) => set('devices.web_proxy', checked ? '1' : '0')}
           />
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 12px 0', lineHeight: 1.5 }}>

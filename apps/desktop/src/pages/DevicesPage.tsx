@@ -63,7 +63,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     ?? (BUILTIN_CATS.includes(k) ? t(`cat.${k}` as Parameters<typeof t>[0]) : k);
   // Web link: route through the cert-bypassing server proxy when enabled.
   const problemTh = deviceProblemThresholds(settings);
-  const webProxy = ['1', 'true', 'yes', 'on'].includes((settings['devices.web_proxy'] ?? '').toLowerCase());
+  const webProxy = ['1', 'true', 'yes', 'on'].includes((settings['devices.web_proxy'] ?? '1').toLowerCase());
   const deviceWebUrl = (ip: string) => webProxy ? `${API_BASE}/devices/web/${ip}` : `http://${ip}`;
   const [items, setItems] = useState<DeviceItem[]>([]);
   const [error, setError] = useState<string | null>(null);
