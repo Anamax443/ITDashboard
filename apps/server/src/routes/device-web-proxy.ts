@@ -90,14 +90,20 @@ export async function registerDeviceWebProxyRoutes(app: FastifyInstance) {
       reply.header('cache-control', 'no-store');
       const decoded = decodeBody(up.body, up.enc);
       if (/text\/html/i.test(up.ct)) {
-        // Inject a <base> so the device's RELATIVE links route back through the
-        // proxy. It MUST point at the directory of the CURRENT document, not the
-        // proxy root — otherwise a relative `SCRIPT.JS` on `…/COMMON/TOP` resolves
-        // to `/devices/web/IP/SCRIPT.JS` (root) instead of `…/COMMON/SCRIPT.JS`,
-        // so scripts / iframe targets 404 and frame-based EWS (Epson) render blank.
-        const dir = rest.slice(0, rest.lastIndexOf('/') + 1); // leading + trailing slash
-        const base = `/devices/web/${ip}${dir}`;
+        const prefix = `/devices/web/${ip}`;
         let html = decoded.toString('utf8');
+        // 1) Route ROOT-ABSOLUTE resources/links (href|src|action="/…") through the
+        //    proxy. A <base> only fixes RELATIVE URLs; absolute ones like HP's
+        //    `/hp/device/jquery.js` would hit the dashboard origin root (404 / wrong
+        //    MIME) and the EWS JS dies ($ is not defined). Skip `//host` (protocol-
+        //    relative) and anything already under our prefix.
+        html = html.replace(/\b(href|src|action)=(["'])\/(?!\/|devices\/web\/)/gi, `$1=$2${prefix}/`);
+        // 2) Inject a <base> for RELATIVE links. It MUST point at the directory of
+        //    the CURRENT document, not the proxy root — else a relative `SCRIPT.JS`
+        //    on `…/COMMON/TOP` resolves to `/devices/web/IP/SCRIPT.JS` (root) instead
+        //    of `…/COMMON/SCRIPT.JS`, so frame-based EWS (Epson) render blank.
+        const dir = rest.slice(0, rest.lastIndexOf('/') + 1); // leading + trailing slash
+        const base = `${prefix}${dir}`;
         html = /<head[^>]*>/i.test(html)
           ? html.replace(/<head[^>]*>/i, (m) => `${m}<base href="${base}">`)
           : `<base href="${base}">${html}`;

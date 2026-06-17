@@ -73,8 +73,23 @@ breaking frame-based EWS.** A relative resource on a sub-page (e.g. `SCRIPT.JS` 
 `…/COMMON/TOP`) resolved to `/devices/web/IP/SCRIPT.JS` (root → 404) instead of
 `…/COMMON/SCRIPT.JS`, so Epson's frameset Web Config rendered blank (its
 iframe-loader script never loaded). Now `<base>` is the directory of the current
-document (`/devices/web/IP/<dir>/`). Verified live: Epson WF-C5890 Web Config
-loads through the proxy incl. the supply page (BK20/C92/M1/Y92/maint75).
+document (`/devices/web/IP/<dir>/`).
+
+**Follow-up fix 3 (`43f4938`): global Helmet CSP blocked the EWS inline scripts.**
+The dashboard's `script-src 'self'` CSP also applied to the same-origin proxied
+content and blocked the printer's inline scripts (Epson bootstrap meta-refresh +
+jQuery) → blank page (visible in the browser console). The proxy now sets a
+permissive CSP for `/devices/web/*` only (`'unsafe-inline'`/`'unsafe-eval'`;
+sub-resources are same-origin under `/devices/web/IP/`) + `Cache-Control:
+no-store`. After this, Epson WF-C5790/C5890 Web Config renders fully through the
+proxy (ink tank graphics, status, cartridge codes).
+
+**Follow-up fix 4: root-absolute resources bypassed the proxy.** `<base>` only
+fixes RELATIVE URLs; HP's EWS loads `/hp/device/jquery.js` etc. by ABSOLUTE path,
+which hit the dashboard origin root (404 / wrong MIME → `$ is not defined`). The
+proxy now rewrites `href|src|action="/…"` → `/devices/web/IP/…` (skipping `//host`
+and already-proxied paths) so absolute resources route through too. Default ON
+(migration 049, `devices.web_proxy=1`); operator can disable in Settings.
 
 > Open follow-ups: Settings UI section for the supply collector (works on the
 > seeded defaults today, but enable/community/threshold are DB-only until a
