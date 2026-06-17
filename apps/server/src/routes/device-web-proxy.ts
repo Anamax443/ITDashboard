@@ -80,8 +80,13 @@ export async function registerDeviceWebProxyRoutes(app: FastifyInstance) {
       reply.header('content-type', up.ct);
       const decoded = decodeBody(up.body, up.enc);
       if (/text\/html/i.test(up.ct)) {
-        // Inject a <base> so the device's RELATIVE links route back through the proxy.
-        const base = `/devices/web/${ip}/`;
+        // Inject a <base> so the device's RELATIVE links route back through the
+        // proxy. It MUST point at the directory of the CURRENT document, not the
+        // proxy root — otherwise a relative `SCRIPT.JS` on `…/COMMON/TOP` resolves
+        // to `/devices/web/IP/SCRIPT.JS` (root) instead of `…/COMMON/SCRIPT.JS`,
+        // so scripts / iframe targets 404 and frame-based EWS (Epson) render blank.
+        const dir = rest.slice(0, rest.lastIndexOf('/') + 1); // leading + trailing slash
+        const base = `/devices/web/${ip}${dir}`;
         let html = decoded.toString('utf8');
         html = /<head[^>]*>/i.test(html)
           ? html.replace(/<head[^>]*>/i, (m) => `${m}<base href="${base}">`)
