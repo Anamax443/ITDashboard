@@ -9,25 +9,25 @@ import zlib from 'node:zlib';
 // link hits NET::ERR_CERT_AUTHORITY_INVALID. A web app cannot make the browser
 // skip cert validation — but the SERVER can fetch the device ignoring the cert
 // and serve it from the dashboard's (trusted) origin. Opt-in via Settings
-// (devices.web_proxy); off by default. Best-effort: interactive EWS that use
-// absolute-path resources may not fully render — then use the direct link +
-// accept the cert once, or deploy the printer cert via GPO.
+// (devices.web_proxy). Verified live across Epson / HP / Brother EWS.
 //
 // Scoped to IP targets only (no arbitrary hostnames) to limit SSRF surface; the
 // dashboard is already access-gated to the internal network.
 
 const IP_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 
-interface Upstream { ct: string; enc: string; body: Buffer; }
+interface Upstream { status: number; location: string | null; ct: string; enc: string; body: Buffer; }
 
-// Fetch the device page, following redirects, ignoring the self-signed cert. The
-// FULL body is buffered and returned (not streamed) so the Fastify handler can
-// `return` it: streaming via an async `reply.send` in an 'end' callback let the
-// handler resolve with undefined first, so Fastify sent an empty 200 before the
-// body arrived — the proxy looked like it "returned nothing".
-function fetchUpstream(targetUrl: string, depth: number): Promise<Upstream> {
+// Single GET, no redirect following, ignoring the self-signed cert. The FULL body
+// is buffered (not streamed) so the Fastify handler can `return` it — streaming
+// via an async reply.send in an 'end' callback let the handler resolve undefined
+// first, so Fastify sent an empty 200 before the body arrived. Redirects are NOT
+// followed here: we surface the Location so the handler can bounce the BROWSER to
+// the proxied path, keeping the document URL (and thus relative-link resolution)
+// correct — following server-side would leave the browser thinking it is still at
+// the pre-redirect path, breaking `../` relative resources (Brother → 400).
+function fetchOnce(targetUrl: string): Promise<Upstream> {
   return new Promise((resolve, reject) => {
-    if (depth > 5) { reject(new Error('too many redirects')); return; }
     let u: URL;
     try { u = new URL(targetUrl); } catch { reject(new Error('bad url')); return; }
     if (u.protocol !== 'http:' && u.protocol !== 'https:') { reject(new Error('bad scheme')); return; }
@@ -36,14 +36,13 @@ function fetchUpstream(targetUrl: string, depth: number): Promise<Upstream> {
       const status = res.statusCode ?? 0;
       if (status >= 300 && status < 400 && res.headers.location) {
         res.resume();
-        let next: string;
-        try { next = new URL(res.headers.location, u).toString(); } catch { reject(new Error('bad redirect')); return; }
-        resolve(fetchUpstream(next, depth + 1));
+        resolve({ status, location: String(res.headers.location), ct: '', enc: '', body: Buffer.alloc(0) });
         return;
       }
       const chunks: Buffer[] = [];
       res.on('data', (c: Buffer) => chunks.push(c));
       res.on('end', () => resolve({
+        status, location: null,
         ct: String(res.headers['content-type'] ?? 'application/octet-stream'),
         enc: String(res.headers['content-encoding'] ?? ''),
         body: Buffer.concat(chunks),
@@ -56,8 +55,7 @@ function fetchUpstream(targetUrl: string, depth: number): Promise<Upstream> {
   });
 }
 
-// Decompress when the device used Content-Encoding (rare on printers, but cheap
-// to handle). Falls back to the raw bytes if decompression fails.
+// Decompress when the device used Content-Encoding (rare on printers, but cheap).
 function decodeBody(body: Buffer, enc: string): Buffer {
   try {
     if (/\bgzip\b/i.test(enc)) return zlib.gunzipSync(body);
@@ -67,6 +65,23 @@ function decodeBody(body: Buffer, enc: string): Buffer {
   return body;
 }
 
+// Correct the Content-Type from the request path extension. Printers serve assets
+// with wrong/loose MIME (Brother ships .js as text/js / text/plain, .css as
+// text/plain); the browser then refuses to apply/execute them. Falls back to the
+// upstream value for unknown extensions (incl. extensionless EWS pages → HTML).
+const EXT_CT: Record<string, string> = {
+  js: 'text/javascript', mjs: 'text/javascript', jq: 'text/javascript',
+  css: 'text/css', html: 'text/html', htm: 'text/html', json: 'application/json',
+  gif: 'image/gif', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  svg: 'image/svg+xml', ico: 'image/x-icon', webp: 'image/webp',
+};
+function correctContentType(path: string, upstreamCt: string): string {
+  const clean = path.split('?')[0]!;
+  const dot = clean.lastIndexOf('.');
+  const ext = dot >= 0 ? clean.slice(dot + 1).toLowerCase() : '';
+  return EXT_CT[ext] ?? upstreamCt;
+}
+
 export async function registerDeviceWebProxyRoutes(app: FastifyInstance) {
   const handler = async (req: FastifyRequest, reply: FastifyReply) => {
     const params = req.params as Record<string, string | undefined>;
@@ -74,34 +89,46 @@ export async function registerDeviceWebProxyRoutes(app: FastifyInstance) {
     if (!IP_RE.test(ip) || ip.split('.').some((o) => Number(o) > 255)) { reply.code(400); return 'bad ip'; }
     const star = params['*'] ?? '';
     const rest = star ? `/${star}` : '/';
+    const prefix = `/devices/web/${ip}`;
     try {
-      // Printers usually force HTTPS; the redirect-follow covers an HTTP landing too.
-      const up = await fetchUpstream(`https://${ip}${rest}`, 0).catch(() => fetchUpstream(`http://${ip}${rest}`, 0));
-      reply.header('content-type', up.ct);
-      // The dashboard's global Helmet CSP (`script-src 'self'`) also applies to
-      // this same-origin proxied content and BLOCKS the printer EWS's inline
-      // scripts (the Epson bootstrap meta-refresh + jQuery) → blank page. Relax
-      // the CSP for the proxied device UI only: all sub-resources load from this
-      // same origin under /devices/web/IP/, plus the device's own inline scripts.
+      // Printers usually force HTTPS; fall back to HTTP only on a connection error.
+      const target = `https://${ip}${rest}`;
+      const up = await fetchOnce(target).catch(() => fetchOnce(`http://${ip}${rest}`));
+
+      // Bounce a redirect back to the BROWSER as a proxied path, so the document
+      // URL stays correct and the page's relative `../` resources resolve right.
+      if (up.status >= 300 && up.status < 400 && up.location) {
+        let loc: URL;
+        try { loc = new URL(up.location, target); } catch { reply.code(502); return 'bad redirect'; }
+        reply.header('cache-control', 'no-store');
+        reply.redirect(`${prefix}${loc.pathname}${loc.search}`);
+        return reply;
+      }
+
+      reply.header('content-type', correctContentType(rest, up.ct));
+      // The dashboard's global Helmet CSP (`script-src 'self'`) + `nosniff` also
+      // apply to this same-origin proxied content and would block the printer EWS
+      // inline scripts / mis-typed assets → blank page. Relax both for the proxied
+      // device UI only (sub-resources all load from /devices/web/IP/, same origin).
       reply.header('content-security-policy',
         "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; "
         + "script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; "
         + "img-src 'self' data: blob:; frame-src 'self'");
+      reply.removeHeader('x-content-type-options');
       reply.header('cache-control', 'no-store');
+
       const decoded = decodeBody(up.body, up.enc);
-      if (/text\/html/i.test(up.ct)) {
-        const prefix = `/devices/web/${ip}`;
+      if (/text\/html/i.test(correctContentType(rest, up.ct))) {
         let html = decoded.toString('utf8');
         // 1) Route ROOT-ABSOLUTE resources/links (href|src|action="/…") through the
         //    proxy. A <base> only fixes RELATIVE URLs; absolute ones like HP's
         //    `/hp/device/jquery.js` would hit the dashboard origin root (404 / wrong
-        //    MIME) and the EWS JS dies ($ is not defined). Skip `//host` (protocol-
-        //    relative) and anything already under our prefix.
+        //    MIME → `$ is not defined`). Skip `//host` and already-proxied paths.
         html = html.replace(/\b(href|src|action)=(["'])\/(?!\/|devices\/web\/)/gi, `$1=$2${prefix}/`);
-        // 2) Inject a <base> for RELATIVE links. It MUST point at the directory of
-        //    the CURRENT document, not the proxy root — else a relative `SCRIPT.JS`
-        //    on `…/COMMON/TOP` resolves to `/devices/web/IP/SCRIPT.JS` (root) instead
-        //    of `…/COMMON/SCRIPT.JS`, so frame-based EWS (Epson) render blank.
+        // 2) Inject a <base> for RELATIVE links, pointing at the directory of the
+        //    CURRENT document (not the proxy root) — else a relative `SCRIPT.JS` on
+        //    `…/COMMON/TOP` resolves to `/devices/web/IP/SCRIPT.JS` (root) and
+        //    frame-based EWS (Epson) render blank.
         const dir = rest.slice(0, rest.lastIndexOf('/') + 1); // leading + trailing slash
         const base = `${prefix}${dir}`;
         html = /<head[^>]*>/i.test(html)
