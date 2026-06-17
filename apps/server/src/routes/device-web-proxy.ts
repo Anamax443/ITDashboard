@@ -78,6 +78,16 @@ export async function registerDeviceWebProxyRoutes(app: FastifyInstance) {
       // Printers usually force HTTPS; the redirect-follow covers an HTTP landing too.
       const up = await fetchUpstream(`https://${ip}${rest}`, 0).catch(() => fetchUpstream(`http://${ip}${rest}`, 0));
       reply.header('content-type', up.ct);
+      // The dashboard's global Helmet CSP (`script-src 'self'`) also applies to
+      // this same-origin proxied content and BLOCKS the printer EWS's inline
+      // scripts (the Epson bootstrap meta-refresh + jQuery) → blank page. Relax
+      // the CSP for the proxied device UI only: all sub-resources load from this
+      // same origin under /devices/web/IP/, plus the device's own inline scripts.
+      reply.header('content-security-policy',
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; "
+        + "script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; "
+        + "img-src 'self' data: blob:; frame-src 'self'");
+      reply.header('cache-control', 'no-store');
       const decoded = decodeBody(up.body, up.enc);
       if (/text\/html/i.test(up.ct)) {
         // Inject a <base> so the device's RELATIVE links route back through the
