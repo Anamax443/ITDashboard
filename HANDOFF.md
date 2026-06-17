@@ -98,6 +98,35 @@ largest — candidate for the retention review).
 > **`device_categories`** (by MAC). The Devices tab + Printers tile read from
 > `dhcp_leases` via `GET /devices`.
 
+### Multi-source device discovery + active scan (migration 044)
+
+Follow-up the same session: the Devices inventory now merges **three sources** so
+it shows **static + dynamic** addresses, not just bound DHCP leases. Driven by a
+real case — printer `10.8.2.100` is alive (MAC `64:C6:D2:73:08:70`) but has a
+**static IP set on the device itself**: it has no DHCP lease, no static DHCP
+reservation, and isn't even in the router's ARP (same-subnet host the router
+doesn't route for), so no router API can return it. Verified live.
+
+- **DHCP leases** — now keeps **bound OR static reservations** (`dynamic=false`,
+  even when offline), not bound-only. (Brno has 24 static reservations; 2 were
+  being dropped.)
+- **Router ARP** (`/rest/ip/arp`) — merged in by MAC (lease wins); ARP-only =
+  static device the router has resolved.
+- **Active scan from `.213`** (`mikrotik.scan_enabled` + `mikrotik.scan_ranges` =
+  `Site=CIDR` list, Settings textarea) — the app server ping-sweeps each range's
+  IPs **that the routers don't already account for**, reads its **own ARP cache**
+  (`arp -a`) for the MAC, and registers responders as `source='scan'`,
+  `dynamic=false`. This is the ONLY way to see same-subnet static devices like
+  `.100`. It progressively covers the whole network (skips already-known IPs) and
+  marks previously-scanned non-responders offline so the printer alert still fires.
+
+`dhcp_leases` gained a **`source`** column (`dhcp`/`arp`/`scan`, migration 044).
+The Devices tab shows a **Typ** column (Statická/Dynamická + source). `GET /devices`
+returns `source`; `runMikrotikCollectOnce` returns `scanned`.
+
+Default: scan is **OFF** (it's active network probing) — operator enables it and
+enters the ranges (`10.8.2.0/24` + Zastávka) in Settings → MikroTik DHCP.
+
 ## Session 2026-06-16 — MikroTik collection model simplified to in-app (decision, docs only)
 
 No code/runtime change this session — an **architecture decision** plus a docs/i18n

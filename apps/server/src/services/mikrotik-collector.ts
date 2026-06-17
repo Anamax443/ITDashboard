@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import { getPool } from '../db/pool.js';
 import { getAllSettings, type SettingsMap } from './settings.js';
 import { decryptSecret } from './secret-crypto.js';
@@ -39,17 +40,22 @@ function parseRouters(raw: string | undefined): Router[] {
 // Resolve the live collector config from Settings. Returns null when the
 // collector should NOT run (disabled or no routers configured). The password is
 // decrypted here so callers never see the ciphertext.
-function resolveConfig(settings: SettingsMap): { routers: Router[]; user: string; pass: string; intervalSec: number } | null {
+interface MtConfig { routers: Router[]; user: string; pass: string; intervalSec: number; scanEnabled: boolean; scanRanges: ScanRange[]; }
+
+function resolveConfig(settings: SettingsMap): MtConfig | null {
   if (!boolSetting(settings['mikrotik.enabled'])) return null;
   const routers = parseRouters(settings['mikrotik.routers']);
-  if (routers.length === 0) return null;
+  const scanEnabled = boolSetting(settings['mikrotik.scan_enabled']);
+  const scanRanges = scanEnabled ? parseScanRanges(settings['mikrotik.scan_ranges']) : [];
+  // Run if we have at least one source of devices (routers OR an active scan).
+  if (routers.length === 0 && scanRanges.length === 0) return null;
   const user = (settings['mikrotik.user'] ?? '').trim() || 'dhcp-reader';
   const enc = settings['mikrotik.password_enc'] ?? '';
   let pass = '';
   try { pass = enc ? decryptSecret(enc) : ''; } catch { pass = ''; }
   const n = Number(settings['mikrotik.interval_sec']);
   const intervalSec = Number.isFinite(n) && n >= 30 ? Math.floor(n) : 300;
-  return { routers, user, pass, intervalSec };
+  return { routers, user, pass, intervalSec, scanEnabled, scanRanges };
 }
 
 // RouterOS REST lease object (only the fields we use; keys are dash-cased).
@@ -77,22 +83,83 @@ function toBool(v: string | boolean | undefined): boolean | null {
   return v.toLowerCase() === 'true';
 }
 
-async function fetchLeases(router: Router, user: string, pass: string, timeoutMs: number): Promise<RawLease[]> {
+// RouterOS REST ARP object (only the fields we use).
+interface RawArp {
+  'address'?: string;
+  'mac-address'?: string;
+  'interface'?: string;
+  'dynamic'?: string | boolean;
+  'complete'?: string | boolean;
+  'disabled'?: string | boolean;
+}
+
+async function routerGet<T>(routerIp: string, path: string, user: string, pass: string, timeoutMs: number): Promise<T[]> {
   const auth = Buffer.from(`${user}:${pass}`).toString('base64');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(`http://${router.ip}/rest/ip/dhcp-server/lease`, {
+    const res = await fetch(`http://${routerIp}${path}`, {
       method: 'GET',
       headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
       signal: ctrl.signal,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    return Array.isArray(data) ? (data as RawLease[]) : [];
+    return Array.isArray(data) ? (data as T[]) : [];
   } finally {
     clearTimeout(timer);
   }
+}
+
+function fetchLeases(router: Router, user: string, pass: string, timeoutMs: number): Promise<RawLease[]> {
+  return routerGet<RawLease>(router.ip, '/rest/ip/dhcp-server/lease', user, pass, timeoutMs);
+}
+
+function fetchArp(router: Router, user: string, pass: string, timeoutMs: number): Promise<RawArp[]> {
+  return routerGet<RawArp>(router.ip, '/rest/ip/arp', user, pass, timeoutMs);
+}
+
+// Normalized device shape merged from all sources (DHCP lease / router ARP /
+// active scan) before upsert. `source` records where we learned it.
+type DeviceSource = 'dhcp' | 'arp' | 'scan';
+interface NormDevice {
+  site: string;
+  mac: string;
+  ip: string | null;
+  host: string | null;
+  server: string | null;
+  comment: string | null;
+  status: string | null;
+  dynamic: boolean | null;   // false = static (DHCP reservation / ARP-only / scanned)
+  exp: string | null;
+  rls: string | null;
+  source: DeviceSource;
+}
+
+function leaseToNorm(site: string, l: RawLease): NormDevice | null {
+  const mac = normMac(l['mac-address'] ?? l['active-mac-address']);
+  if (!mac) return null;
+  return {
+    site, mac,
+    ip: (l['active-address'] ?? l['address'] ?? '').trim() || null,
+    host: (l['host-name'] ?? '').trim() || null,
+    server: (l['server'] ?? '').trim() || null,
+    comment: (l['comment'] ?? '').trim() || null,
+    status: (l['status'] ?? '').trim() || null,
+    dynamic: toBool(l['dynamic']),
+    exp: (l['expires-after'] ?? '').trim() || null,
+    rls: (l['last-seen'] ?? '').trim() || null,
+    source: 'dhcp',
+  };
+}
+
+// ARP-only device = not a DHCP client, so it's statically addressed → dynamic=false.
+function arpToNorm(site: string, a: RawArp): NormDevice | null {
+  const mac = normMac(a['mac-address']);
+  if (!mac) return null;
+  const ip = (a['address'] ?? '').trim() || null;
+  if (!ip) return null;
+  return { site, mac, ip, host: null, server: null, comment: null, status: 'arp', dynamic: false, exp: null, rls: null, source: 'arp' };
 }
 
 // --- Device category suggestion (operator can override) ----------------------
@@ -119,9 +186,71 @@ export function suggestCategory(hostName: string | null | undefined, mac: string
   return '';
 }
 
+// --- Active subnet scan (from the app server) --------------------------------
+// The application server pings each host in the configured ranges and reads its
+// OWN ARP table to learn IP↔MAC for statically-addressed devices the router
+// never sees (same-subnet hosts it doesn't route for). Ranges are "Site=CIDR".
+
+interface ScanRange { site: string; base: number; prefix: number; }
+
+function ipToInt(ip: string): number | null {
+  const m = ip.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return null;
+  const o = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+  if (o.some((x) => x > 255)) return null;
+  return ((o[0]! << 24) >>> 0) + (o[1]! << 16) + (o[2]! << 8) + o[3]!;
+}
+function intToIp(n: number): string {
+  return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+}
+
+function parseScanRanges(raw: string | undefined): ScanRange[] {
+  const out: ScanRange[] = [];
+  for (const tok of (raw ?? '').split(/[,;\r\n]+/).map((s) => s.trim()).filter(Boolean)) {
+    const eq = tok.indexOf('=');
+    if (eq <= 0) continue;
+    const site = tok.slice(0, eq).trim();
+    const cidr = tok.slice(eq + 1).trim();
+    const m = cidr.match(/^(\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})$/);
+    if (!m) continue;
+    const base = ipToInt(m[1]!);
+    const prefix = Number(m[2]);
+    if (base == null || prefix < 8 || prefix > 30) continue; // cap range size (≤ /8 .. ≥ a few hosts)
+    out.push({ site, base: base & (prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0), prefix });
+  }
+  return out;
+}
+
+// Usable host IPs of a range (skip network + broadcast).
+function* hostsOf(r: ScanRange): Generator<string> {
+  const size = 2 ** (32 - r.prefix);
+  if (size <= 2) { yield intToIp(r.base); return; }
+  for (let i = 1; i < size - 1; i++) yield intToIp((r.base + i) >>> 0);
+}
+
+// Read the host's ARP cache (Windows `arp -a`) → map of ip → normalized MAC.
+// Lines look like:  "  10.8.2.100            64-c6-d2-73-08-70     dynamic".
+function readLocalArp(): Promise<Map<string, string>> {
+  return new Promise((resolve) => {
+    execFile('arp', ['-a'], { windowsHide: true, timeout: 15000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+      const map = new Map<string, string>();
+      if (err || !stdout) return resolve(map);
+      for (const line of stdout.split(/\r?\n/)) {
+        const m = line.match(/^\s*(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9a-fA-F]{2}(?:[-:][0-9a-fA-F]{2}){5})\s/);
+        if (!m) continue;
+        const mac = m[2]!.replace(/-/g, ':').toUpperCase();
+        if (mac === 'FF:FF:FF:FF:FF:FF') continue;
+        map.set(m[1]!, mac);
+      }
+      resolve(map);
+    });
+  });
+}
+
 // -----------------------------------------------------------------------------
 
 const PING_CONCURRENCY = 10;
+const SCAN_CONCURRENCY = 32;
 let runInFlight = false;
 
 interface Known { names: Set<string>; ips: Set<string>; }
@@ -140,32 +269,27 @@ async function loadKnownComputers(): Promise<Known> {
   return { names, ips };
 }
 
-async function upsertLease(site: string, l: RawLease): Promise<{ mac: string; ip: string | null; host: string | null } | null> {
-  const mac = normMac(l['mac-address'] ?? l['active-mac-address']);
-  if (!mac) return null;
-  const ip = (l['active-address'] ?? l['address'] ?? '').trim() || null;
-  const host = (l['host-name'] ?? '').trim() || null;
+async function upsertDevice(d: NormDevice): Promise<{ mac: string; ip: string | null; host: string | null } | null> {
+  if (!d.mac) return null;
   const pool = await getPool();
+  // For a scan/arp row, don't blank out a richer host_name/server already stored
+  // from a DHCP lease (COALESCE keeps the existing value when the new one is null).
   await pool.request()
-    .input('site', site).input('mac', mac).input('ip', ip).input('host', host)
-    .input('server', (l['server'] ?? '').trim() || null)
-    .input('comment', (l['comment'] ?? '').trim() || null)
-    .input('status', (l['status'] ?? '').trim() || null)
-    .input('dyn', toBool(l['dynamic']))
-    .input('exp', (l['expires-after'] ?? '').trim() || null)
-    .input('rls', (l['last-seen'] ?? '').trim() || null)
+    .input('site', d.site).input('mac', d.mac).input('ip', d.ip).input('host', d.host)
+    .input('server', d.server).input('comment', d.comment).input('status', d.status)
+    .input('dyn', d.dynamic).input('exp', d.exp).input('rls', d.rls).input('src', d.source)
     .query(`
       MERGE dhcp_leases AS t USING (SELECT @site AS site, @mac AS mac) AS s
         ON t.site = s.site AND t.mac_address = s.mac
       WHEN MATCHED THEN UPDATE SET
-        ip_address = @ip, host_name = @host, server = @server, comment = @comment,
-        status = @status, dynamic = @dyn, expires_after = @exp, router_last_seen = @rls,
-        last_seen = SYSUTCDATETIME()
+        ip_address = @ip, host_name = COALESCE(@host, t.host_name), server = COALESCE(@server, t.server),
+        comment = COALESCE(@comment, t.comment), status = @status, dynamic = @dyn,
+        expires_after = @exp, router_last_seen = @rls, source = @src, last_seen = SYSUTCDATETIME()
       WHEN NOT MATCHED THEN INSERT
-        (site, mac_address, ip_address, host_name, server, comment, status, dynamic, expires_after, router_last_seen)
-        VALUES (@site, @mac, @ip, @host, @server, @comment, @status, @dyn, @exp, @rls);
+        (site, mac_address, ip_address, host_name, server, comment, status, dynamic, expires_after, router_last_seen, source)
+        VALUES (@site, @mac, @ip, @host, @server, @comment, @status, @dyn, @exp, @rls, @src);
     `);
-  return { mac, ip, host };
+  return { mac: d.mac, ip: d.ip, host: d.host };
 }
 
 async function persistReachable(site: string, mac: string, reachable: boolean): Promise<void> {
@@ -184,6 +308,7 @@ export interface MikrotikRunResult {
   leases: number;
   unmatchedPinged: number;
   reachable: number;
+  scanned: number;
   errors: string[];
   durationMs: number;
 }
@@ -199,45 +324,65 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
   let leases = 0;
   let unmatchedPinged = 0;
   let reachable = 0;
+  let scanned = 0;
   try {
     const settings = await getAllSettings();
     const cfg = resolveConfig(settings);
     if (!cfg) {
-      return { routers: 0, leases: 0, unmatchedPinged: 0, reachable: 0, errors: [], durationMs: Date.now() - t0 };
+      return { routers: 0, leases: 0, unmatchedPinged: 0, reachable: 0, scanned: 0, errors: [], durationMs: Date.now() - t0 };
     }
-    const { routers, user, pass } = cfg;
+    const { routers, user, pass, scanRanges } = cfg;
     const timeoutMs = 8000;
     const known = await loadKnownComputers();
 
-    // Collect the unmatched (site, mac, ip) to ping after all upserts.
+    // Unmatched (site, mac, ip) to ping after upserts; router-owned IPs (so the
+    // scan skips them).
     const toPing: Array<{ site: string; mac: string; ip: string }> = [];
+    const routerOwnedIps = new Set<string>();
 
+    const handleDevice = async (d: NormDevice): Promise<void> => {
+      const up = await upsertDevice(d);
+      if (!up) return;
+      leases++;
+      if (up.ip) routerOwnedIps.add(up.ip);
+      const matched = (up.host != null && known.names.has(up.host.toLowerCase()))
+        || (up.ip != null && known.ips.has(up.ip));
+      if (matched) {
+        const pool = await getPool();
+        await pool.request().input('site', d.site).input('mac', up.mac)
+          .query(`UPDATE dhcp_leases SET reachable = NULL, reach_checked_at = NULL WHERE site = @site AND mac_address = @mac`);
+      } else if (up.ip) {
+        toPing.push({ site: d.site, mac: up.mac, ip: up.ip });
+      }
+    };
+
+    // Phase 1 — routers: DHCP leases (dynamic AND static reservations, even when
+    // not currently bound) merged with the ARP table, keyed by MAC (lease wins).
     for (const router of routers) {
       try {
-        const raw = await fetchLeases(router, user, pass, timeoutMs);
-        const bound = raw.filter((l) => (l.status ?? '').toLowerCase() === 'bound');
-        for (const l of bound) {
-          const up = await upsertLease(router.site, l);
-          if (!up) continue;
-          leases++;
-          const matched = (up.host != null && known.names.has(up.host.toLowerCase()))
-            || (up.ip != null && known.ips.has(up.ip));
-          // Matched devices: clear the lease's own ping verdict (UI uses the
-          // computer's reachable). Unmatched: queue a ping.
-          if (matched) {
-            const pool = await getPool();
-            await pool.request().input('site', router.site).input('mac', up.mac)
-              .query(`UPDATE dhcp_leases SET reachable = NULL, reach_checked_at = NULL WHERE site = @site AND mac_address = @mac`);
-          } else if (up.ip) {
-            toPing.push({ site: router.site, mac: up.mac, ip: up.ip });
-          }
+        const [rawLeases, rawArp] = await Promise.all([
+          fetchLeases(router, user, pass, timeoutMs),
+          fetchArp(router, user, pass, timeoutMs).catch(() => [] as RawArp[]),
+        ]);
+        const byMac = new Map<string, NormDevice>();
+        for (const l of rawLeases) {
+          const isBound = (l.status ?? '').toLowerCase() === 'bound';
+          const isStatic = toBool(l.dynamic) === false;       // static reservation
+          if (!isBound && !isStatic) continue;                // skip transient dynamic non-bound
+          const d = leaseToNorm(router.site, l);
+          if (d) byMac.set(d.mac, d);
         }
+        for (const a of rawArp) {
+          const d = arpToNorm(router.site, a);
+          if (d && !byMac.has(d.mac)) byMac.set(d.mac, d);     // ARP-only = static, not in DHCP
+        }
+        for (const d of byMac.values()) await handleDevice(d);
       } catch (err) {
         errors.push(`${router.site}: ${String(err).split('\n')[0]}`);
       }
     }
 
-    // Ping unmatched devices with a small concurrency pool.
+    // Ping unmatched router devices with a small concurrency pool.
     let idx = 0;
     const worker = async () => {
       while (idx < toPing.length) {
@@ -253,18 +398,80 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
     };
     await Promise.all(Array.from({ length: Math.min(PING_CONCURRENCY, toPing.length || 1) }, worker));
 
+    // Phase 2 — active scan from the app server: ping every host in the
+    // configured ranges that the routers don't already account for, read the
+    // local ARP cache, and register the responders as statically-addressed
+    // (source='scan'). Catches same-subnet static devices the router never sees.
+    if (cfg.scanEnabled && scanRanges.length > 0) {
+      try {
+        const pool = await getPool();
+        // Seed router-owned IPs with everything currently stored from the routers
+        // so the scan doesn't re-ping device the routers already cover.
+        const owned = await pool.request().query<{ ip_address: string | null }>(
+          `SELECT ip_address FROM dhcp_leases WHERE ip_address IS NOT NULL AND source <> 'scan'`);
+        for (const r of owned.recordset) if (r.ip_address) routerOwnedIps.add(r.ip_address);
+
+        const targets: Array<{ site: string; ip: string }> = [];
+        const targetIps = new Set<string>();
+        for (const range of scanRanges) {
+          for (const ip of hostsOf(range)) {
+            if (!routerOwnedIps.has(ip) && !targetIps.has(ip)) { targets.push({ site: range.site, ip }); targetIps.add(ip); }
+          }
+        }
+
+        const aliveIps = new Set<string>();
+        const aliveList: Array<{ site: string; ip: string }> = [];
+        let si = 0;
+        const scanWorker = async () => {
+          while (si < targets.length) {
+            const tt = targets[si++];
+            if (!tt) continue;
+            try { if (await icmpPing(tt.ip, 1500)) { aliveIps.add(tt.ip); aliveList.push(tt); } } catch { /* skip */ }
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, targets.length || 1) }, scanWorker));
+
+        // Resolve MACs from the local ARP cache (the pings above populated it).
+        const arpMap = await readLocalArp();
+        for (const a of aliveList) {
+          const mac = arpMap.get(a.ip);
+          if (!mac) continue; // alive but no MAC resolved — can't key it
+          await upsertDevice({ site: a.site, mac, ip: a.ip, host: null, server: null, comment: null, status: 'scan', dynamic: false, exp: null, rls: null, source: 'scan' });
+          if (known.ips.has(a.ip)) {
+            await pool.request().input('site', a.site).input('mac', mac)
+              .query(`UPDATE dhcp_leases SET reachable = NULL, reach_checked_at = NULL WHERE site = @site AND mac_address = @mac`);
+          } else {
+            await persistReachable(a.site, mac, true);
+          }
+          scanned++;
+        }
+
+        // Previously-scanned devices that were in scope this run but didn't
+        // respond → mark offline (so the printer-offline alert can fire).
+        const prevScan = await pool.request().query<{ site: string; mac_address: string; ip_address: string | null }>(
+          `SELECT site, mac_address, ip_address FROM dhcp_leases WHERE source = 'scan'`);
+        for (const r of prevScan.recordset) {
+          if (r.ip_address && targetIps.has(r.ip_address) && !aliveIps.has(r.ip_address) && !known.ips.has(r.ip_address)) {
+            await persistReachable(r.site, r.mac_address, false);
+          }
+        }
+      } catch (err) {
+        errors.push(`scan: ${String(err).split('\n')[0]}`);
+      }
+    }
+
     const durationMs = Date.now() - t0;
     logActivity(errors.length ? 'warn' : 'info', 'mikrotik',
-      `DHCP: ${leases} lease(s) from ${routers.length} router(s); ${unmatchedPinged} unmatched pinged (${reachable} online)${errors.length ? ` · errors: ${errors.join('; ')}` : ''} (${(durationMs / 1000).toFixed(1)}s)`);
+      `Devices: ${leases} from ${routers.length} router(s)${scanned ? ` + ${scanned} scanned` : ''}; ${unmatchedPinged} unmatched pinged (${reachable} online)${errors.length ? ` · errors: ${errors.join('; ')}` : ''} (${(durationMs / 1000).toFixed(1)}s)`);
 
     // Printer-offline alert eval runs on the collector's own cadence (fresh
     // reachability is in the DB now). Self-contained; never throws.
     try { await evaluateAndSendPrinterAlerts(); } catch (e) { logActivity('error', 'alerts', `Printer alert eval failed: ${String(e).split('\n')[0]}`); }
 
-    return { routers: routers.length, leases, unmatchedPinged, reachable, errors, durationMs };
+    return { routers: routers.length, leases, unmatchedPinged, reachable, scanned, errors, durationMs };
   } catch (err) {
     logActivity('error', 'mikrotik', `DHCP collect failed: ${String(err).split('\n')[0]}`);
-    return { routers: 0, leases, unmatchedPinged, reachable, errors: [String(err)], durationMs: Date.now() - t0 };
+    return { routers: 0, leases, unmatchedPinged, reachable, scanned, errors: [String(err)], durationMs: Date.now() - t0 };
   } finally {
     runInFlight = false;
   }

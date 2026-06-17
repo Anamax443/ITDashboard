@@ -156,6 +156,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                 <th style={{ width: 120 }}>IP</th>
                 <th style={{ width: 190 }}>{t('devices.hostname')}</th>
                 <th style={{ width: 150 }}>MAC</th>
+                <th style={{ width: 95 }}>{t('devices.type')}</th>
                 <th style={{ width: 170 }}>{t('devices.category')}</th>
                 <th style={{ width: 90 }}>{t('devices.status')}</th>
                 <th style={{ width: 130 }}>AD</th>
@@ -176,6 +177,16 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                   </td>
                   <td style={{ fontWeight: 600, fontSize: 12 }}>{d.host_name ?? <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>—</span>}</td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 10, fontFamily: 'Consolas, monospace' }}>{d.mac_address}</td>
+                  <td style={{ fontSize: 11 }}>
+                    {d.dynamic === false
+                      ? <span style={{ color: 'var(--warning, #d97706)', fontWeight: 600 }}>{t('devices.static')}</span>
+                      : d.dynamic === true
+                        ? <span style={{ color: 'var(--text-dim)' }}>{t('devices.dynamic')}</span>
+                        : <span style={{ color: 'var(--text-dim)' }}>—</span>}
+                    {d.source && d.source !== 'dhcp' && (
+                      <span style={{ color: 'var(--text-dim)', fontSize: 9, marginLeft: 4 }} title={t('devices.sourceTip')}>· {d.source}</span>
+                    )}
+                  </td>
                   <td>
                     {/* Pre-select: an uncategorized device shows its AD-derived
                         (pc/server) or heuristic (printer/phone) suggestion already

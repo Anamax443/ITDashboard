@@ -528,7 +528,8 @@ export interface DeviceItem {
   server: string | null;
   comment: string | null;
   status: string | null;
-  dynamic: boolean | null;
+  dynamic: boolean | null;              // false = static (DHCP reservation / ARP / scan)
+  source: string | null;               // 'dhcp' | 'arp' | 'scan'
   expires_after: string | null;
   router_last_seen: string | null;
   last_seen: string;
@@ -694,7 +695,7 @@ export const api = {
   probeComputer: (computerId: number) => jpost<PerPcProbeResult>(`/computers/${computerId}/probe`),
   devices: () => jget<{ items: DeviceItem[] }>('/devices'),
   database: () => jget<DatabaseOverview>('/database'),
-  devicesRun: () => jpost<{ routers: number; leases: number; unmatchedPinged: number; reachable: number; errors: string[]; durationMs: number }>('/devices/run'),
+  devicesRun: () => jpost<{ routers: number; leases: number; unmatchedPinged: number; reachable: number; scanned: number; errors: string[]; durationMs: number }>('/devices/run'),
   setDeviceCategory: async (mac: string, category: string) => {
     const r = await fetch(`${API_BASE}/devices/category`, {
       method: 'PATCH',

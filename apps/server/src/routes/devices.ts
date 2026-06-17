@@ -18,6 +18,7 @@ interface DeviceRow {
   comment: string | null;
   status: string | null;
   dynamic: boolean | null;
+  source: string | null;
   expires_after: string | null;
   router_last_seen: string | null;
   last_seen: string;
@@ -37,7 +38,7 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
     const pool = await getPool();
     const r = await pool.request().query<DeviceRow>(`
       SELECT l.site, l.mac_address, l.ip_address, l.host_name, l.server, l.comment,
-             l.status, l.dynamic, l.expires_after, l.router_last_seen, l.last_seen,
+             l.status, l.dynamic, l.source, l.expires_after, l.router_last_seen, l.last_seen,
              l.reachable, l.reach_checked_at,
              dc.category,
              m.id AS computer_id, m.name AS computer_name, m.reachable AS computer_reachable,

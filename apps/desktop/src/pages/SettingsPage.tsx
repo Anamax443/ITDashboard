@@ -486,6 +486,25 @@ export function SettingsPage() {
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
             {t('settings.field.mikrotikHelp')}
           </p>
+
+          <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 10px' }} />
+          <CheckField
+            label={t('settings.field.scanEnabled')}
+            checked={value('mikrotik.scan_enabled', '0') === '1'}
+            onChange={(checked) => set('mikrotik.scan_enabled', checked ? '1' : '0')}
+          />
+          <Field label={t('settings.field.scanRanges')}>
+            <textarea
+              value={value('mikrotik.scan_ranges', '')}
+              onChange={(e) => set('mikrotik.scan_ranges', e.target.value)}
+              rows={3}
+              placeholder={"Brno=10.8.2.0/24\nZastavka=10.10.181.0/24"}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+            {t('settings.field.scanHelp')}
+          </p>
         </Section>
 
         <Section
