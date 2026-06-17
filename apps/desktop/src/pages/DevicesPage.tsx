@@ -12,6 +12,18 @@ const CATEGORY_KEYS = [
   '', 'printer', 'phone', 'pc', 'server', 'network', 'iot', 'other',
 ];
 
+// Per-category colour so an assigned category pops in the grid (Electron =
+// Chromium, so <option> colours render in the dropdown too).
+const CAT_COLOR: Record<string, string> = {
+  printer: '#3b9eff', // blue — the focus category
+  server: '#c084fc',  // violet
+  pc: '#46c882',      // green
+  phone: '#2dd4bf',   // teal
+  network: '#f59e0b', // amber
+  iot: '#f472b6',     // pink
+  other: '#9ca3af',   // grey
+};
+
 function effectiveReachable(d: DeviceItem): boolean | null {
   return d.computer_id != null ? d.computer_reachable : d.reachable;
 }
@@ -211,10 +223,17 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                           <select
                             value={shown}
                             onChange={(e) => setCategory(d, e.target.value)}
-                            style={{ fontSize: 12, flex: 1, minWidth: 0, color: 'var(--text)' }}
+                            style={{
+                              fontSize: 12, flex: 1, minWidth: 0,
+                              fontWeight: d.category ? 700 : 400,
+                              fontStyle: unconfirmed ? 'italic' : 'normal',
+                              color: d.category ? (CAT_COLOR[d.category] ?? 'var(--text)') : 'var(--text-dim)',
+                            }}
                           >
                             {CATEGORY_KEYS.map((k) => (
-                              <option key={k || 'none'} value={k}>{k === '' ? '—' : catLabel(k)}</option>
+                              <option key={k || 'none'} value={k} style={{ color: k && CAT_COLOR[k] ? CAT_COLOR[k] : 'var(--text)', fontWeight: k ? 600 : 400 }}>
+                                {k === '' ? '—' : catLabel(k)}
+                              </option>
                             ))}
                           </select>
                           {unconfirmed && (
