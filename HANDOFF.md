@@ -47,8 +47,9 @@ gaps are filled from the printer's own web page:
 - Settings seeded: `printer_supplies.enabled` (default **1**), `.interval_sec`
   (900), `.snmp_community` (public), `.low_pct` (15), `.http_fallback` (1).
 - Frontend: **`PrinterSuppliesPage.tsx`** (card per printer, colour supply bars +
-  %, badge OK/Dochází/Prázdná, **click card → printer web UI** via the existing
-  `devices.web_proxy` cert-bypass), dashboard **🖨 Náplně** tile + nav entry, and a
+  %, badge OK/Dochází/Prázdná, two explicit per-card links — **"přes dashboard"**
+  (cert-bypass proxy) and **"přímo na IP"** (raw `http://IP`) so the operator
+  chooses), dashboard **🖨 Náplně** tile + nav entry, and a
   light **supply-flag** (●NN%) on confirmed-printer rows in the Devices tab that
   jumps to the page. i18n CS+EN.
 
