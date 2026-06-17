@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
 import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem } from './api.js';
-import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions } from './api.js';
+import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions, deviceDegraded } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { HealthCards } from './components/HealthCards.js';
 import { EventsTable } from './components/EventsTable.js';
@@ -59,6 +59,8 @@ export function App() {
   const [portsInitialOnlyIssues, setPortsInitialOnlyIssues] = useState(false);
   // Same one-shot for Devices → pre-checks "only printers".
   const [devicesInitialOnlyPrinters, setDevicesInitialOnlyPrinters] = useState(false);
+  // Same one-shot for Devices → pre-checks "issues only" (loss/latency).
+  const [devicesInitialOnlyLossy, setDevicesInitialOnlyLossy] = useState(false);
   // Same one-shot for Critical services → pre-checks "only down".
   const [critInitialOnlyDown, setCritInitialOnlyDown] = useState(false);
   // Same one-shot for Services → pre-checks "only ExitCode != 0".
@@ -152,6 +154,8 @@ export function App() {
     const r = d.computer_id != null ? d.computer_reachable : d.reachable;
     return r === false;
   }).length;
+  // Degraded devices: online but with packet loss or high latency (>=50ms).
+  const degradedDevices = devices.filter(deviceDegraded).length;
 
   const refreshComputers = useCallback(async () => {
     try {
@@ -304,6 +308,9 @@ export function App() {
             printersOffline={printersOffline}
             printersTotal={printersTotal}
             onClickPrinters={() => { setDevicesInitialOnlyPrinters(true); setView('devices'); }}
+            degradedDevices={degradedDevices}
+            devicesTotal={devices.length}
+            onClickDegraded={() => { setDevicesInitialOnlyLossy(true); setView('devices'); }}
             perfSummary={perfSummary}
             inactiveStats={inactiveStats}
             onClickMonitoredDisks={() => { setComputersPreFilter('disk-email'); setView('computers'); }}
@@ -383,7 +390,7 @@ export function App() {
 
       {view === 'devices' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <DevicesPage onJumpToComputer={jumpToComputer} initialOnlyPrinters={devicesInitialOnlyPrinters} onOnlyPrintersConsumed={() => setDevicesInitialOnlyPrinters(false)} />
+          <DevicesPage onJumpToComputer={jumpToComputer} initialOnlyPrinters={devicesInitialOnlyPrinters} onOnlyPrintersConsumed={() => setDevicesInitialOnlyPrinters(false)} initialOnlyLossy={devicesInitialOnlyLossy} onOnlyLossyConsumed={() => setDevicesInitialOnlyLossy(false)} />
         </div>
       )}
 

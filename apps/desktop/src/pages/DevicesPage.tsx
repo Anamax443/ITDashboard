@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { DeviceItem } from '../api.js';
-import { api, timeAgo } from '../api.js';
+import { api, timeAgo, deviceDegraded } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { useI18n } from '../i18n.js';
 
@@ -28,10 +28,12 @@ function effectiveReachable(d: DeviceItem): boolean | null {
   return d.computer_id != null ? d.computer_reachable : d.reachable;
 }
 
-export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrintersConsumed }: {
+export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrintersConsumed, initialOnlyLossy, onOnlyLossyConsumed }: {
   onJumpToComputer?: (name: string) => void;
   initialOnlyPrinters?: boolean;
   onOnlyPrintersConsumed?: () => void;
+  initialOnlyLossy?: boolean;
+  onOnlyLossyConsumed?: () => void;
 } = {}) {
   const { t } = useI18n();
   // Category keys are dynamic, but t() is typed to a literal-key union — cast the
@@ -62,6 +64,11 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   useEffect(() => {
     if (initialOnlyPrinters) { setOnlyPrinters(true); onOnlyPrintersConsumed?.(); }
   }, [initialOnlyPrinters, onOnlyPrintersConsumed]);
+
+  // One-shot: arriving via the dashboard "loss/latency" tile pre-checks "issues only".
+  useEffect(() => {
+    if (initialOnlyLossy) { setOnlyLossy(true); onOnlyLossyConsumed?.(); }
+  }, [initialOnlyLossy, onOnlyLossyConsumed]);
 
   const runAll = async () => {
     if (running) return;
@@ -131,7 +138,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
       if (catFilter === '__none') { if (d.category) return false; }
       else if ((d.category ?? '') !== catFilter) return false;
     }
-    if (onlyLossy && !(effectiveReachable(d) === true && (d.packet_loss ?? 0) > 0)) return false;
+    if (onlyLossy && !deviceDegraded(d)) return false;
     if (search) {
       const q = search.toLowerCase();
       return (d.ip_address ?? '').toLowerCase().includes(q)

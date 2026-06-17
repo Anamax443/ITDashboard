@@ -560,6 +560,16 @@ export interface DatabaseOverview {
   tables: DbTableStat[];
 }
 
+/** Effective reachability of a device: matched → its AD computer's, else the lease ping. */
+export function deviceReachable(d: DeviceItem): boolean | null {
+  return d.computer_id != null ? d.computer_reachable : d.reachable;
+}
+
+/** A "degraded" device = online but with packet loss or high latency (>=50ms). */
+export function deviceDegraded(d: DeviceItem): boolean {
+  return deviceReachable(d) === true && ((d.packet_loss ?? 0) > 0 || (d.latency_ms ?? 0) >= 50);
+}
+
 async function jget<T>(path: string): Promise<T> {
   const r = await fetch(`${API_BASE}${path}`);
   if (!r.ok) throw new Error(`${path} → ${r.status}`);
