@@ -154,6 +154,11 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     return (
       <span style={{ fontSize: 11 }}>
         <span style={{ color: r ? 'var(--ok)' : 'var(--critical)', fontWeight: 700 }}>{r ? '● online' : '○ offline'}</span>
+        {r && d.latency_ms != null && d.latency_ms >= 5 && (
+          <span style={{ color: d.latency_ms >= 50 ? 'var(--warning, #d97706)' : 'var(--text-dim)', fontSize: 10, marginLeft: 4 }} title={t('devices.latencyTip')}>
+            · {d.latency_ms} ms
+          </span>
+        )}
         {r && loss != null && loss > 0 && (
           <span style={{ color: loss >= 50 ? 'var(--critical)' : 'var(--warning, #d97706)', fontSize: 10, marginLeft: 4, fontWeight: 600 }} title={t('devices.lossTip')}>
             · {loss}% {t('devices.loss')}

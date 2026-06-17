@@ -24,6 +24,7 @@ interface DeviceRow {
   last_seen: string;
   reachable: boolean | null;
   packet_loss: number | null;
+  latency_ms: number | null;
   reach_checked_at: string | null;
   category: string | null;
   operator_name: string | null;
@@ -41,7 +42,7 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
     const r = await pool.request().query<DeviceRow>(`
       SELECT l.site, l.mac_address, l.ip_address, l.host_name, l.server, l.comment,
              l.status, l.dynamic, l.source, l.expires_after, l.router_last_seen, l.last_seen,
-             l.reachable, l.packet_loss, l.reach_checked_at,
+             l.reachable, l.packet_loss, l.latency_ms, l.reach_checked_at,
              dc.category, dc.name AS operator_name,
              m.id AS computer_id, m.name AS computer_name, m.reachable AS computer_reachable,
              m.os_version AS computer_os

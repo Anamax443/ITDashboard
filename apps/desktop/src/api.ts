@@ -535,6 +535,7 @@ export interface DeviceItem {
   last_seen: string;
   reachable: boolean | null;            // ping verdict for UNMATCHED devices
   packet_loss: number | null;           // last measured packet loss % (0–100)
+  latency_ms: number | null;            // last measured avg round-trip (ms)
   reach_checked_at: string | null;
   category: string | null;              // operator-assigned category (by MAC)
   operator_name: string | null;         // operator-edited device name (by MAC)
