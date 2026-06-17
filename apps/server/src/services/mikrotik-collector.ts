@@ -181,6 +181,9 @@ export function suggestCategory(hostName: string | null | undefined, mac: string
   if (PRINTER_OUI.has(oui)) return 'printer';
   const h = (hostName ?? '').toLowerCase();
   if (!h) return '';
+  // Common printer NetBIOS name prefixes: NPI = HP JetDirect, BRN/BRW = Brother,
+  // RNP = Ricoh, KMBT = Kyocera/Konica-Minolta, EPSON = Epson.
+  if (/^(npi|brn|brw|rnp|kmbt)/.test(h)) return 'printer';
   if (/canon|kyocera|zebra|laserjet|officejet|hewlett|(^|[^a-z])hp[^a-z]|epson|brother|lexmark|ricoh|konica|minolta|xerox|\boki\b|print|tisk|\bmfp\b/.test(h)) return 'printer';
   if (/iphone|ipad|galaxy|redmi|poco|honor|xiaomi|android|oneplus|huawei|pixel|realme/.test(h)) return 'phone';
   return '';
