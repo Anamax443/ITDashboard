@@ -383,11 +383,33 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
     const timeoutMs = 8000;
     const known = await loadKnownComputers();
 
-    // Unmatched (site, mac, ip) to ping after upserts; router-owned IPs (so the
-    // scan skips them).
+    // EXCLUDE ranges ("!"/"<>") opt a whole subnet OUT of the inventory entirely
+    // — not just out of the active scan. Parsed straight from settings so it
+    // applies even when scanning is disabled. Excluded IPs are never stored (any
+    // source) and existing rows in those ranges are pruned below.
+    const excludeRanges = parseScanRanges(settings['mikrotik.scan_ranges']).filter((r) => r.exclude);
+    const inExcluded = (ip: string | null): boolean => {
+      if (!ip) return false;
+      const n = ipToInt(ip);
+      return n != null && excludeRanges.some((r) => ((n & maskOf(r.prefix)) >>> 0) === r.base);
+    };
+    if (excludeRanges.length > 0) {
+      const pool = await getPool();
+      const all = (await pool.request().query<{ site: string; mac_address: string; ip_address: string | null }>(
+        `SELECT site, mac_address, ip_address FROM dhcp_leases WHERE ip_address IS NOT NULL`)).recordset;
+      for (const r of all) {
+        if (inExcluded(r.ip_address)) {
+          await pool.request().input('site', r.site).input('mac', r.mac_address)
+            .query(`DELETE FROM dhcp_leases WHERE site = @site AND mac_address = @mac`);
+        }
+      }
+    }
+
+    // Unmatched (site, mac, ip) to ping after upserts.
     const toPing: Array<{ site: string; mac: string; ip: string }> = [];
 
     const handleDevice = async (d: NormDevice): Promise<void> => {
+      if (inExcluded(d.ip)) return; // operator opted this subnet out entirely
       const up = await upsertDevice(d);
       if (!up) return;
       leases++;
@@ -463,13 +485,8 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
         for (const r of stored) if (r.ip_address) knownIps.add(r.ip_address);
 
         // Discovery: ping only the UNKNOWN host IPs in the INCLUDE ranges, minus
-        // anything in an EXCLUDE ("!"/"<>") range.
+        // anything in an EXCLUDE ("!"/"<>") range (inExcluded is hoisted above).
         const includeRanges = scanRanges.filter((r) => !r.exclude);
-        const excludeRanges = scanRanges.filter((r) => r.exclude);
-        const inExcluded = (ip: string): boolean => {
-          const n = ipToInt(ip);
-          return n != null && excludeRanges.some((r) => (n & maskOf(r.prefix)) >>> 0 === r.base);
-        };
         const targets: Array<{ site: string; ip: string }> = [];
         const targetIps = new Set<string>();
         for (const range of includeRanges) {

@@ -39,6 +39,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const catLabel = (k: string) => t(`cat.${k}` as Parameters<typeof t>[0]);
   const [items, setItems] = useState<DeviceItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [site, setSite] = useState('');
   const [onlyUnmanaged, setOnlyUnmanaged] = useState(false);
@@ -62,9 +63,23 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const runAll = async () => {
     if (running) return;
     setRunning(true);
-    try { await api.devicesRun(); refresh(); }
-    catch (e) { setError(String(e)); }
-    finally { setRunning(false); }
+    setError(null);
+    setNotice(null);
+    try {
+      await api.devicesRun();
+      refresh();
+    } catch (e) {
+      // A 409 just means a collect is already in progress — that's normal, not an
+      // error. Show a soft info notice; surface everything else as a real error.
+      const msg = String(e);
+      if (/\b409\b/.test(msg) || /already running/i.test(msg)) {
+        setNotice(t('devices.alreadyRunning'));
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setRunning(false);
+    }
   };
 
   const setCategory = async (d: DeviceItem, category: string) => {
@@ -168,6 +183,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
       </div>
       <div className="panel-body">
         {error && <div style={{ color: 'var(--critical)', padding: 8 }}>⚠ {error}</div>}
+        {notice && <div style={{ color: 'var(--accent)', padding: 8, fontSize: 12 }}>ℹ {notice}</div>}
         {filtered.length === 0 ? (
           <div className="empty">{items.length === 0 ? t('devices.empty') : t('devices.noMatch')}</div>
         ) : (
