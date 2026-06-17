@@ -88,8 +88,23 @@ proxy (ink tank graphics, status, cartridge codes).
 fixes RELATIVE URLs; HP's EWS loads `/hp/device/jquery.js` etc. by ABSOLUTE path,
 which hit the dashboard origin root (404 / wrong MIME → `$ is not defined`). The
 proxy now rewrites `href|src|action="/…"` → `/devices/web/IP/…` (skipping `//host`
-and already-proxied paths) so absolute resources route through too. Default ON
-(migration 049, `devices.web_proxy=1`); operator can disable in Settings.
+and already-proxied paths) so absolute resources route through too.
+
+**Follow-up fix 5 (`c92d840`): client-side redirects + MIME correction (Brother).**
+(a) Redirects were followed server-side, so the browser stayed at the pre-redirect
+URL — Brother's `/` → `/general/status.html` left the doc at root, so its relative
+`../common/images/black.gif` lost the IP (`/devices/web/common/…` → 400). Now a 3xx
+is bounced back to the BROWSER as a proxied path (`reply.redirect` to
+`/devices/web/IP/<loc>`), keeping the document URL — and relative resolution —
+correct. (b) Printers serve assets with wrong MIME (Brother `.js` as
+`text/js`/`text/plain`, `.css` as `text/plain`); with Helmet `nosniff` the browser
+refused them. The proxy now sets Content-Type from the path extension
+(`correctContentType`), so JS/CSS/images apply correctly. Verified live across
+Epson (EM-C7100, WF-C5790/C5890), HP (M401dne, M451dn, Color M552) and Brother
+(MFC-L8690CDW). The benign console warnings that remain (Cross-Origin-Opener-Policy
+ignored, Origin-Agent-Cluster) are from the dashboard's HTTP origin and harmless.
+
+Default ON (migration 049, `devices.web_proxy=1`); operator can disable in Settings.
 
 > Open follow-ups: Settings UI section for the supply collector (works on the
 > seeded defaults today, but enable/community/threshold are DB-only until a
