@@ -179,28 +179,35 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                   <td>
                     {/* Pre-select: an uncategorized device shows its AD-derived
                         (pc/server) or heuristic (printer/phone) suggestion already
-                        selected but dimmed/italic — it's only saved once the
-                        operator confirms (✓) or picks another option. */}
+                        selected, in readable text. It's only saved once the operator
+                        confirms (✓ chip) or picks another option; a confirmed
+                        category shows no chip. */}
                     {(() => {
                       const unconfirmed = !d.category && !!d.suggested;
                       const shown = d.category ?? d.suggested ?? '';
                       return (
-                        <select
-                          value={shown}
-                          onChange={(e) => setCategory(d, e.target.value)}
-                          style={{ fontSize: 11, width: '100%', color: d.category ? 'var(--text)' : 'var(--text-dim)', fontStyle: unconfirmed ? 'italic' : 'normal' }}
-                        >
-                          {CATEGORY_KEYS.map((k) => (
-                            <option key={k || 'none'} value={k}>{k === '' ? '—' : catLabel(k)}</option>
-                          ))}
-                        </select>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <select
+                            value={shown}
+                            onChange={(e) => setCategory(d, e.target.value)}
+                            style={{ fontSize: 12, flex: 1, minWidth: 0, color: 'var(--text)' }}
+                          >
+                            {CATEGORY_KEYS.map((k) => (
+                              <option key={k || 'none'} value={k}>{k === '' ? '—' : catLabel(k)}</option>
+                            ))}
+                          </select>
+                          {unconfirmed && (
+                            <button
+                              onClick={() => setCategory(d, d.suggested)}
+                              title={`${t('devices.confirmSuggest')}: ${catLabel(d.suggested)}`}
+                              style={{ flex: '0 0 auto', fontSize: 10, lineHeight: 1, padding: '3px 7px', cursor: 'pointer', color: 'var(--accent)', background: 'transparent', border: '1px solid var(--accent)', borderRadius: 4 }}
+                            >
+                              ✓ {t('devices.confirmSuggest')}
+                            </button>
+                          )}
+                        </div>
                       );
                     })()}
-                    {!d.category && d.suggested && (
-                      <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 1, cursor: 'pointer' }} title={t('devices.applySuggestion')} onClick={() => setCategory(d, d.suggested)}>
-                        ✓ {t('devices.confirmSuggest')} ({catLabel(d.suggested)})
-                      </div>
-                    )}
                   </td>
                   <td>{statusCell(d)}</td>
                   <td style={{ fontSize: 11 }}>
