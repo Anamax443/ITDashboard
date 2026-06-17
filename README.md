@@ -14,7 +14,8 @@ Internal IT operations dashboard for the **AXINETWORK** domain. Eventlog analyti
 - **Critical services — real state** — the configured critical-services list (`alerts.services.critical_names`: NTDS, DNS, Kdc, Veeam, …) is now captured on every machine where it exists, in **any** state (Running included), from the same CIM enumeration as the problem scan — so you can confirm the critical services actually run, not just spot the ones that broke. Dashboard tile "🛡 Critical services" (count not-running on reachable machines, red when >0) opens a "Critical services" tab: a sortable service × machine table of real State (Running/Stopped), start mode, IP, last check, with offline machines flagged amber (last-known rows kept stale), an only-not-running filter, search and export. Only services that exist on a machine get a row (servers vs PCs sorts itself out). Per-PC critical-service exceptions are honoured here too — an excepted non-running service is dropped from the "N not running" count and the dashboard tile, sinks to the bottom and renders greyed with an "exception" tag instead of red. DCs/locked-down servers that fail the CIM scan with "Access is denied" have no rows until the service account is granted WMI/DCOM rights there.
 - **Performance events** — pulls slow boot / shutdown / standby / resume records from the `Microsoft-Windows-Diagnostics-Performance/Operational` channel with named culprits and timings (observer of Windows' own diagnostics, no continuous polling).
 - **Port availability (Ports tab)** — a standalone collector TCP-probes each monitored PC's configured ports on its **own interval** (`port_status.interval_sec`, default 300 s; toggle `checks.run_port_status`), reusing the existing port list and timeout (`alerts.services.port_checks`, `alerts.services.port_timeout_ms`) so it works even when the phase-2 service/port alert emails are off. Offline PCs (`computers.reachable=0`) are skipped. The Ports tab is a grid of PC × port (● open + latency / ○ closed / — offline) with an "only issues" filter, a "Refresh" button (whole-fleet probe now), and a per-row "Ping" button. Removing a port from the Settings list drops it from the grid (the feed filters to currently-configured names and the probe prunes stale rows). Dashboard tile "🔌 Ports" (PCs with a closed port / total) opens it.
-- **Device inventory (Devices tab)** — MikroTik DHCP lease inventory pulled from the configured RouterOS routers. Each lease is paired with an AD computer by host name (fallback IP): matched devices reuse the reachability collector's online/offline; unmatched devices (printers, phones, IoT) are pinged directly. A category suggestion guesses printer vendors (Canon/Kyocera/Zebra/HP via OUI/hostname) and phones, but an operator-assigned category is authoritative and **persists by MAC** across reloads and sites. The Devices tab is a site / IP / hostname / MAC grid with a per-row category dropdown (clickable suggestion), online/offline, AD link, filters (site / "not in AD only" / "printers only"), Refresh, and a per-row Ping console.
+- **Device inventory (Devices tab)** — multi-source network inventory merged by MAC: MikroTik DHCP leases (dynamic leases **and** static reservations), the router ARP table, and an active subnet scan run from the app server (ping-sweep + local/router ARP). Each row carries its `source` (dhcp / arp / scan). Scan ranges are operator-configurable in Settings (CIDR `10.8.2.0/24` or wildcard `10.8.2.*`, optional `Site=` label; a leading `!`/`<>` excludes a whole subnet); discovery caches known IP↔MAC and a MAC reappearing at a new IP releases the old one, while remote subnets resolve MACs via the router ARP table. Each device is paired with an AD computer by host name (fallback IP): matched devices reuse the reachability collector's online/offline and pre-select pc/server from AD; unmatched devices (printers, phones, IoT) are pinged directly. Device names are resolved via NetBIOS (`nbtstat -A`) for scanned/ARP devices — with known printer NetBIOS prefixes (NPI/BRN/BRW/RNP/KMBT) feeding a printer/phone category suggestion — and the operator can manually edit a name (stored by MAC). An operator-assigned category is authoritative and **persists by MAC** across reloads and sites; categories themselves are operator-configurable in Settings (`devices.categories`, `key=Label`), with a generic "Printer" category collapsing per-vendor variants. The reachability ping also records per-device packet loss and average latency, shown as a compact `ms / %` column (e.g. `<5/0`). The Devices tab is a site / IP / hostname / MAC grid with a per-row category dropdown (clickable suggestion), Static/Dynamic Type column, online/offline, loss/latency, AD link, filters (site / "not in AD only" / "printers only" / "issues only"), Refresh, and a per-row Ping console.
+- **Database tab** — DB size plus per-table footprint (rows / reserved / data) read from the SQL system catalog.
 - **Reachability classification** — every collector run categorises each PC as `online` / `offline` / `rpc_unavailable` / `access_denied`. Dashboard surfaces breakdown.
 - **Live reachability probe** — a standalone probe marks every enabled, non-excluded PC reachable if any of TCP 135 / TCP 445 / an ICMP ping fallback (`reachability.ping`, on by default — catches hosts that block RPC/SMB but answer ping) responds, on its **own interval** (`reachability.interval_sec`, default 300 s), independent of monitoring, the collector failure cap, **and the main-scan window** — so Status stays fresh 24/7. Drives the Computers **Status** column as live "is this PC on the network now": `Active` = reachable (dim "logs" marker if up but event log unreadable), `Offline` = not reachable, `Disabled` = AD account disabled. New **offline** filter chip/dropdown; toggle + interval in Settings → "Network reachability (Status)".
 - **OS breakdown chart** — second-row "📊 Operating systems" dashboard tile (count of OS buckets) that expands an inline bar chart of the live managed fleet by canonical OS bucket (Windows 11/10/Server/…), each bar split into an active and a hatched "stale" (past inactivity threshold) segment; click a segment to drill into the Computers tab filtered to that OS + live/stale.
@@ -83,35 +84,36 @@ this repo into a different environment you only change access/config, not code:
    was fetched from. Only the packaged Electron client needs an explicit
    `VITE_API_BASE` baked at build time.
 
-4. **MikroTik DHCP (Devices tab)** — configured in Settings → "MikroTik DHCP":
-   routers as a `Site=IP` comma list, the RouterOS read-only user, and the
-   password. The password is stored **encrypted** in the DB, never plaintext —
+4. **MikroTik DHCP + device inventory (Devices tab)** — **fully DB-driven**:
+   the enable toggle, collection interval, routers (`Site=IP` comma list),
+   RouterOS read-only user and the (encrypted) password all live in Settings →
+   "MikroTik DHCP" — there are **no `MIKROTIK_*` env vars except `MIKROTIK_SECRET`**
+   (the AES key). The password is stored **encrypted** in the DB, never plaintext —
    `secret-crypto.ts` (AES-256-CBC, key = SHA-256 of env `MIKROTIK_SECRET`).
    `GET /settings` masks it (••••); `PUT` encrypts it into
    `mikrotik.password_enc` (a submitted mask = leave unchanged, empty = clear).
    If `MIKROTIK_SECRET` is unset it falls back to a clearly-marked `plain:`
-   prefix with a warning. **Deployment model (2026-06-16):** DHCP collection runs
-   **in-process on the application server (10.8.2.213)**, exactly like every other
-   collector — the database (10.8.2.225) is storage only and there are no
-   PowerShell scripts on other servers. `MIKROTIK_SECRET` therefore lives only on
-   the application host, which reads the router list/user from the DB settings,
-   decrypts the password, writes `dhcp_leases`, and pings unmatched devices.
-   **Prerequisite (pending):** the RouterOS `dhcp-reader` account is source-IP
-   restricted (currently allowed only from 10.8.2.225), so the app on 10.8.2.213
-   gets HTTP 401; the application server's IP (10.8.2.213, or 10.8.2.0/24) must be
-   added to `dhcp-reader`'s allowed-address on **both** routers (Brno 10.8.2.207,
-   Zastavka 10.10.181.2). Until that change lands, the Devices feature/tables/UI/
-   Settings are deployed but **no leases are collected**. Routes: `GET /devices`,
-   `PATCH /devices/category`, `POST /devices/run`, `POST /devices/probe`.
+   prefix with a warning. The collector is **in-process and self-rescheduling**
+   on the application server (10.8.2.213), exactly like every other collector
+   (the DB on 10.8.2.225 is storage only, no PowerShell scripts on other
+   servers); it idles when disabled, otherwise reads the router list/user from
+   settings, decrypts the password, collects DHCP leases + router ARP + an active
+   subnet scan, and pings unmatched devices. Active-scan ranges and device
+   categories (`devices.categories`) are likewise Settings-driven; loss/latency
+   "problem" thresholds tune the dashboard tile and "issues only" filter
+   (`devices.problem_loss_pct` default 1, `devices.problem_latency_ms` default 50).
+   Optional cert-bypassing printer web-UI proxy via `devices.web_proxy`
+   (best-effort). Routes: `GET /devices`, `PATCH /devices/category`,
+   `PATCH /devices/name`, `POST /devices/run`, `POST /devices/probe`.
 
 ## Layout
 
 ```
 ITDashboard/
   apps/
-    desktop/                       # Electron + React UI (Dashboard, Events, Computers, Services, Ports, Devices, Activity, Settings)
+    desktop/                       # Electron + React UI (Dashboard, Events, Computers, Services, Ports, Devices, Database, Activity, Settings)
     server/                        # Fastify API + collectors + AD sync
-      migrations/                  # MSSQL migrations 001–042
+      migrations/                  # MSSQL migrations 001–047
   packages/
     ad-bridge/                     # AD wrapper (Get-ADComputer)
     eventlog-collector/            # standalone wrapper (currently inlined in server)
@@ -202,7 +204,19 @@ New `itd-ps://` launcher for remote PowerShell via `Enter-PSSession`. Registered
 - **Ping console** — the per-row "Ping" (Ports and Devices tabs) opens a cmd-style console modal with the real `ping.exe` output (run via `cmd /c chcp 65001 & ping -n 4` for UTF-8 localized output) plus per-port open/closed/latency lines.
 - **Dashboard tiles** — new tile "🔌 Ports" (PCs with a closed port / total) opens the Ports tab. Clicking a dashboard tile now also pre-checks the relevant filter (one-shot): Ports → "only issues"; Critical services → "only down (not Running)"; Stopped services → "only ExitCode != 0".
 - **Devices tab** (migration 042 adds `dhcp_leases` — PK site+mac_address: ip, host_name, server, comment, status, dynamic, expires_after, first_seen/last_seen, reachable/reach_checked_at — and `device_categories` — PK mac_address, operator-assigned category persisting by MAC across reloads/sites). MikroTik DHCP lease inventory; each lease is paired with an AD `computers` row by host_name (fallback IP): matched devices reuse the reachability collector's online/offline, unmatched devices (printers, phones, IoT) are pinged. A `suggestCategory` hint guesses printer vendors (Canon/Kyocera/Zebra/HP via OUI/hostname) and phones — operator override is authoritative. Routes: `GET /devices` (leases + matched computer + category + suggestion), `PATCH /devices/category`, `POST /devices/run`, `POST /devices/probe`. Desktop `DevicesPage`: site / IP / hostname / MAC grid, per-row category dropdown (clickable suggestion), online/offline, AD link, filters (site / "not in AD only" / "printers only"), Refresh, per-row Ping console.
-- **MikroTik config + encrypted password** — Settings → "MikroTik DHCP" (routers as `Site=IP` comma list, RouterOS user, password). Password stored **encrypted** via `secret-crypto.ts` (AES-256-CBC, key = SHA-256 of env `MIKROTIK_SECRET`); `GET /settings` masks it (••••), `PUT` encrypts into `mikrotik.password_enc` (mask = unchanged, empty = clear); `plain:`-prefixed fallback with a warning if `MIKROTIK_SECRET` is unset. New env var `MIKROTIK_SECRET` documented in `.env.example` (set on the application host). **Superseded (2026-06-16):** an earlier draft documented the DHCP pull as an external scheduled PowerShell job on the SQL server (10.8.2.225); the operator decision is a strict two-tier model — all operativa runs in-process on the application server (10.8.2.213), the DB is storage only, no scripts on other servers — so MikroTik collection runs in-app like every other collector. MikroTik collection is currently **pending the router allowed-address change**: `dhcp-reader` must allow 10.8.2.213 (or 10.8.2.0/24) on both routers (Brno 10.8.2.207, Zastavka 10.10.181.2) before any leases flow. **Open follow-up:** the in-process collector currently reads `MIKROTIK_*` env vars and will be wired to read the Settings config + decrypt the password (and honour a master enable toggle) once the routers are opened.
+- **MikroTik config + encrypted password** — Settings → "MikroTik DHCP" (routers as `Site=IP` comma list, RouterOS user, password). Password stored **encrypted** via `secret-crypto.ts` (AES-256-CBC, key = SHA-256 of env `MIKROTIK_SECRET`); `GET /settings` masks it (••••), `PUT` encrypts into `mikrotik.password_enc` (mask = unchanged, empty = clear); `plain:`-prefixed fallback with a warning if `MIKROTIK_SECRET` is unset. New env var `MIKROTIK_SECRET` documented in `.env.example` (set on the application host). **Superseded (2026-06-16):** an earlier draft documented the DHCP pull as an external scheduled PowerShell job on the SQL server (10.8.2.225); the operator decision is a strict two-tier model — all operativa runs in-process on the application server (10.8.2.213), the DB is storage only, no scripts on other servers — so MikroTik collection runs in-app like every other collector. **Resolved (commit `62c9f26`):** collection is now LIVE and fully DB-driven (enable toggle + interval + routers + user + encrypted password all in Settings; only `MIKROTIK_SECRET` remains an env var), with multi-source inventory and the Database tab — see the "Devices inventory live" Status entry below.
+
+**Devices inventory live + Database tab (commit `62c9f26`, migrations 043–047):** the Devices feature is now LIVE and fully DB-driven.
+
+- **MikroTik DHCP collection LIVE** — the enable toggle, interval, routers, RouterOS user and (encrypted) password all come from Settings; the only remaining `MIKROTIK_*` env var is `MIKROTIK_SECRET` (the AES key). The in-process collector self-reschedules and idles when disabled (migration 043 adds the MikroTik settings + printer-offline alert agenda).
+- **Multi-source inventory merged by MAC** — DHCP leases (dynamic **and** static reservations) + the router ARP table + an active subnet scan run from the app server (ping-sweep + local/router ARP); each row carries a `source` (dhcp/arp/scan). Migration 044 adds the `source` column to `dhcp_leases` plus the scan settings.
+- **Active scan ranges configurable** — Settings take CIDR (`10.8.2.0/24`) or wildcard (`10.8.2.*`) with an optional `Site=` label; a leading `!`/`<>` excludes a whole subnet. Discovery caches known IP↔MAC (never re-discovered); a MAC reappearing at a new IP releases the old IP; remote subnets resolve MACs via the router ARP table.
+- **Device names** — NetBIOS resolution via `nbtstat -A` for scanned/ARP devices (so the printer/phone suggestion can fire), with known printer prefixes (NPI/BRN/BRW/RNP/KMBT); the operator can also manually edit a name, stored by MAC (migration 046).
+- **Type + categories** — Static vs Dynamic "Type" column; AD-derived pc/server pre-select for AD-matched devices; a generic "Printer" category collapses per-vendor variants; device categories are operator-configurable in Settings (`devices.categories`, `key=Label`).
+- **Per-device loss + latency** — the reachability ping measures packet loss and average latency (counts `TTL=` replies, locale-independent; migrations 045/047), shown as a compact `ms / %` column (e.g. `<5/0`). "Problem" thresholds are tunable in Settings (`devices.problem_loss_pct` default 1%, `devices.problem_latency_ms` default 50 ms) and drive a dashboard "Loss / latency" tile + an "issues only" filter.
+- **Printer alerts + tiles** — printer-offline email alert agenda (migration 043); dashboard "Printers" tile (online/offline); printer IP → web-UI link with an optional server-side cert-bypassing proxy (Settings `devices.web_proxy`, best-effort).
+- **Database tab** — DB size + per-table footprint (rows / reserved / data) read from the system catalog.
+- **Deploy fix** — the deploy's robocopy `/MIR` now excludes `dist`, so the live frontend is no longer deleted mid-deploy (previously caused a transient "frontend build not found").
 
 ## Testing
 

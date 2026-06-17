@@ -70,8 +70,9 @@ Tables:
 - `service_alert_state` — per-(PC, service) flapping-debounce state for critical-service email alerts (`first_down_at`); row cleared on service recovery
 - `port_check_state` — per-(PC, port) state for service port reachability checks: baseline `last_ok_at` (a port becomes alert-eligible only once it has answered) + flapping-debounce state; row cleared on port recovery
 - `port_status` — the **latest** per-port verdict for the ports-availability grid (migration 041): `computer_id`, `check_name`, `port`, `is_open`, `latency_ms`, `checked_at`; PK `(computer_id, check_name)`. Distinct from `port_check_state` (which is the phase-2 ALERT state machine) — this holds only the current open/closed + latency snapshot the grid renders. See **### Ports availability subsystem**
-- `dhcp_leases` — bound MikroTik DHCP leases discovered via RouterOS (migration 042); PK `(site, mac_address)`, columns `ip`, `host_name`, `server`, `comment`, `status`, `dynamic`, `expires_after`, `first_seen`, `last_seen`, `reachable`, `last_reachable_at`, `reach_checked_at`. See **### MikroTik DHCP device inventory**
-- `device_categories` — operator-assigned device category (migration 042); PK `mac_address` so the category persists by MAC across sites/router reloads, independently of the lease lifecycle
+- `dhcp_leases` — MikroTik network devices, discovered via RouterOS (migration 042) and merged from three sources (migration 044): DHCP leases, router ARP, active subnet scan; PK `(site, mac_address)`, columns `ip`, `host_name`, `server`, `comment`, `status`, `dynamic`, `expires_after`, `first_seen`, `last_seen`, `reachable`, `last_reachable_at`, `reach_checked_at`, `source` (`dhcp`/`arp`/`scan`, migration 044), `packet_loss` + `latency_ms` (per-device loss %/latency while online, migration 045). See **### MikroTik DHCP device inventory**, **### Multi-source device discovery**, **### Per-device packet loss + latency**
+- `device_categories` — operator-assigned device category (migration 042) + operator-editable device name (migration 046, `category` now nullable so a name-only row is valid); PK `mac_address` so both persist by MAC across sites/router reloads, independently of the lease lifecycle
+- `printer_alert_state` — per-MAC debounce/throttle state for the printer-offline email agenda (migration 043); mirrors `service_alert_state`. See **### Printer-offline email alert agenda**
 - `settings` — key-value, edited via Settings tab
 - `collector_runs` — eventlog collector run audit
 - `ad_sync_runs` — AD sync audit
@@ -83,7 +84,7 @@ Tables:
 
 All environment-specific configuration is fully externalized — the source tree carries **no IPs, hostnames, or domain names**. To stand the project up in a different environment you change config only, never code:
 
-- **`apps/server/.env`** is the single place for runtime config (SQL host/instance/database, AD/LDAP settings, edit-group DN, retention overrides, etc.). The committed **`.env.example`** is the template and the single source of truth for what knobs exist — copy it to `.env` and fill in access/values. **`MIKROTIK_SECRET`** (new this session) is the AES key material for reversibly encrypting the MikroTik router password in `settings` (see **### Secret encryption for settings**) — it lives **on the application host only**, since DHCP collection runs **in-process there** (see **### MikroTik collection deployment model**).
+- **`apps/server/.env`** is the single place for runtime config (SQL host/instance/database, AD/LDAP settings, edit-group DN, retention overrides, etc.). The committed **`.env.example`** is the template and the single source of truth for what knobs exist — copy it to `.env` and fill in access/values. **`MIKROTIK_SECRET`** is the AES key material for reversibly encrypting the MikroTik router password in `settings` (see **### Secret encryption for settings**) — it lives **on the application host only**, since DHCP collection runs **in-process there** (see **### MikroTik collection deployment model**). It is the **only** MikroTik-related env value: enable / interval / routers / user / encrypted password all live in the DB `settings` (migration 043), not in `MIKROTIK_*` env vars.
 - **GitHub Actions repository Variables** drive the auto-deploy pipeline: the workflow reads `SQL_HOST`, `SQL_INSTANCE`, and `SQL_DATABASE` from repo-level Variables, so the deploy target is configured in the repo settings, not in committed YAML.
 - **Browser client** uses relative URLs (served by the API), so it needs no base configuration. The **Electron** client sets `VITE_API_BASE` at build time. The **protocol-handler installer** base is injected by the server at download time (committed default is a neutral `localhost` placeholder).
 
@@ -298,7 +299,50 @@ Discovers the **non-AD** devices on the network — printers, phones, IoT — by
 
 **Pairing rationale.** Matched devices already have rich data + reachability — "a lot is already handled" by the existing collectors. The inventory's payoff is twofold: discovering the **non-AD** devices (printers / phones / IoT) that nothing else sees, and the authoritative **IP ↔ MAC ↔ hostname** mapping that the lease table provides.
 
-### Secret encryption for settings (`secret-crypto.ts`)
+### Multi-source device discovery (migration 044)
+
+The DHCP lease table alone misses devices that never take a DHCP lease (static IPs, ARP-only appliances), so the inventory now **merges three discovery sources, keyed by MAC**:
+- **DHCP leases** — kept when `status='bound'` **OR** the lease is a static reservation (`dynamic=false`), so a statically-reserved device stays in the inventory **even while offline** rather than ageing out with its dynamic lease.
+- **Router ARP table** — `GET /rest/ip/arp` off each configured router, so anything the router has resolved an L2 address for shows up regardless of how it got its IP.
+- **Active subnet scan** from the application server — a ping-sweep of the configured ranges.
+
+`dhcp_leases` gained a **`source` column** (`dhcp` / `arp` / `scan`) recording how each row was discovered.
+
+**Active scan ranges (`mikrotik.scan_ranges`).** Configured one range per line, either CIDR (`10.8.2.0/24`) or a wildcard (`10.8.2.*`), with an optional `Site=` tag. A leading **`!`** or **`<>`** marks an **exclude** that drops a whole subnet from the inventory — including its DHCP rows — so an operator can carve out a noisy or out-of-scope network entirely.
+
+**How MACs are resolved during a scan.** The scan ping-sweeps the range from the application host, then reads MACs from **two** ARP sources: the **app host's LOCAL ARP cache** (`arp -a`) for the app server's own subnet, and **each router's ARP** for remote subnets — the last-hop router populates its ARP for the target the moment the app server pings it, so a remote device resolves without an agent on that segment.
+
+**Discover-once, cache-forever (MAC is the key).** The scan only pings **UNKNOWN IPs** — a stored IP↔MAC pairing is cached and **never re-discovered**, so steady fleets cost almost nothing. Because **MAC is the key**, a static device that reappears at a **new IP** **moves its existing row** to the new IP and **releases the old IP back into the scan pool** rather than leaving a duplicate. A separate **light up/down re-ping** keeps the reachability of already-known static devices fresh without re-running discovery.
+
+### NetBIOS name resolution
+
+Scanned / ARP-discovered devices arrive with **no host name** (ARP yields only IP↔MAC), so the collector resolves a name via **`nbtstat -A <ip>`** — a peer-to-peer NetBIOS node-status query that works where the application host **cannot do a DNS PTR** lookup. The resolved name then feeds `suggestCategory`, which can now spot **printers** by NetBIOS prefix: **NPI / BRN / BRW / RNP / KMBT** are recognized as printer names.
+
+Operators can also **manually edit a device's name**, stored per-MAC in `device_categories` (**migration 046**). The `category` column was made **nullable** by that migration so a **name-only row** (a custom name with no category) is valid.
+
+### Per-device packet loss + latency (migrations 045, 047)
+
+The reachability ping for a device is `ping ×N` and the result is **parsed locale-independently** — it does **not** rely on localized summary text. Loss % is computed by **counting `TTL=` reply lines** (vs the number of requests), and latency by **averaging the per-reply `[<=]NNms`** figures. Both are stored in `dhcp_leases.packet_loss` / `latency_ms`, **only while the device is online** (offline → `NULL`).
+
+**Important nuance — gateway ICMP errors are not partial loss.** `"Destination host unreachable"` and `"Request timed out"` lines carry **no `TTL=`**, so a host whose only responses are gateway-sourced ICMP errors is correctly classified **offline** rather than miscounted as a partially-reachable host with high loss.
+
+**Operator-tunable "problem" thresholds.** `devices.problem_loss_pct` and `devices.problem_latency_ms` define when a device counts as having a problem. A Dashboard **"Loss / latency"** tile and an **"issues only"** filter on the Devices tab both key off these thresholds.
+
+### Configurable device categories
+
+Device categories are now **operator-defined in Settings** rather than a fixed list: `devices.categories` holds one `key=Label` per line. The per-MAC `device_categories.category` validation was correspondingly **relaxed to accept any string ≤ 32 chars** (was a fixed enum). The generic **`printer`** key is special — it drives the printer features (the printer tile, printer-offline alerts, and the printer auto-suggest from NetBIOS prefixes / OUI).
+
+### Printer-offline email alert agenda (migration 043)
+
+A printer-offline email agenda mirrors the existing service-alert model. `alerts.printers.*` settings (enable / debounce / throttle / recipients-override) plus a new **`printer_alert_state`** table (per-MAC debounce + throttle state, the same shape as `service_alert_state`) drive it. Evaluation runs **at the end of each collect cycle**: a printer-category device that goes offline debounces, alerts, and throttles exactly like the service alerts, and recovery clears its state row. It reuses the shared transport / sender / dashboard-URL and the per-agenda-recipient fallback (see **### Per-agenda email recipients with shared fallback**).
+
+### Device web-UI proxy (cert bypass)
+
+Printers (and similar appliances) frequently force **HTTPS with a self-signed certificate**, so a plain browser link to the device lands on an un-skippable certificate warning. An optional **server-side proxy** `GET /devices/web/:ip[/*]` (gated by Settings `devices.web_proxy`) fetches the device **ignoring TLS validation**, follows redirects, **injects a `<base>`** so the device's relative links resolve, and serves the result from the **trusted dashboard origin** — so the operator opens the device UI without a cert warning. It is **best-effort** and **scoped to IP targets**, which limits the SSRF surface; the dashboard is itself access-gated, so the proxy is only reachable by already-authorized operators.
+
+### Database overview route
+
+`GET /database` returns a whole-DB size breakdown (**data / log / used**) plus **per-table** `rows` / `reserved` / `data` figures, read from the SQL system catalog. A new **"Database"** tab renders it, giving the operator a storage-growth view without touching SSMS.
 
 Some settings (the MikroTik router password) must be stored **reversibly** because HTTP Basic auth needs the real password back at request time — a one-way hash is deliberately **not** used here. `apps/server/src/services/secret-crypto.ts` implements reversible **AES-256-CBC**: the key is `SHA-256(env MIKROTIK_SECRET)`, and ciphertext is stored in the format `enc:v1:base64(iv || ciphertext)`. When `MIKROTIK_SECRET` is unset, it falls back to a `plain:` prefix with a logged warning rather than failing — so a misconfigured host still works, loudly, instead of silently breaking.
 
@@ -310,9 +354,9 @@ Some settings (the MikroTik router password) must be stored **reversibly** becau
 
 The earlier **external scheduled PowerShell job on the SQL server** that wrote `dhcp_leases` directly to the DB is **retired and must not be resurrected** — it violated the two-tier model (operativa belongs on the application server, not the DB host).
 
-**Prerequisite (PENDING).** The RouterOS read-only account `dhcp-reader` is **source-IP restricted to `10.8.2.225`**, so the application host `10.8.2.213` currently gets **HTTP 401**. The fix is to add `10.8.2.213` (or `10.8.2.0/24`) to `dhcp-reader`'s **allowed-address** on **both** routers (Brno `10.8.2.207`, Zastávka `10.10.181.2`) — pending a colleague. Until then MikroTik collection is **INACTIVE**: the feature, tables and UI are deployed, but no leases are pulled yet.
+**Fully DB-driven now (migration 043).** The in-process collector is **wired to read its whole configuration from the DB `settings`** — `mikrotik.enabled` (master toggle), `mikrotik.interval_sec`, `mikrotik.routers`, `mikrotik.user`, and `mikrotik.password_enc` (decrypted via `decryptSecret`). It **no longer reads any `MIKROTIK_*` env var** for routers / user / password; the **only** env value that remains is `MIKROTIK_SECRET` (the AES key for `secret-crypto.ts`), which stays on the application host. This matches the UI-config-driven model the other collectors use. `startMikrotikSchedule` **re-reads Settings each cycle** so enable / interval / router / credential changes apply **live, with no restart**. While the feature is disabled or unconfigured the scheduler **idles** (re-checking every 60 s) instead of attempting a pull, so it never **401-spams** a router that has not yet been opened to the application host.
 
-**OPEN FOLLOW-UP.** The in-process collector currently still reads the **legacy `MIKROTIK_*` env vars**. Once the routers are opened it must be **wired to read the DB `settings`** (`mikrotik.routers` / `mikrotik.user` / `mikrotik.password_enc` → `decryptSecret`) **plus a master enable toggle**, matching the UI-config-driven model the other collectors use.
+**Prerequisite (PENDING).** The RouterOS read-only account `dhcp-reader` is **source-IP restricted to `10.8.2.225`**, so the application host `10.8.2.213` currently gets **HTTP 401**. The fix is to add `10.8.2.213` (or `10.8.2.0/24`) to `dhcp-reader`'s **allowed-address** on **both** routers (Brno `10.8.2.207`, Zastávka `10.10.181.2`) — pending a colleague. Until then MikroTik collection is **INACTIVE**: the feature, tables and UI are deployed, but no leases are pulled yet.
 
 ### Critical-service status collection
 
@@ -466,6 +510,10 @@ The domain enforces `AllSigned` ExecutionPolicy on Windows servers, blocking uns
 
 The deploy workflow's `actions/checkout` and `actions/setup-node` were bumped v4 → v5 (Node 24; GitHub forces Node 24 from 2026-06-16).
 
+### Deploy robocopy /MIR excludes `dist`
+
+The deploy's `robocopy /MIR` (mirror) now **excludes `dist`**. `dist` is gitignored and **built later in the same job**, so mirroring the checkout (which has no `dist`) was **deleting the running service's frontend** mid-deploy — the source of the transient **"frontend build not found"** between the file sync and the rebuild step. Excluding `dist` from the mirror leaves the live frontend in place until the fresh build overwrites it.
+
 ## Retention policy
 
 | Data | Retention | Mechanism |
@@ -549,5 +597,10 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 040_service_two_level | computers.service_monitor BIT (broad "every Auto service not Running" level) + service_exceptions NVARCHAR (broad per-PC ignore list) + critical_service_exceptions NVARCHAR (critical per-PC ignore list) — two-level service monitoring with per-PC exceptions; the existing service_email_monitor now denotes the critical level |
 | 041_port_status | port_status table (PK `(computer_id, check_name)`; port, is_open, latency_ms, checked_at) — latest per-port open/closed + latency verdict for the ports-availability grid; distinct from the port_check_state alert state machine. Consumed by `GET /port-status`, populated by the standalone port-status collector (`checks.run_port_status` / `port_status.interval_sec` default 300) |
 | 042_mikrotik_dhcp | dhcp_leases table (PK `(site, mac_address)`; ip, host_name, server, comment, status, dynamic, expires_after, first_seen, last_seen, reachable, last_reachable_at, reach_checked_at) + device_categories table (PK `mac_address`; operator-assigned category, persists by MAC) — MikroTik RouterOS DHCP device inventory, consumed by `GET /devices` |
+| 043_mikrotik_settings_printer_alerts | seeds `mikrotik.enabled` + `mikrotik.interval_sec` (routers/user/password are written by the Settings UI, not seeded) — MikroTik collection becomes fully DB-driven (no more `MIKROTIK_*` env vars except the `MIKROTIK_SECRET` AES key); `alerts.printers.*` settings + printer_alert_state table (per-MAC debounce/throttle) for the printer-offline email agenda; collapses the per-vendor `printer_*` device categories into the generic `printer` |
+| 044_device_source_arp | dhcp_leases.source column (`dhcp`/`arp`/`scan`) + `mikrotik.scan_enabled` / `mikrotik.scan_ranges` settings — multi-source device discovery merging DHCP leases, router ARP, and an active app-server subnet scan, keyed by MAC |
+| 045_device_packet_loss | dhcp_leases.packet_loss column — per-device packet loss % from the reachability ping (online only; parsed locale-independently by counting `TTL=` reply lines) |
+| 046_device_operator_name | device_categories.name column (operator-editable device name, stored per-MAC) + `category` relaxed to nullable so a name-only row is valid |
+| 047_device_latency | dhcp_leases.latency_ms column — per-device average round-trip (ms) from the reachability ping (online only). NOTE: the "problem" thresholds (`devices.problem_loss_pct` / `devices.problem_latency_ms`) and the operator-defined `devices.categories` list are plain settings with code defaults — NOT seeded by a migration |
 
 > `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).

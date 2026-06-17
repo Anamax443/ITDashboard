@@ -42,7 +42,7 @@
 <body>
 <main>
   <h1>ITDashboard <span class="badge live">LIVE</span></h1>
-  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-16</span></p>
+  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-17</span> <span class="pill">commit 62c9f26</span></p>
 
   <h2>Stav nasazení</h2>
   <div class="grid">
@@ -74,7 +74,11 @@
     <li><strong>Klasifikace dostupnosti</strong> — každý běh: online / offline / rpc_unavailable / access_denied.</li>
     <li><strong>Activity log</strong> — terminálový live view (filtr, pauza, copy) + perzistentní historie.</li>
     <li><strong>Porty</strong> — záložka s živou mřížkou dostupnosti nakonfigurovaných TCP portů per stroj (otevřeno/zavřeno + latence); sonda na pozadí, ruční obnova a per-řádek živý ping (konzolové okno).</li>
-    <li><strong>Zařízení (Devices)</strong> — inventář DHCP zařízení z MikroTiku (IP, hostname, MAC, lokalita) párovaný s AD počítači podle hostname/IP; nespárovaná zařízení (tiskárny/telefony/IoT) se pingnou; per-zařízení kategorie s auto-návrhem, uložená dle MAC.</li>
+    <li><strong>Zařízení (Devices)</strong> — víceztrojový inventář slučovaný podle MAC ze tří zdrojů (sloupec <code>source</code> = dhcp/arp/scan): MikroTik DHCP (dynamické leasy + statické rezervace), ARP tabulka routerů a aktivní sken podsítí z aplikačního serveru. Konfigurovatelné rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť); discovery cache; vzdálené podsítě přes router ARP. Párováno s AD počítači podle hostname/IP; per-zařízení kategorie s auto-návrhem a operátorem editovatelný název (dle MAC).</li>
+    <li><strong>Rozlišení názvů + auto-návrh tiskáren</strong> — NetBIOS (<code>nbtstat</code>) rozlišení názvu zařízení → auto-návrh tiskáren podle prefixů (NPI/BRN/BRW/RNP/KMBT); operátorem editovatelný název zařízení dle MAC. Sloupec „Type" (statický/dynamický), AD-odvozený předvýběr pc/server, generická kategorie „Printer", operátorem konfigurovatelné kategorie.</li>
+    <li><strong>Packet loss + latence per zařízení</strong> — kompaktní sloupec <code>ms / %</code> (např. <code>&lt;5/0</code>) se ztrátovostí a průměrnou latencí; laditelné prahy „problému"; dlaždice „Loss / latence" na homepage + filtr „jen problémy".</li>
+    <li><strong>Email alerty tiskáren</strong> — agenda upozornění na offline tiskárny; dlaždice „Tiskárny" na homepage; proklik z IP tiskárny na webové UI s volitelným serverovým proxy obcházejícím certifikát.</li>
+    <li><strong>Záložka „Databáze"</strong> — velikost DB + footprint per tabulka.</li>
     <li><strong>Per-PC „Obnovit teď"</strong> — jednorázová obnova jednoho stroje napříč všemi checky: disky, služby, eventlog, perf, porty.</li>
     <li><strong>Settings</strong> — frekvence, časové okno, zapnuté checky, prahy — aplikováno živě bez restartu služby.</li>
   </ul>
@@ -92,14 +96,55 @@
     <tr><td>Protocol-handler installer</td><td>API base injektuje server při stažení (dle <code>Host</code> hlavičky) — nic ručně needitovat.</td></tr>
     <tr><td>Email alerty disků</td><td>Settings → „Email alerty — disky" (DB <code>settings.alerts.*</code>); per-PC výběr v Počítačích (📧 Disk). Nic v <code>.env</code>.</td></tr>
     <tr><td>Email alerty služeb</td><td>Settings → „Email alerty — služby" (DB <code>settings.alerts.services.*</code>); per-PC výběr (🔔 Služby). Sdílí SMTP/příjemce s disky.</td></tr>
-    <tr><td>MikroTik (DHCP inventář)</td><td>Settings → routery / uživatel / heslo. Heslo uloženo v DB <strong>šifrovaně</strong> (AES-256-CBC, klíč z env <code>MIKROTIK_SECRET</code>) — nikdy plaintext. Sběr DHCP běží <strong>in-app na aplikačním serveru</strong> <code>10.8.2.213</code> jako každý jiný collector — čte config z DB a heslo dešifruje (<code>MIKROTIK_SECRET</code> je na aplikačním hostu). DB <code>10.8.2.225</code> slouží jen jako úložiště; žádné externí skripty na jiných serverech.</td></tr>
+    <tr><td>MikroTik (DHCP inventář)</td><td>Plně <strong>DB-driven ze Settings</strong> — enable / interval / routery / uživatel / heslo. Heslo uloženo v DB <strong>šifrovaně</strong> (AES-256-CBC, klíč z env <code>MIKROTIK_SECRET</code>) — nikdy plaintext; v <code>.env</code> je <strong>jen</strong> <code>MIKROTIK_SECRET</code>. Sběr DHCP běží <strong>in-app na aplikačním serveru</strong> <code>10.8.2.213</code> jako každý jiný collector — čte config z DB a heslo dešifruje. DB <code>10.8.2.225</code> slouží jen jako úložiště; žádné externí skripty na jiných serverech.</td></tr>
+    <tr><td>Sken podsítí (Devices)</td><td>Settings → rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť). Aktivní sken běží z aplikačního serveru; vzdálené podsítě přes ARP routerů. Nic v <code>.env</code>.</td></tr>
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
+
+  <h2>Poslední změny (2026-06-17) — Devices: víceztrojový inventář, packet loss, tiskárny, DB tab</h2>
+  <p class="sub" style="margin:0 0 .75rem">Sběr MikroTik DHCP je <strong>živý a plně DB-driven ze Settings</strong>; záložka Zařízení rozšířena na víceztrojový inventář slučovaný podle MAC, packet loss / latenci, rozlišení názvů a alerty tiskáren. Zásahy do DB — <strong>migrace 043–047</strong>. Živý commit <span class="pill">62c9f26</span>.</p>
+  <p style="margin:0 0 4px"><strong>MikroTik DHCP sběr LIVE + plně DB-driven</strong> <span class="pill">62c9f26</span> <span class="pill">migrace 043</span></p>
+  <ul>
+    <li>Sběr DHCP je <strong>aktivní</strong> a celý se konfiguruje ze Settings (enable / interval / routery / uživatel / šifrované heslo). V env zůstává <strong>jen</strong> <code>MIKROTIK_SECRET</code> (klíč pro dešifrování hesla); vše ostatní v DB.</li>
+    <li>Migrace 043 zároveň přidává agendu emailových alertů offline tiskáren.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Víceztrojový inventář zařízení slučovaný podle MAC</strong> <span class="pill">62c9f26</span> <span class="pill">migrace 044</span></p>
+  <ul>
+    <li>Zařízení se slučují podle MAC ze tří zdrojů — DHCP (dynamické leasy + statické rezervace), <strong>ARP tabulka routerů</strong> a <strong>aktivní sken podsítí</strong> z aplikačního serveru. Nový sloupec <code>source</code> (dhcp/arp/scan).</li>
+    <li>Konfigurovatelné rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť); discovery cache; vzdálené podsítě se čtou přes ARP routerů.</li>
+    <li>Sloupec „Type" (statický / dynamický); AD-odvozený předvýběr pc/server; generická kategorie „Printer"; operátorem konfigurovatelné kategorie.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Rozlišení názvů zařízení + auto-návrh tiskáren</strong> <span class="pill">62c9f26</span> <span class="pill">migrace 046</span></p>
+  <ul>
+    <li>NetBIOS (<code>nbtstat</code>) rozlišení názvu zařízení → auto-návrh tiskáren podle prefixů (NPI / BRN / BRW / RNP / KMBT).</li>
+    <li>Operátorem editovatelný název zařízení, uložený dle MAC (migrace 046).</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Packet loss + latence per zařízení</strong> <span class="pill">62c9f26</span> <span class="pill">migrace 045, 047</span></p>
+  <ul>
+    <li>Per-zařízení packet loss + průměrná latence v kompaktním sloupci <code>ms / %</code> (např. <code>&lt;5/0</code>); laditelné prahy „problému".</li>
+    <li>Homepage dlaždice „Loss / latence" + filtr „jen problémy" (migrace 045 packet loss, 047 latence).</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Email alerty tiskáren + proklik na web UI</strong> <span class="pill">62c9f26</span> <span class="pill">migrace 043</span></p>
+  <ul>
+    <li>Agenda upozornění na offline tiskárny; homepage dlaždice „Tiskárny".</li>
+    <li>Proklik z IP tiskárny na webové UI s volitelným serverovým proxy obcházejícím certifikát.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Nová záložka „Databáze"</strong> <span class="pill">62c9f26</span></p>
+  <ul>
+    <li>Velikost DB + footprint per tabulka.</li>
+  </ul>
+  <p style="margin:8px 0 4px"><strong>Oprava deploye — robocopy <code>/MIR</code> vyjímá <code>dist</code></strong> <span class="pill">62c9f26</span></p>
+  <ul>
+    <li>Robocopy <code>/MIR</code> nyní vyjímá adresář <code>dist</code> — konec přechodné chyby „frontend build not found" během nasazení.</li>
+  </ul>
+  <div class="note">
+    <strong>Migrace:</strong> nyní 001–047 — přidány <strong>043</strong> (MikroTik + alerty tiskáren), <strong>044</strong> (device source / scan), <strong>045</strong> (packet loss), <strong>046</strong> (operátorský název zařízení), <strong>047</strong> (latence).
+  </div>
 
   <h2>Poslední změny (2026-06-16) — zjednodušení nasazení MikroTik DHCP</h2>
   <p class="sub" style="margin:0 0 .75rem">Model nasazení inventáře MikroTik DHCP byl zjednodušen na <strong>in-app sběr na aplikačním serveru</strong> (<code>10.8.2.213</code>) — stejně jako u všech ostatních collectorů. Žádné externí PowerShell úlohy na jiných serverech; DB <code>10.8.2.225</code> zůstává jen úložištěm.</p>
   <ul>
-    <li>Předpoklad — povolit aplikační server <code>10.8.2.213</code> v <code>allowed-address</code> uživatele <code>dhcp-reader</code> na <strong>obou routerech</strong> — je <strong>zatím nevyřízen</strong>, takže sběr Zařízení (Devices) je nasazen, ale <strong>ještě není aktivní</strong>.</li>
+    <li>Předpoklad — povolit aplikační server <code>10.8.2.213</code> v <code>allowed-address</code> uživatele <code>dhcp-reader</code> na <strong>obou routerech</strong> — byl mezitím <strong>vyřešen</strong>, takže sběr Zařízení (Devices) je od <strong>2026-06-17 živý a aktivní</strong> (viz výše).</li>
   </ul>
 
   <h2>Poslední změny (2026-06-15) — Porty, Zařízení (MikroTik DHCP), zjednodušení akcí</h2>
@@ -276,7 +321,7 @@
     <a href="SETUP-SERVER.md">SETUP-SERVER.md</a> ·
     <a href="../HANDOFF.md">HANDOFF.md</a> ·
     <a href="../README.md">README.md</a><br>
-    Generováno jako statický status snapshot — 2026-06-16.<br>
+    Generováno jako statický status snapshot — 2026-06-17 (commit 62c9f26).<br>
     © 2026 Milan Trnka, IT
   </footer>
 </main>

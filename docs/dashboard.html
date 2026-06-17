@@ -110,6 +110,7 @@ a.external { color: var(--accent); }
     <li><a href="#ui-tour"><span data-lang="cs">UI prohlídka</span><span data-lang="en">UI tour</span></a></li>
     <li><a href="#ports"><span data-lang="cs">Záložka Porty</span><span data-lang="en">Ports tab</span></a></li>
     <li><a href="#devices"><span data-lang="cs">Záložka Zařízení</span><span data-lang="en">Devices tab</span></a></li>
+    <li><a href="#dbtab"><span data-lang="cs">Záložka Databáze</span><span data-lang="en">Database tab</span></a></li>
     <li><a href="#pc-actions"><span data-lang="cs">Per-PC Actions</span><span data-lang="en">Per-PC Actions</span></a></li>
     <li><a href="#collector">Eventlog collector</a></li>
     <li><a href="#disk"><span data-lang="cs">Disk collector</span><span data-lang="en">Disk space collector</span></a></li>
@@ -531,23 +532,65 @@ service restarts on new dist/, in-memory state cleared</div>
 
 <h3 id="devices"><span data-lang="cs">Záložka Zařízení</span><span data-lang="en">Devices tab</span></h3>
 <div data-lang="en">
-  <p>A <strong>network device inventory</strong> built from <strong>MikroTik DHCP leases</strong> — shows everything that has an IP on the network, not just AD computers (printers, phones, IoT, switches…). Per device: IP, hostname, MAC and the site it lives at.</p>
+  <p>A <strong>network device inventory</strong> — shows everything that has an IP on the network, not just AD computers (printers, phones, IoT, switches…). Per device: IP, hostname, MAC, type, category and the site it lives at.</p>
+  <p>The inventory is built by <strong>merging three sources by MAC address</strong>, so a device shows up no matter how it is reachable:</p>
   <ul>
-    <li><strong>Pairing with AD</strong> — each lease is matched to its AD computer by <strong>hostname</strong> (falling back to <strong>IP</strong>). A matched device shows a <strong>"✓ &lt;name&gt;" link</strong> to its AD computer and <strong>reuses the main monitor's online/offline</strong> state (no extra probe). <strong>Unmatched</strong> devices (printers, phones, IoT — things that aren't in AD) are <strong>pinged here</strong> instead.</li>
-    <li><strong>Category dropdown</strong> per device — Tiskárna Canon / Kyocera / Zebra / HP / jiná (printer), Telefon (phone), PC, Server, Síťový prvek (network device), IoT, Jiné (other). The dashboard shows an <strong>auto suggestion</strong> (clickable to accept). The category you choose is <strong>saved by MAC</strong> and <strong>re-applied on every refresh</strong>, so it sticks even as leases come and go.</li>
-    <li><strong>Filters</strong> — site, <strong>jen mimo AD / not in AD only</strong> (devices with no AD match), <strong>jen tiskárny / printers only</strong>.</li>
-    <li><strong>Aktualizovat / Refresh</strong> — pulls the <strong>current leases</strong> from the routers.</li>
+    <li><strong>MikroTik DHCP leases</strong> — both <strong>dynamic</strong> leases and <strong>static reservations</strong>.</li>
+    <li><strong>The router ARP table</strong> — catches devices with a fixed IP that never asked DHCP.</li>
+    <li><strong>An active subnet scan from the application server</strong> — a <strong>ping-sweep + ARP</strong> of the configured ranges, so even silent hosts with no lease and no router ARP entry are discovered.</li>
+  </ul>
+  <p>Each row records which <strong>source</strong> it came from (<code>dhcp</code> / <code>arp</code> / <code>scan</code>), and a <strong>Type</strong> column shows whether the address is <strong>Static</strong> (DHCP reservation / fixed) or <strong>Dynamic</strong>.</p>
+  <ul>
+    <li><strong>Active scan ranges</strong> are configured in <a href="#settings">Settings</a> as <strong>CIDR</strong> (<code>10.8.2.0/24</code>) or <strong>wildcard</strong> (<code>10.8.2.*</code>), each with an optional <code>Site=</code> label. A leading <strong><code>!</code></strong> (or <code>&lt;&gt;</code>) before a range <strong>excludes that whole subnet</strong> from the inventory. The scan only pings <strong>unknown</strong> IPs — it caches known IP↔MAC pairs, and when a MAC turns up at a new IP the old IP is freed. <strong>Remote subnets</strong> (not directly attached to the app server) get their MACs resolved via the router ARP table.</li>
+    <li><strong>Pairing with AD</strong> — each device is matched to its AD computer by <strong>hostname</strong> (falling back to <strong>IP</strong>). A matched device shows a <strong>"✓ &lt;name&gt;" link</strong> to its AD computer and <strong>reuses the main monitor's online/offline</strong> state (no extra probe). <strong>Unmatched</strong> devices (printers, phones, IoT — things that aren't in AD) are <strong>pinged here</strong> instead.</li>
+    <li><strong>Device names</strong> auto-resolve via <strong>NetBIOS</strong> (<code>nbtstat</code>), which also feeds the <strong>printer auto-suggestion</strong>. The operator can also <strong>edit a device name inline</strong>; the chosen name is <strong>saved by MAC</strong> and survives refreshes.</li>
+    <li><strong>Categories</strong> are <strong>operator-configurable in Settings</strong> as a <code>key=Label</code> list and are <strong>colour-coded</strong> in the grid. AD-matched devices <strong>pre-select pc / server</strong>. The dashboard shows an <strong>auto suggestion</strong> (clickable to accept). The category you choose is <strong>saved by MAC</strong> and <strong>re-applied on every refresh</strong>, so it sticks even as leases come and go.</li>
+    <li><strong>ms / % column</strong> — a compact per-device <strong>latency / packet-loss</strong> readout, e.g. <code>&lt;5/0</code> = under 5 ms / 0 % loss, <code>120/25</code> = 120 ms / 25 % loss. It is <strong>only meaningful while the device is online</strong>. Note: a host that returns only "Destination host unreachable" gateway errors (no real reply) is <strong>OFFLINE</strong>, not "partial loss".</li>
+    <li><strong>"jen problémy / issues only" filter</strong> and the homepage <strong>"Loss / latency" tile</strong> surface <strong>degraded</strong> devices — ones that are online but whose loss / latency is at or above the Settings thresholds (<code>devices.problem_loss_pct</code>, default 1 %, and <code>devices.problem_latency_ms</code>, default 50 ms).</li>
+    <li><strong>Printers</strong> get a dedicated homepage <strong>"Printers" tile</strong> (online / offline) and an <strong>email alert when a printer goes offline</strong> (configured under Settings). A printer's <strong>IP links to its web UI</strong>; an optional Settings toggle routes that link through a <strong>server-side proxy that bypasses the printer's self-signed certificate</strong> (best-effort).</li>
+    <li><strong>Filters</strong> — site, <strong>jen mimo AD / not in AD only</strong> (devices with no AD match), <strong>jen tiskárny / printers only</strong>, <strong>jen problémy / issues only</strong>.</li>
+    <li><strong>Aktualizovat / Refresh</strong> — re-runs the merge: pulls the <strong>current leases + ARP</strong> from the routers and a fresh <strong>active scan</strong>.</li>
     <li><strong>📡 Ping</strong> (per row) — opens the console window with the live ping output, same as on the Ports tab.</li>
   </ul>
 </div>
 <div data-lang="cs">
-  <p><strong>Inventář síťových zařízení</strong> postavený z <strong>MikroTik DHCP leases</strong> — ukazuje vše, co má na síti IP, ne jen AD počítače (tiskárny, telefony, IoT, switche…). U zařízení: IP, hostname, MAC a lokalita, ve které je.</p>
+  <p><strong>Inventář síťových zařízení</strong> — ukazuje vše, co má na síti IP, ne jen AD počítače (tiskárny, telefony, IoT, switche…). U zařízení: IP, hostname, MAC, typ, kategorie a lokalita, ve které je.</p>
+  <p>Inventář vzniká <strong>sloučením tří zdrojů podle MAC adresy</strong>, takže zařízení se objeví bez ohledu na to, jak je dosažitelné:</p>
   <ul>
-    <li><strong>Párování s AD</strong> — každý lease se napáruje na svůj AD počítač podle <strong>hostname</strong> (fallback na <strong>IP</strong>). Napárované zařízení ukáže <strong>odkaz „✓ &lt;jméno&gt;"</strong> na AD počítač a <strong>přebírá online/offline z hlavního monitoru</strong> (žádná sonda navíc). <strong>Nenapárovaná</strong> zařízení (tiskárny, telefony, IoT — věci mimo AD) se <strong>pingují tady</strong>.</li>
-    <li><strong>Rozbalovátko Kategorie</strong> u zařízení — Tiskárna Canon / Kyocera / Zebra / HP / jiná, Telefon, PC, Server, Síťový prvek, IoT, Jiné. Dashboard ukáže <strong>automatický návrh</strong> (kliknutím přijmeš). Zvolená kategorie se <strong>ukládá podle MAC</strong> a <strong>znovu aplikuje při každém refreshi</strong>, takže drží i když leases přibývají a mizí.</li>
-    <li><strong>Filtry</strong> — lokalita, <strong>jen mimo AD / not in AD only</strong> (zařízení bez AD shody), <strong>jen tiskárny / printers only</strong>.</li>
-    <li><strong>Aktualizovat / Refresh</strong> — stáhne <strong>aktuální leases</strong> z routerů.</li>
+    <li><strong>MikroTik DHCP leases</strong> — jak <strong>dynamické</strong> leases, tak <strong>statické rezervace</strong>.</li>
+    <li><strong>ARP tabulka routeru</strong> — zachytí zařízení s pevnou IP, které si nikdy neřekla o DHCP.</li>
+    <li><strong>Aktivní sken podsítí z aplikačního serveru</strong> — <strong>ping-sweep + ARP</strong> nakonfigurovaných rozsahů, takže se objeví i tichý host bez lease a bez ARP záznamu na routeru.</li>
+  </ul>
+  <p>U každého řádku se zaznamenává, z jakého <strong>zdroje</strong> pochází (<code>dhcp</code> / <code>arp</code> / <code>scan</code>), a sloupec <strong>Typ</strong> ukazuje, zda je adresa <strong>Statická</strong> (DHCP rezervace / pevná) nebo <strong>Dynamická</strong>.</p>
+  <ul>
+    <li><strong>Rozsahy aktivního skenu</strong> se nastavují v <a href="#settings">Nastavení</a> jako <strong>CIDR</strong> (<code>10.8.2.0/24</code>) nebo <strong>wildcard</strong> (<code>10.8.2.*</code>), každý s volitelným štítkem <code>Site=</code>. Úvodní <strong><code>!</code></strong> (nebo <code>&lt;&gt;</code>) před rozsahem <strong>vyřadí celou podsíť</strong> z inventáře. Sken pinguje jen <strong>neznámé</strong> IP — cachuje známé páry IP↔MAC, a když se MAC objeví na nové IP, stará IP se uvolní. <strong>Vzdálené podsítě</strong> (nepřipojené přímo k aplikačnímu serveru) si MAC dořeší přes ARP tabulku routeru.</li>
+    <li><strong>Párování s AD</strong> — každé zařízení se napáruje na svůj AD počítač podle <strong>hostname</strong> (fallback na <strong>IP</strong>). Napárované zařízení ukáže <strong>odkaz „✓ &lt;jméno&gt;"</strong> na AD počítač a <strong>přebírá online/offline z hlavního monitoru</strong> (žádná sonda navíc). <strong>Nenapárovaná</strong> zařízení (tiskárny, telefony, IoT — věci mimo AD) se <strong>pingují tady</strong>.</li>
+    <li><strong>Jména zařízení</strong> se automaticky dořeší přes <strong>NetBIOS</strong> (<code>nbtstat</code>), což zároveň pohání <strong>automatický návrh tiskáren</strong>. Operátor může <strong>jméno zařízení i ručně přepsat přímo v řádku</strong>; zvolené jméno se <strong>ukládá podle MAC</strong> a přežije refreshe.</li>
+    <li><strong>Kategorie</strong> jsou <strong>konfigurovatelné operátorem v Nastavení</strong> jako seznam <code>key=Label</code> a jsou v mřížce <strong>barevně odlišené</strong>. Napárovaná AD zařízení mají <strong>předvolené pc / server</strong>. Dashboard ukáže <strong>automatický návrh</strong> (kliknutím přijmeš). Zvolená kategorie se <strong>ukládá podle MAC</strong> a <strong>znovu aplikuje při každém refreshi</strong>, takže drží i když leases přibývají a mizí.</li>
+    <li><strong>Sloupec ms / %</strong> — kompaktní <strong>latence / ztrátovost</strong> na zařízení, např. <code>&lt;5/0</code> = pod 5 ms / 0 % ztráta, <code>120/25</code> = 120 ms / 25 % ztráta. Má smysl <strong>jen když je zařízení online</strong>. Pozor: host, který vrací jen chyby brány „Destination host unreachable" (žádnou skutečnou odpověď), je <strong>OFFLINE</strong>, ne „částečná ztráta".</li>
+    <li>Filtr <strong>jen problémy / issues only</strong> a dlaždice <strong>„Loss / latency"</strong> na úvodní stránce vytahují <strong>degradovaná</strong> zařízení — taková, která jsou online, ale jejich ztráta / latence je na úrovni nebo nad prahy v Nastavení (<code>devices.problem_loss_pct</code>, výchozí 1 %, a <code>devices.problem_latency_ms</code>, výchozí 50 ms).</li>
+    <li><strong>Tiskárny</strong> mají vlastní dlaždici <strong>„Printers"</strong> na úvodní stránce (online / offline) a <strong>e-mailový alert, když tiskárna spadne offline</strong> (nastavuje se v Nastavení). <strong>IP tiskárny odkazuje na její webové rozhraní</strong>; volitelný přepínač v Nastavení vede tento odkaz přes <strong>serverovou proxy, která obchází self-signed certifikát tiskárny</strong> (best-effort).</li>
+    <li><strong>Filtry</strong> — lokalita, <strong>jen mimo AD / not in AD only</strong> (zařízení bez AD shody), <strong>jen tiskárny / printers only</strong>, <strong>jen problémy / issues only</strong>.</li>
+    <li><strong>Aktualizovat / Refresh</strong> — znovu spustí sloučení: stáhne <strong>aktuální leases + ARP</strong> z routerů a čerstvý <strong>aktivní sken</strong>.</li>
     <li><strong>📡 Ping</strong> (u řádku) — otevře konzolové okno s živým výstupem pingu, stejně jako v záložce Porty.</li>
+  </ul>
+</div>
+
+<h3 id="dbtab"><span data-lang="cs">Záložka Databáze</span><span data-lang="en">Database tab</span></h3>
+<div data-lang="en">
+  <p>A <strong>read-only</strong> view into the size of the ITDashboard database, so the operator can see <strong>where the space goes</strong>:</p>
+  <ul>
+    <li><strong>Overall size</strong> — total <strong>data</strong> file size, <strong>log</strong> file size and how much of it is actually <strong>used</strong>.</li>
+    <li><strong>Per-table breakdown</strong> — one row per table with its <strong>row count</strong>, <strong>reserved space</strong> and <strong>data size</strong>, so it's obvious which tables (typically <code>events</code>) consume the space.</li>
+    <li>It is <strong>loaded on demand</strong> (the numbers are computed only when you open the tab) and is <strong>strictly read-only</strong> — the tab never writes to or alters the database.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p><strong>Read-only</strong> pohled na velikost databáze ITDashboard, aby operátor viděl, <strong>kam mizí místo</strong>:</p>
+  <ul>
+    <li><strong>Celková velikost</strong> — velikost <strong>datového</strong> souboru, <strong>logu</strong> a kolik z něj je skutečně <strong>využito</strong>.</li>
+    <li><strong>Rozpad po tabulkách</strong> — jeden řádek na tabulku s <strong>počtem řádků</strong>, <strong>rezervovaným místem</strong> a <strong>velikostí dat</strong>, takže je hned vidět, které tabulky (typicky <code>events</code>) místo zabírají.</li>
+    <li><strong>Načítá se na vyžádání</strong> (čísla se počítají, až když záložku otevřeš) a je <strong>striktně read-only</strong> — záložka do databáze nikdy nezapisuje ani ji nemění.</li>
   </ul>
 </div>
 
@@ -1382,6 +1425,13 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td><code>mikrotik.routers</code></td><td>(empty)</td><td>Routers as <code>Site=IP</code> list (see "MikroTik DHCP" section) — drives DHCP-lease collection for the Devices tab</td></tr>
   <tr><td><code>mikrotik.user</code></td><td>(empty)</td><td>RouterOS read-only username</td></tr>
   <tr><td><code>mikrotik.password</code></td><td>(empty)</td><td>RouterOS password — <strong>stored encrypted</strong>, shown masked; only overwrite to change</td></tr>
+  <tr><td><code>mikrotik.enabled</code></td><td><code>true</code></td><td>Enable/disable the in-app DHCP/ARP collector</td></tr>
+  <tr><td><code>mikrotik.interval_sec</code></td><td>300</td><td>How often the DHCP/ARP + active-scan collection runs</td></tr>
+  <tr><td><code>mikrotik.scan_ranges</code></td><td>(empty)</td><td>Active-scan ranges (CIDR or wildcard, optional <code>Site=</code>, leading <code>!</code> excludes a subnet) — see <a href="#devices">Devices tab</a></td></tr>
+  <tr><td><code>devices.categories</code></td><td>(built-in)</td><td>Operator-editable category list as <code>key=Label</code> rows; colour-coded in the Devices grid</td></tr>
+  <tr><td><code>devices.web_proxy</code></td><td><code>0</code></td><td>Route a device's web-UI IP link through a server proxy that bypasses its self-signed certificate (best-effort)</td></tr>
+  <tr><td><code>devices.problem_loss_pct</code></td><td>1</td><td>Packet-loss % at/above which an online device counts as degraded (Loss/latency tile + issues filter)</td></tr>
+  <tr><td><code>devices.problem_latency_ms</code></td><td>50</td><td>Latency in ms at/above which an online device counts as degraded</td></tr>
 </table>
 
 <h3 id="settings-mikrotik"><span data-lang="cs">MikroTik DHCP</span><span data-lang="en">MikroTik DHCP</span></h3>
@@ -1391,6 +1441,8 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
     <li><strong>Routers</strong> — a <strong>Site = IP</strong> list, e.g. <code>Brno=10.8.2.207, Zastavka=10.10.181.2</code>. Each router is polled for its current DHCP leases and the site name is what shows up in the Devices "site" column and filter.</li>
     <li><strong>User</strong> — a <strong>RouterOS read-only user</strong> (it only needs to read DHCP leases — do not give it write access).</li>
     <li><strong>Password</strong> — the RouterOS password. It is <strong>stored encrypted</strong> (shown masked as <code>••••</code>, never in plaintext). <strong>Leave it as the dots to keep the current password</strong>; only type a new value when you actually want to change it.</li>
+    <li><strong>Enable + interval</strong> — toggle the in-app DHCP/ARP collector on/off and set how often it runs (default every 5 minutes).</li>
+    <li><strong>Scan ranges</strong> — the <strong>active-scan</strong> subnets as CIDR (<code>10.8.2.0/24</code>) or wildcard (<code>10.8.2.*</code>), each with an optional <code>Site=</code> label; a leading <code>!</code> (or <code>&lt;&gt;</code>) excludes a whole subnet. See the <a href="#devices">Devices tab</a> for how the merge works.</li>
   </ul>
   <p>DHCP-device collection runs <strong>inside the application on the application server</strong> (there is no external script and it does not run on the SQL server) — consistent with the rest of the system. The router IPs, the RouterOS user and the encrypted password configured here in Settings are all it needs. It collects <strong>automatically about every 5 minutes</strong>; the Devices tab's <strong>Refresh</strong> button pulls the current leases on demand.</p>
   <p><strong>Note:</strong> the application server must be permitted on the MikroTik — add it to the read-only user's <code>allowed-address</code> — otherwise the routers reject the connection and no leases come in.</p>
@@ -1401,9 +1453,31 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
     <li><strong>Routery</strong> — seznam <strong>Lokalita = IP</strong>, např. <code>Brno=10.8.2.207, Zastavka=10.10.181.2</code>. Z každého routeru se stahují aktuální DHCP leases a název lokality je to, co se objeví ve sloupci i filtru „lokalita" na záložce Zařízení.</li>
     <li><strong>Uživatel</strong> — <strong>RouterOS read-only uživatel</strong> (stačí mu číst DHCP leases — nedávej mu zápis).</li>
     <li><strong>Heslo</strong> — heslo k RouterOS. Ukládá se <strong>šifrovaně</strong> (zobrazené maskované jako <code>••••</code>, nikdy v plaintextu). <strong>Necháš-li tečky, ponecháš stávající heslo</strong>; nové napiš jen když ho chceš opravdu změnit.</li>
+    <li><strong>Zapnutí + interval</strong> — přepínač in-app DHCP/ARP collectoru a jak často běží (výchozí každých 5 minut).</li>
+    <li><strong>Rozsahy skenu</strong> — podsítě <strong>aktivního skenu</strong> jako CIDR (<code>10.8.2.0/24</code>) nebo wildcard (<code>10.8.2.*</code>), každá s volitelným štítkem <code>Site=</code>; úvodní <code>!</code> (nebo <code>&lt;&gt;</code>) vyřadí celou podsíť. Jak sloučení funguje viz <a href="#devices">záložka Zařízení</a>.</li>
   </ul>
   <p>Sběr DHCP zařízení běží <strong>uvnitř aplikace na aplikačním serveru</strong> (žádný externí skript, neběží na SQL serveru) — stejně jako zbytek systému. Stačí mu IP routerů, RouterOS uživatel a šifrované heslo nastavené zde v Nastavení. Sbírá <strong>automaticky zhruba každých 5 minut</strong>; tlačítko <strong>Aktualizovat</strong> na záložce Zařízení stáhne aktuální leases na vyžádání.</p>
   <p><strong>Poznámka:</strong> aplikační server musí být na MikroTiku povolen — přidej ho do <code>allowed-address</code> read-only uživatele — jinak routery spojení odmítnou a žádné leases nepřijdou.</p>
+</div>
+
+<h3 id="settings-devices"><span data-lang="cs">Zařízení — web a kategorie</span><span data-lang="en">Devices — web &amp; categories</span></h3>
+<div data-lang="en">
+  <p>Settings also has a <strong>"Devices — web &amp; categories"</strong> group that tunes the <a href="#devices">Devices tab</a>:</p>
+  <ul>
+    <li><strong>Web-UI proxy toggle</strong> — route a device's web-UI IP link through a <strong>server proxy that bypasses the self-signed certificate</strong> (best-effort).</li>
+    <li><strong>Categories</strong> — the operator-editable category list (<code>key=Label</code> rows), colour-coded in the grid.</li>
+    <li><strong>Problem thresholds</strong> — the <strong>packet-loss %</strong> and <strong>latency (ms)</strong> at/above which an online device is flagged as degraded (drives the "Loss / latency" tile and the "issues only" filter).</li>
+  </ul>
+  <p>Printer-offline email alerts are configured here as well (recipients via the shared email plumbing).</p>
+</div>
+<div data-lang="cs">
+  <p>V Nastavení je také skupina <strong>„Zařízení — web a kategorie"</strong>, která ladí <a href="#devices">záložku Zařízení</a>:</p>
+  <ul>
+    <li><strong>Přepínač webové proxy</strong> — vede odkaz na webové rozhraní zařízení přes <strong>serverovou proxy, která obchází self-signed certifikát</strong> (best-effort).</li>
+    <li><strong>Kategorie</strong> — operátorem editovatelný seznam kategorií (řádky <code>key=Label</code>), barevně odlišený v mřížce.</li>
+    <li><strong>Prahy problémů</strong> — <strong>% ztráty</strong> a <strong>latence (ms)</strong>, na úrovni nebo nad kterými je online zařízení označeno za degradované (pohání dlaždici „Loss / latency" a filtr „jen problémy").</li>
+  </ul>
+  <p>Zde se nastavuje i e-mailový alert na tiskárnu offline (příjemci přes sdílené e-mailové nastavení).</p>
 </div>
 
 <h2 id="api"><span data-lang="cs">API reference</span><span data-lang="en">API reference</span></h2>
