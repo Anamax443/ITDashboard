@@ -68,6 +68,14 @@ Brother/HP/Epson now proxy their real pages (8 KB / 12 KB / Epson JS-bootstrap
 that chains through the injected `<base>`). NB the proxy is OFF by default; enable
 `devices.web_proxy` in Settings to route the card click through it.
 
+**Follow-up fix 2 (`f3f2965`): the injected `<base>` pointed at the proxy ROOT,
+breaking frame-based EWS.** A relative resource on a sub-page (e.g. `SCRIPT.JS` on
+`…/COMMON/TOP`) resolved to `/devices/web/IP/SCRIPT.JS` (root → 404) instead of
+`…/COMMON/SCRIPT.JS`, so Epson's frameset Web Config rendered blank (its
+iframe-loader script never loaded). Now `<base>` is the directory of the current
+document (`/devices/web/IP/<dir>/`). Verified live: Epson WF-C5890 Web Config
+loads through the proxy incl. the supply page (BK20/C92/M1/Y92/maint75).
+
 > Open follow-ups: Settings UI section for the supply collector (works on the
 > seeded defaults today, but enable/community/threshold are DB-only until a
 > Settings panel is added); optional low-supply email alert under the printer
