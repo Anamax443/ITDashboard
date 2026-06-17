@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { sendDiskAlertTest, sendServiceAlertTest, sendPortAlertTest } from '../services/alerts.js';
+import { sendDiskAlertTest, sendServiceAlertTest, sendPortAlertTest, sendPrinterAlertTest } from '../services/alerts.js';
 
 export async function registerAlertsRoutes(app: FastifyInstance) {
   // Manual test from the Settings page — sends the current monitored-disk
@@ -30,6 +30,17 @@ export async function registerAlertsRoutes(app: FastifyInstance) {
   app.post('/alerts/ports/test', async (_req, reply) => {
     try {
       const result = await sendPortAlertTest();
+      return { ok: true, ...result };
+    } catch (err) {
+      reply.code(400);
+      return { ok: false, error: String(err).split('\n')[0] };
+    }
+  });
+
+  // Same, for printer-offline alerts (sends the current offline-printer state).
+  app.post('/alerts/printers/test', async (_req, reply) => {
+    try {
+      const result = await sendPrinterAlertTest();
       return { ok: true, ...result };
     } catch (err) {
       reply.code(400);

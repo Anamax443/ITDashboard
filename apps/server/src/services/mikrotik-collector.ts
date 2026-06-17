@@ -1,24 +1,32 @@
 import { getPool } from '../db/pool.js';
+import { getAllSettings, type SettingsMap } from './settings.js';
+import { decryptSecret } from './secret-crypto.js';
+import { boolSetting } from './alerts-util.js';
+import { evaluateAndSendPrinterAlerts } from './alerts.js';
 import { logActivity } from './activity-log.js';
 import { icmpPing } from './reachability-collector.js';
 import { pingWithOutput } from './port-status-collector.js';
 
 // MikroTik DHCP lease collector. Pulls active leases from each configured
-// RouterOS v7 router via the REST API and upserts them into dhcp_leases. Router
-// list + credentials come from server env (no secrets in the DB):
-//   MIKROTIK_ROUTERS   = "Brno=10.8.2.207,Zastavka=10.10.181.2"
-//   MIKROTIK_USER      = "dhcp-reader"
-//   MIKROTIK_PASSWORD  = "…"
-//   MIKROTIK_INTERVAL_SEC = 300   (optional)
-// With MIKROTIK_ROUTERS unset/empty the collector is a no-op.
+// RouterOS v7 router via the REST API and upserts them into dhcp_leases.
+//
+// Config is fully DB-driven from the Settings page (no secrets / IPs in env):
+//   mikrotik.enabled       — master on/off for the in-app collector
+//   mikrotik.routers        — "Brno=10.8.2.207,Zastavka=10.10.181.2"
+//   mikrotik.user           — RouterOS read-only account (default "dhcp-reader")
+//   mikrotik.password_enc   — AES-encrypted password (decryptSecret)
+//   mikrotik.interval_sec   — standalone probe cadence, default 300s
+// Only MIKROTIK_SECRET stays in env (the key that decrypts the password). With
+// the master toggle off (or no routers configured) the collector is a no-op, so
+// it never 401-spams a router that hasn't whitelisted the app server yet.
 
 interface Router { site: string; ip: string; }
 
-function parseRouters(): Router[] {
-  const raw = (process.env.MIKROTIK_ROUTERS ?? '').trim();
-  if (!raw) return [];
+function parseRouters(raw: string | undefined): Router[] {
+  const s = (raw ?? '').trim();
+  if (!s) return [];
   const out: Router[] = [];
-  for (const tok of raw.split(/[,;]+/).map((s) => s.trim()).filter(Boolean)) {
+  for (const tok of s.split(/[,;]+/).map((x) => x.trim()).filter(Boolean)) {
     const eq = tok.indexOf('=');
     if (eq <= 0) continue;
     const site = tok.slice(0, eq).trim();
@@ -26,6 +34,22 @@ function parseRouters(): Router[] {
     if (site && ip) out.push({ site, ip });
   }
   return out;
+}
+
+// Resolve the live collector config from Settings. Returns null when the
+// collector should NOT run (disabled or no routers configured). The password is
+// decrypted here so callers never see the ciphertext.
+function resolveConfig(settings: SettingsMap): { routers: Router[]; user: string; pass: string; intervalSec: number } | null {
+  if (!boolSetting(settings['mikrotik.enabled'])) return null;
+  const routers = parseRouters(settings['mikrotik.routers']);
+  if (routers.length === 0) return null;
+  const user = (settings['mikrotik.user'] ?? '').trim() || 'dhcp-reader';
+  const enc = settings['mikrotik.password_enc'] ?? '';
+  let pass = '';
+  try { pass = enc ? decryptSecret(enc) : ''; } catch { pass = ''; }
+  const n = Number(settings['mikrotik.interval_sec']);
+  const intervalSec = Number.isFinite(n) && n >= 30 ? Math.floor(n) : 300;
+  return { routers, user, pass, intervalSec };
 }
 
 // RouterOS REST lease object (only the fields we use; keys are dash-cased).
@@ -73,28 +97,24 @@ async function fetchLeases(router: Router, user: string, pass: string, timeoutMs
 
 // --- Device category suggestion (operator can override) ----------------------
 // MAC OUI prefixes (AA:BB:CC) for printer-centric vendors — these makes are
-// almost always printers, so an OUI hit is a safe hint. (HP/others are left to
-// hostname matching since their OUIs also cover PCs.)
-const OUI: Record<string, string> = {
-  '00:07:4D': 'printer_zebra', '48:A4:93': 'printer_zebra', 'AC:3F:A4': 'printer_zebra',
-  '84:25:3F': 'printer_zebra', '00:15:70': 'printer_zebra', '2C:3A:E8': 'printer_zebra',
-  '00:1E:8F': 'printer_canon', '2C:9E:FC': 'printer_canon', '88:87:17': 'printer_canon',
-  'F4:81:39': 'printer_canon', '00:00:85': 'printer_canon', '18:0C:AC': 'printer_canon',
-  '00:C0:EE': 'printer_kyocera', '00:17:C8': 'printer_kyocera',
-};
+// almost always printers, so an OUI hit is a safe "printer" hint. (HP/others are
+// left to hostname matching since their OUIs also cover PCs.) The category is
+// generic `printer` — the vendor is just the reason we suspect it's a printer.
+const PRINTER_OUI = new Set<string>([
+  '00:07:4D', '48:A4:93', 'AC:3F:A4', '84:25:3F', '00:15:70', '2C:3A:E8', // Zebra
+  '00:1E:8F', '2C:9E:FC', '88:87:17', 'F4:81:39', '00:00:85', '18:0C:AC', // Canon
+  '00:C0:EE', '00:17:C8',                                                 // Kyocera
+]);
 
 // Heuristic only — never written to the operator-owned category, just shown as a
-// greyed suggestion in the UI. Returns '' when nothing matches.
+// greyed suggestion in the UI. Returns '' when nothing matches. All printer makes
+// collapse to one generic `printer` category (operator wanted a single bucket).
 export function suggestCategory(hostName: string | null | undefined, mac: string | undefined): string {
   const oui = normMac(mac).slice(0, 8);
-  if (OUI[oui]) return OUI[oui]!;
+  if (PRINTER_OUI.has(oui)) return 'printer';
   const h = (hostName ?? '').toLowerCase();
   if (!h) return '';
-  if (/canon/.test(h)) return 'printer_canon';
-  if (/kyocera/.test(h)) return 'printer_kyocera';
-  if (/zebra/.test(h)) return 'printer_zebra';
-  if (/laserjet|officejet|hewlett|(^|[^a-z])hp[^a-z]/.test(h)) return 'printer_hp';
-  if (/epson|brother|lexmark|ricoh|konica|minolta|xerox|\boki\b|print|tisk|\bmfp\b/.test(h)) return 'printer_other';
+  if (/canon|kyocera|zebra|laserjet|officejet|hewlett|(^|[^a-z])hp[^a-z]|epson|brother|lexmark|ricoh|konica|minolta|xerox|\boki\b|print|tisk|\bmfp\b/.test(h)) return 'printer';
   if (/iphone|ipad|galaxy|redmi|poco|honor|xiaomi|android|oneplus|huawei|pixel|realme/.test(h)) return 'phone';
   return '';
 }
@@ -180,12 +200,12 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
   let unmatchedPinged = 0;
   let reachable = 0;
   try {
-    const routers = parseRouters();
-    if (routers.length === 0) {
+    const settings = await getAllSettings();
+    const cfg = resolveConfig(settings);
+    if (!cfg) {
       return { routers: 0, leases: 0, unmatchedPinged: 0, reachable: 0, errors: [], durationMs: Date.now() - t0 };
     }
-    const user = process.env.MIKROTIK_USER ?? 'dhcp-reader';
-    const pass = process.env.MIKROTIK_PASSWORD ?? '';
+    const { routers, user, pass } = cfg;
     const timeoutMs = 8000;
     const known = await loadKnownComputers();
 
@@ -236,6 +256,11 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
     const durationMs = Date.now() - t0;
     logActivity(errors.length ? 'warn' : 'info', 'mikrotik',
       `DHCP: ${leases} lease(s) from ${routers.length} router(s); ${unmatchedPinged} unmatched pinged (${reachable} online)${errors.length ? ` · errors: ${errors.join('; ')}` : ''} (${(durationMs / 1000).toFixed(1)}s)`);
+
+    // Printer-offline alert eval runs on the collector's own cadence (fresh
+    // reachability is in the DB now). Self-contained; never throws.
+    try { await evaluateAndSendPrinterAlerts(); } catch (e) { logActivity('error', 'alerts', `Printer alert eval failed: ${String(e).split('\n')[0]}`); }
+
     return { routers: routers.length, leases, unmatchedPinged, reachable, errors, durationMs };
   } catch (err) {
     logActivity('error', 'mikrotik', `DHCP collect failed: ${String(err).split('\n')[0]}`);
@@ -257,24 +282,32 @@ export async function probeDeviceNow(site: string, mac: string, ip: string): Pro
 let mtTimer: NodeJS.Timeout | null = null;
 let mtStopped = false;
 
-// Standalone scheduler — mirrors the other collectors. Runs every
-// MIKROTIK_INTERVAL_SEC (default 300s). No-op while no routers are configured.
+// How often to re-check Settings while the collector is disabled / unconfigured,
+// so flipping mikrotik.enabled on in the UI takes effect without a restart.
+const IDLE_RECHECK_SEC = 60;
+
+// Standalone scheduler — mirrors reachability/port-status. Every cycle re-reads
+// Settings (enable flag + interval), so changing them in the UI applies live
+// without a service restart. While disabled or unconfigured it idles and
+// re-checks every IDLE_RECHECK_SEC instead of collecting.
 export async function startMikrotikSchedule(): Promise<void> {
   mtStopped = false;
   if (mtTimer) { clearTimeout(mtTimer); mtTimer = null; }
-  if (parseRouters().length === 0) {
-    console.log('MikroTik DHCP collector idle (MIKROTIK_ROUTERS not set)');
-    return;
-  }
-  const intervalSec = (() => {
-    const n = Number(process.env.MIKROTIK_INTERVAL_SEC);
-    return Number.isFinite(n) && n >= 30 ? Math.floor(n) : 300;
-  })();
   const loop = async () => {
     if (mtStopped) return;
-    try { await runMikrotikCollectOnce(); } catch (e) { console.error('MikroTik schedule error', e); }
-    if (!mtStopped) mtTimer = setTimeout(loop, intervalSec * 1000);
+    let nextSec = IDLE_RECHECK_SEC;
+    try {
+      const settings = await getAllSettings();
+      const cfg = resolveConfig(settings);
+      if (cfg) {
+        await runMikrotikCollectOnce();
+        nextSec = cfg.intervalSec;
+      }
+    } catch (e) {
+      console.error('MikroTik schedule error', e);
+    }
+    if (!mtStopped) mtTimer = setTimeout(loop, nextSec * 1000);
   };
   loop().catch((e) => console.error('MikroTik schedule error', e));
-  console.log(`MikroTik DHCP collector scheduled every ${intervalSec}s`);
+  console.log('MikroTik DHCP collector scheduled (DB-driven enable/interval)');
 }

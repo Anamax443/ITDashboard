@@ -810,3 +810,230 @@ export function renderPortAlert(down: PortDown[], now: number, isTest: boolean, 
 
   return { subject, text, html };
 }
+
+// =====================================================================
+// Printer-offline email alerting
+// =====================================================================
+//
+// Operator-categorized printers (device_categories.category = 'printer') that go
+// offline. "Offline" reuses the same online/offline the Devices tab shows: a
+// printer paired with an AD computer follows computers.reachable; an unmatched
+// printer follows its own DHCP-lease ping. reachable = NULL (never probed) is
+// NOT treated as down, so we don't alert on a printer we've never seen up.
+//
+// Runs on the MikroTik collector's own cadence (evaluateAndSendPrinterAlerts is
+// called at the end of each collect), with the same debounce / maintenance /
+// throttle model as the service alerts. Per-(printer) outage state lives in
+// printer_alert_state, keyed by MAC (the category persists by MAC too).
+
+export interface DownPrinter {
+  mac: string;
+  site: string;
+  ip: string | null;
+  name: string;        // host_name or matched AD computer name or the MAC
+  firstDownAt: Date | null;
+  lastSentAt: Date | null;
+}
+
+interface PrinterRow {
+  site: string;
+  mac_address: string;
+  ip_address: string | null;
+  host_name: string | null;
+  computer_id: number | null;
+  computer_name: string | null;
+  computer_reachable: boolean | null;
+  lease_reachable: boolean | null;
+  first_down_at: Date | null;
+  last_sent_at: Date | null;
+}
+
+// All categorized printers that are offline RIGHT NOW (effective reachability =
+// false). Matched printers use the AD computer's reachable; unmatched use the
+// lease ping. Joins the per-printer alert state for debounce/throttle.
+async function loadDownPrinters(): Promise<DownPrinter[]> {
+  const pool = await getPool();
+  const r = await pool.request().query<PrinterRow>(`
+    SELECT l.site, l.mac_address, l.ip_address, l.host_name,
+           m.id AS computer_id, m.name AS computer_name, m.reachable AS computer_reachable,
+           l.reachable AS lease_reachable,
+           st.first_down_at, st.last_sent_at
+    FROM dhcp_leases l
+    JOIN device_categories dc ON dc.mac_address = l.mac_address AND dc.category = 'printer'
+    LEFT JOIN printer_alert_state st ON st.mac_address = l.mac_address
+    OUTER APPLY (
+      SELECT TOP 1 c.id, c.name, c.reachable
+      FROM computers c
+      WHERE (l.host_name IS NOT NULL AND LOWER(c.name) = LOWER(l.host_name))
+         OR (l.ip_address IS NOT NULL AND c.ip_address = l.ip_address)
+      ORDER BY CASE WHEN l.host_name IS NOT NULL AND LOWER(c.name) = LOWER(l.host_name) THEN 0 ELSE 1 END, c.name
+    ) m
+    ORDER BY l.site, l.ip_address
+  `);
+
+  const out: DownPrinter[] = [];
+  for (const row of r.recordset) {
+    const effective = row.computer_id != null ? row.computer_reachable : row.lease_reachable;
+    if (effective !== false) continue; // NULL (unknown) or true (online) → not down
+    out.push({
+      mac: row.mac_address,
+      site: row.site,
+      ip: row.ip_address,
+      name: row.host_name || row.computer_name || row.mac_address,
+      firstDownAt: row.first_down_at,
+      lastSentAt: row.last_sent_at,
+    });
+  }
+  return out;
+}
+
+// Called at the end of each MikroTik collect. Alerts on categorized printers
+// that have been offline at least alerts.printers.debounce_minutes (flapping
+// guard), suppressed during the optional maintenance window, throttled by
+// frequency_hours. Self-contained; never throws (caller wraps it too).
+export async function evaluateAndSendPrinterAlerts(): Promise<void> {
+  const settings = await getAllSettings();
+  if (!boolSetting(settings['alerts.printers.enabled'])) return;
+
+  const pool = await getPool();
+  const candidates = await loadDownPrinters();
+  const candMacs = new Set(candidates.map((c) => c.mac));
+
+  // Recovery: drop state for printers no longer down so the next outage starts a
+  // fresh debounce window.
+  const existing = await pool.request().query<{ mac_address: string }>(`SELECT mac_address FROM printer_alert_state`);
+  for (const s of existing.recordset) {
+    if (!candMacs.has(s.mac_address)) {
+      await pool.request().input('mac', s.mac_address).query(`DELETE FROM printer_alert_state WHERE mac_address = @mac`);
+    }
+  }
+
+  const nowDate = new Date();
+  const now = nowDate.getTime();
+
+  // Start the debounce clock for newly-down printers.
+  for (const c of candidates) {
+    if (c.firstDownAt == null) {
+      await pool.request().input('mac', c.mac).input('t', nowDate)
+        .query(`IF NOT EXISTS (SELECT 1 FROM printer_alert_state WHERE mac_address=@mac)
+                INSERT INTO printer_alert_state (mac_address, first_down_at) VALUES (@mac,@t)`);
+      c.firstDownAt = nowDate;
+    }
+  }
+
+  if (inMaintenanceWindow(settings['alerts.printers.maintenance_window'], nowDate)) return;
+
+  const debounceMs = (Number(settings['alerts.printers.debounce_minutes'] ?? 10) || 10) * 60_000;
+  const freqMs = (Number(settings['alerts.printers.frequency_hours'] ?? 24) || 24) * 3_600_000;
+
+  const toAlert = candidates.filter((c) => shouldAlertNow(c.firstDownAt, c.lastSentAt, now, debounceMs, freqMs));
+  if (toAlert.length === 0) return;
+
+  try {
+    const recipients = await sendMail(settings, renderPrinterAlert(toAlert, now, false, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.printers.recipients');
+    for (const a of toAlert) {
+      await pool.request().input('mac', a.mac).input('t', nowDate)
+        .query(`UPDATE printer_alert_state SET last_sent_at=@t WHERE mac_address=@mac`);
+    }
+    logActivity('warn', 'alerts', `Printer alert email sent to ${recipients} recipient(s) — ${toAlert.length} printer(s) offline`);
+  } catch (err) {
+    logActivity('error', 'alerts', `Printer alert email failed: ${String(err).split('\n')[0]}`);
+  }
+}
+
+// Manual test from Settings — sends the current offline-printer state regardless
+// of enable/debounce/maintenance/throttle.
+export async function sendPrinterAlertTest(): Promise<{ recipients: number; offline: number }> {
+  const settings = await getAllSettings();
+  const candidates = await loadDownPrinters();
+  const recipients = await sendMail(settings, renderPrinterAlert(candidates, Date.now(), true, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.printers.recipients');
+  logActivity('info', 'alerts', `Printer alert TEST email sent to ${recipients} recipient(s) (${candidates.length} printer(s) offline)`);
+  return { recipients, offline: candidates.length };
+}
+
+function printerCard(c: DownPrinter, now: number): string {
+  const ip = c.ip ? ` · ${escHtml(c.ip)}` : '';
+  const since = c.firstDownAt ? `offline ${fmtDuration(now - new Date(c.firstDownAt).getTime())}` : 'aktuálně offline';
+  return `
+        <tr><td style="padding:0 0 12px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#ffffff;border:1px solid #e5e7eb;border-left:4px solid #dc2626;border-radius:8px">
+            <tr><td style="padding:14px 16px">
+              <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.04em;font-family:${FONT}">🖨 tiskárna</div>
+              <div style="font-size:16px;font-weight:700;color:#111827;font-family:${FONT}">${escHtml(c.name)}</div>
+              <div style="font-size:13px;color:#6b7280;margin:2px 0 6px;font-family:${FONT}">${escHtml(c.site)}${ip} · ${escHtml(c.mac)}</div>
+              <div style="font-size:14px;color:#dc2626;font-weight:700;font-family:${FONT}">○ ${since}</div>
+            </td></tr>
+          </table>
+        </td></tr>`;
+}
+
+export function renderPrinterAlert(down: DownPrinter[], now: number, isTest: boolean, dashboardUrl: string): { subject: string; text: string; html: string } {
+  const has = down.length > 0;
+  const prefix = subjectPrefix(has, isTest);
+  const subject = has
+    ? `${prefix}ITDashboard — tiskárny offline (${down.length})`
+    : `${prefix}ITDashboard — test tiskárna alertu (žádná tiskárna offline)`;
+
+  const generated = new Date().toLocaleString('cs-CZ', {
+    timeZone: 'Europe/Prague',
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+
+  const lines = down.map((c) =>
+    `  • ${c.name}${c.ip ? ` (${c.ip})` : ''}  ${c.site} · ${c.mac}  —  ${c.firstDownAt ? `offline ${fmtDuration(now - new Date(c.firstDownAt).getTime())}` : 'offline'}`,
+  );
+  const text = (has
+    ? `ITDashboard — tiskárny offline\n${down.length} tiskárna(tiskáren) je offline:\n\n${lines.join('\n')}\n`
+    : 'ITDashboard — test tiskárna alertu\nŽádná sledovaná tiskárna není aktuálně offline.\n')
+    + (isTest ? '\n(Testovací zpráva spuštěná ručně z Nastavení.)\n' : '')
+    + (dashboardUrl ? `\nOtevřít ITDashboard: ${dashboardUrl}\n` : '')
+    + `Vygenerováno: ${generated}\n`;
+
+  const headerBg = has ? '#dc2626' : '#16a34a';
+  const headerSub = has ? '#fde2e2' : '#dcfce7';
+  const headerTitle = has ? '🖨 Tiskárny offline' : '✅ Tiskárny v pořádku';
+  const headerLine = has
+    ? `${down.length} tiskárna(tiskáren) je offline`
+    : 'Žádná sledovaná tiskárna není offline';
+
+  const body = has
+    ? down.map((c) => printerCard(c, now)).join('')
+    : `<tr><td style="padding:4px 0 12px;font-size:14px;color:#374151;font-family:${FONT}">Všechny sledované tiskárny jsou online. 👍</td></tr>`;
+
+  const testBanner = isTest
+    ? `<tr><td style="padding:0 0 14px"><div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:6px;padding:10px 14px;font-size:13px;font-family:${FONT}">ℹ️ Testovací zpráva spuštěná ručně z Nastavení.</div></td></tr>`
+    : '';
+  const ctaButton = dashboardUrl
+    ? `<tr><td style="padding:2px 0 16px"><a href="${escHtml(dashboardUrl)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 20px;border-radius:6px;font-family:${FONT}">Otevřít ITDashboard →</a></td></tr>`
+    : '';
+  const footerAddr = dashboardUrl
+    ? `<a href="${escHtml(dashboardUrl)}" style="color:#6b7280;text-decoration:underline">${escHtml(dashboardUrl)}</a> · `
+    : '';
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 12px">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;border-collapse:collapse">
+        <tr><td style="background:${headerBg};border-radius:10px 10px 0 0;padding:18px 20px">
+          <div style="font-size:18px;font-weight:700;color:#ffffff;font-family:${FONT}">${prefix}${headerTitle}</div>
+          <div style="font-size:13px;color:${headerSub};margin-top:3px;font-family:${FONT}">${headerLine}</div>
+        </td></tr>
+        <tr><td style="background:#ffffff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 10px 10px;padding:18px 20px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            ${testBanner}
+            ${body}
+            ${ctaButton}
+          </table>
+          <div style="margin-top:8px;padding-top:14px;border-top:1px solid #eef0f2;font-size:12px;color:#9ca3af;font-family:${FONT};line-height:1.6">
+            ${footerAddr}Vygenerováno ${generated} · ITDashboard automatický report.<br>
+            Sledují se zařízení s kategorií „Tiskárna" (záložka Zařízení). Stav, debounce a okno údržby: Nastavení.
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  return { subject, text, html };
+}

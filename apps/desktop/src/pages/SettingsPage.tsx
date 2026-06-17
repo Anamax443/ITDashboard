@@ -446,6 +446,16 @@ export function SettingsPage() {
         </Section>
 
         <Section title={t('settings.section.mikrotik')} description={t('settings.section.mikrotikDesc')}>
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.mikrotikEnabled')}
+              checked={value('mikrotik.enabled', '1') === '1'}
+              onChange={(checked) => set('mikrotik.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.mikrotikInterval')}>
+              <IntervalInput v={value('mikrotik.interval_sec', '300')} onChange={(v) => set('mikrotik.interval_sec', v)} />
+            </Field>
+          </FieldGroup>
           <Field label={t('settings.field.mikrotikRouters')}>
             <input
               type="text"
@@ -837,6 +847,41 @@ export function SettingsPage() {
           <PortAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
         </Section>
 
+        <Section title={t('settings.section.printerAlerts')} description={t('settings.section.printerAlertsDesc')}>
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.printerAlertsEnabled')}
+              checked={value('alerts.printers.enabled', '0') === '1'}
+              onChange={(checked) => set('alerts.printers.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.printerDebounce')}>
+              <NumberInput v={value('alerts.printers.debounce_minutes', '10')} onChange={(v) => set('alerts.printers.debounce_minutes', v)} suffix={t('settings.unit.minutes')} />
+            </Field>
+            <Field label={t('settings.field.printerFrequency')}>
+              <NumberInput v={value('alerts.printers.frequency_hours', '24')} onChange={(v) => set('alerts.printers.frequency_hours', v)} suffix={t('settings.unit.hour24')} />
+            </Field>
+            <Field label={t('settings.field.printerMaintenance')}>
+              <input
+                type="text"
+                value={value('alerts.printers.maintenance_window', '')}
+                onChange={(e) => set('alerts.printers.maintenance_window', e.target.value)}
+                placeholder="02:00-04:00"
+                style={{ ...fieldStyle, minWidth: 130, fontFamily: 'Consolas, monospace' }}
+              />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.printerRecipients')}>
+            <textarea
+              value={value('alerts.printers.recipients', '')}
+              onChange={(e) => set('alerts.printers.recipients', e.target.value)}
+              placeholder={t('settings.field.recipientsOverridePlaceholder')}
+              rows={2}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
+            />
+          </Field>
+          <PrinterAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
+        </Section>
+
         <Section title={t('settings.section.reportEmail')} description={t('settings.section.reportEmailDesc')}>
           <Field label={t('settings.field.recipientsReportOverride')}>
             <textarea
@@ -955,6 +1000,40 @@ function PortAlertTestButton({ onSaveFirst, hasUnsaved }: { onSaveFirst: () => P
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <button className="refresh-btn" onClick={send} disabled={busy}>
         {busy ? t('settings.field.portTesting') : t('settings.field.portTest')}
+      </button>
+      {result && <span style={{ color: 'var(--ok)', fontSize: 12 }}>✓ {result}</span>}
+      {error && <span style={{ color: 'var(--critical)', fontSize: 12 }}>⚠ {error}</span>}
+    </div>
+  );
+}
+
+function PrinterAlertTestButton({ onSaveFirst, hasUnsaved }: { onSaveFirst: () => Promise<void>; hasUnsaved: boolean }) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async () => {
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      if (hasUnsaved) await onSaveFirst();
+      const r = await api.sendPrinterAlertTest();
+      setResult(t('settings.field.printerTestOk')
+        .replace('{recipients}', String(r.recipients))
+        .replace('{offline}', String(r.offline)));
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <button className="refresh-btn" onClick={send} disabled={busy}>
+        {busy ? t('settings.field.printerTesting') : t('settings.field.printerTest')}
       </button>
       {result && <span style={{ color: 'var(--ok)', fontSize: 12 }}>✓ {result}</span>}
       {error && <span style={{ color: 'var(--critical)', fontSize: 12 }}>⚠ {error}</span>}

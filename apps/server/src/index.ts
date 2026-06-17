@@ -22,6 +22,7 @@ import { registerAlertsRoutes } from './routes/alerts.js';
 import { registerReportsRoutes } from './routes/reports.js';
 import { registerPortStatusRoutes } from './routes/port-status.js';
 import { registerDevicesRoutes } from './routes/devices.js';
+import { registerDatabaseRoutes } from './routes/database.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
 import { startReachabilitySchedule } from './services/reachability-collector.js';
@@ -67,6 +68,7 @@ await registerAlertsRoutes(app);
 await registerReportsRoutes(app);
 await registerPortStatusRoutes(app);
 await registerDevicesRoutes(app);
+await registerDatabaseRoutes(app);
 await registerFrontendRoutes(app);
 
 // Load the access-check whitelist BEFORE we start accepting connections, so

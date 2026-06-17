@@ -1,6 +1,6 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-16 (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
+Last updated: 2026-06-17 (MikroTik allowed-address now permits .213/.181 — collection LIVE; collector rewired to read enable/interval/routers/user/password from DB Settings, no MIKROTIK_* env except MIKROTIK_SECRET; generic "Tiskárna" category; AD-derived pc/server pre-select; printer-offline email alert agenda; 🖨 Printers dashboard tile online/offline; printer IP → web-UI link; new Database tab; migration 043) — prior 2026-06-16: (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
 
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in
@@ -21,6 +21,74 @@ Last updated: 2026-06-16 (decision: MikroTik DHCP collection simplified to IN-AP
 - Live commit: `9742b94`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
+
+## Session 2026-06-17 — MikroTik collection LIVE + printer focus + Database tab
+
+The blocker from 2026-06-16 is **cleared**: the operator had `10.8.2.213` (and
+`.181`) added to the RouterOS `dhcp-reader` **allowed-address** on both routers
+(Brno `10.8.2.207`, Zastávka `10.10.181.2`). Verified live this session — the
+REST pull returns OK from `.213` (Brno 95 leases / 91 bound, Zastávka 47 / 46);
+it still 401s from a non-allowed host, confirming the restriction is just the
+allowed-address list. **In-app DHCP collection is now LIVE.**
+
+**Collector rewired to DB-driven config (migration 043).** `mikrotik-collector.ts`
+no longer reads `MIKROTIK_*` env. `resolveConfig()` reads everything from Settings:
+`mikrotik.enabled` (master toggle, seeded **ON**), `mikrotik.interval_sec` (own
+standalone timer, default 300s, like reachability), `mikrotik.routers`,
+`mikrotik.user`, and the password via `decryptSecret(mikrotik.password_enc)`. The
+scheduler re-reads enable+interval every cycle (no restart needed) and idles
+(re-checking every 60s) while disabled/unconfigured, so it never 401-spams. The
+ONLY MikroTik value left in env is `MIKROTIK_SECRET` (the encryption key, on .213).
+`.env.example` updated — the legacy `MIKROTIK_ROUTERS/USER/PASSWORD/INTERVAL_SEC`
+lines are gone.
+
+**Generic "Tiskárna" category.** The per-vendor printer categories (`printer_canon`
+/ `_kyocera` / `_zebra` / `_hp` / `_other`) collapse to a single `printer`
+("Tiskárna" / "Printer"). Migration 043 relabels any already-assigned `printer_*`
+rows to `printer` (kept by MAC, nothing lost). `suggestCategory` keeps the OUI /
+hostname detection but now suggests the generic `printer`. Server enum
+(`routes/devices.ts` CATEGORIES) + client dropdown + i18n all updated.
+
+**AD-derived pc/server pre-select (operator: "jako předvýběr").** `GET /devices`
+now joins `computers.os_version`; a device matched to an AD computer gets its
+`suggested` set to `server` (os_version `/server/i`) or `pc` from AD, instead of
+the OUI/hostname heuristic (which still drives unmatched devices). The Devices
+dropdown shows the suggestion **pre-selected but dimmed/italic** until the
+operator confirms it (a "✓ potvrdit předvýběr" affordance applies it); the
+operator override always wins and persists by MAC in `device_categories` (it
+already did — confirmed this session, storage = DB).
+
+**Printer-offline email alert agenda (migration 043).** New `alerts.printers.*`
+settings (enable default OFF, debounce, frequency, maintenance window, recipient
+override) + a `printer_alert_state` table (per-MAC debounce/throttle). In
+`alerts.ts`: `loadDownPrinters` (category='printer' whose effective reachability
+— matched=AD computer's, unmatched=lease ping — is false; NULL is NOT down),
+`evaluateAndSendPrinterAlerts` (recovery / debounce / maintenance / throttle,
+mirrors the service agenda), `sendPrinterAlertTest`, `renderPrinterAlert`. It runs
+on the **collector's own cadence** (called at the end of each collect). Route
+`POST /alerts/printers/test`. Settings page gained a "Email alerty — tiskárny"
+section with a test button.
+
+**🖨 Printers dashboard tile (online/offline).** New `SummaryCards` tile counts
+**only operator-confirmed printers** (`category='printer'`), shows offline/total,
+green when all online / red when any offline (same severity pattern as the other
+tiles). Click → Devices tab with "only printers" pre-checked. `App.tsx` fetches
+`/devices` for the count.
+
+**Printer IP → web UI.** On the Devices tab a printer-ish device's IP is now a
+link to `http://{ip}` (the printer's embedded web page) for a quick manual status
+check. (Roadmap G2, not built yet: pull toner/supply levels + status via SNMP
+Printer-MIB — to be prototyped against a real printer first.)
+
+**New "Databáze" / "Database" tab.** `GET /database` returns the whole-DB size
+(data + log + used) and a per-table breakdown (rows, reserved KB, data KB) from
+the system catalog (`sys.tables`/`partitions`/`allocation_units` + `database_files`).
+New `DatabasePage` renders summary cards + a sortable-by-size table with a usage
+bar, so the operator sees which tables eat the space. Read-only; loads on demand.
+Nav entry between Devices and Perf.
+
+Typecheck clean across all workspaces; 54/54 tests pass. Migration 043 applies on
+deploy. Live commit to be set after this push.
 
 ## Session 2026-06-16 — MikroTik collection model simplified to in-app (decision, docs only)
 

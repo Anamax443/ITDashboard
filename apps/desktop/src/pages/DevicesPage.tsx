@@ -9,15 +9,18 @@ import { useI18n } from '../i18n.js';
 // ones (printers, phones, IoT) are pinged here and categorized by the operator.
 
 const CATEGORY_KEYS = [
-  '', 'printer_canon', 'printer_kyocera', 'printer_zebra', 'printer_hp', 'printer_other',
-  'phone', 'pc', 'server', 'network', 'iot', 'other',
+  '', 'printer', 'phone', 'pc', 'server', 'network', 'iot', 'other',
 ];
 
 function effectiveReachable(d: DeviceItem): boolean | null {
   return d.computer_id != null ? d.computer_reachable : d.reachable;
 }
 
-export function DevicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: string) => void } = {}) {
+export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrintersConsumed }: {
+  onJumpToComputer?: (name: string) => void;
+  initialOnlyPrinters?: boolean;
+  onOnlyPrintersConsumed?: () => void;
+} = {}) {
   const { t } = useI18n();
   // Category keys are dynamic, but t() is typed to a literal-key union — cast the
   // computed key to t's parameter type so the dynamic lookup type-checks.
@@ -38,6 +41,11 @@ export function DevicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: st
     const id = setInterval(refresh, 30_000);
     return () => clearInterval(id);
   }, []);
+
+  // One-shot: arriving via the dashboard "Printers" tile pre-checks "only printers".
+  useEffect(() => {
+    if (initialOnlyPrinters) { setOnlyPrinters(true); onOnlyPrintersConsumed?.(); }
+  }, [initialOnlyPrinters, onOnlyPrintersConsumed]);
 
   const runAll = async () => {
     if (running) return;
@@ -70,12 +78,16 @@ export function DevicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: st
   };
 
   const sites = Array.from(new Set(items.map((d) => d.site))).sort();
-  const isPrinter = (d: DeviceItem) => (d.category ?? '').startsWith('printer_') || (!d.category && d.suggested.startsWith('printer_'));
+  // Confirmed printer = operator-assigned category 'printer' (counts/tile use this).
+  const isConfirmedPrinter = (d: DeviceItem) => d.category === 'printer';
+  // Printer-ish = confirmed OR (uncategorized but heuristic suggests printer) —
+  // used only by the "only printers" filter so the operator can find candidates.
+  const isPrinterish = (d: DeviceItem) => d.category === 'printer' || (!d.category && d.suggested === 'printer');
 
   const filtered = items.filter((d) => {
     if (site && d.site !== site) return false;
     if (onlyUnmanaged && d.computer_id != null) return false;
-    if (onlyPrinters && !isPrinter(d)) return false;
+    if (onlyPrinters && !isPrinterish(d)) return false;
     if (search) {
       const q = search.toLowerCase();
       return (d.ip_address ?? '').toLowerCase().includes(q)
@@ -88,7 +100,7 @@ export function DevicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: st
 
   const total = items.length;
   const unmanaged = items.filter((d) => d.computer_id == null).length;
-  const printers = items.filter(isPrinter).length;
+  const printers = items.filter(isConfirmedPrinter).length;
 
   const statusCell = (d: DeviceItem) => {
     const r = effectiveReachable(d);
@@ -155,22 +167,38 @@ export function DevicesPage({ onJumpToComputer }: { onJumpToComputer?: (name: st
               {filtered.map((d) => (
                 <tr key={`${d.site}-${d.mac_address}`}>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{d.site}</td>
-                  <td style={{ fontFamily: 'Consolas, monospace', fontSize: 11 }}>{d.ip_address ?? '—'}</td>
+                  <td style={{ fontFamily: 'Consolas, monospace', fontSize: 11 }}>
+                    {d.ip_address
+                      ? (isPrinterish(d)
+                          ? <a href={`http://${d.ip_address}`} target="_blank" rel="noreferrer" title={t('devices.openWeb')} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{d.ip_address}</a>
+                          : d.ip_address)
+                      : '—'}
+                  </td>
                   <td style={{ fontWeight: 600, fontSize: 12 }}>{d.host_name ?? <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>—</span>}</td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 10, fontFamily: 'Consolas, monospace' }}>{d.mac_address}</td>
                   <td>
-                    <select
-                      value={d.category ?? ''}
-                      onChange={(e) => setCategory(d, e.target.value)}
-                      style={{ fontSize: 11, width: '100%', color: d.category ? 'var(--text)' : 'var(--text-dim)' }}
-                    >
-                      {CATEGORY_KEYS.map((k) => (
-                        <option key={k || 'none'} value={k}>{k === '' ? '—' : catLabel(k)}</option>
-                      ))}
-                    </select>
+                    {/* Pre-select: an uncategorized device shows its AD-derived
+                        (pc/server) or heuristic (printer/phone) suggestion already
+                        selected but dimmed/italic — it's only saved once the
+                        operator confirms (✓) or picks another option. */}
+                    {(() => {
+                      const unconfirmed = !d.category && !!d.suggested;
+                      const shown = d.category ?? d.suggested ?? '';
+                      return (
+                        <select
+                          value={shown}
+                          onChange={(e) => setCategory(d, e.target.value)}
+                          style={{ fontSize: 11, width: '100%', color: d.category ? 'var(--text)' : 'var(--text-dim)', fontStyle: unconfirmed ? 'italic' : 'normal' }}
+                        >
+                          {CATEGORY_KEYS.map((k) => (
+                            <option key={k || 'none'} value={k}>{k === '' ? '—' : catLabel(k)}</option>
+                          ))}
+                        </select>
+                      );
+                    })()}
                     {!d.category && d.suggested && (
                       <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 1, cursor: 'pointer' }} title={t('devices.applySuggestion')} onClick={() => setCategory(d, d.suggested)}>
-                        {t('devices.suggest')}: {catLabel(d.suggested)}
+                        ✓ {t('devices.confirmSuggest')} ({catLabel(d.suggested)})
                       </div>
                     )}
                   </td>

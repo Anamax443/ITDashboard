@@ -4,9 +4,9 @@ import { getPool } from '../db/pool.js';
 import { runMikrotikCollectOnce, probeDeviceNow, suggestCategory } from '../services/mikrotik-collector.js';
 
 // Allowed operator device categories (empty string clears the assignment).
+// Printers are one generic `printer` bucket (no per-vendor split).
 const CATEGORIES = [
-  'printer_canon', 'printer_kyocera', 'printer_zebra', 'printer_hp', 'printer_other',
-  'phone', 'pc', 'server', 'network', 'iot', 'other',
+  'printer', 'phone', 'pc', 'server', 'network', 'iot', 'other',
 ] as const;
 
 interface DeviceRow {
@@ -27,6 +27,7 @@ interface DeviceRow {
   computer_id: number | null;
   computer_name: string | null;
   computer_reachable: boolean | null;
+  computer_os: string | null;
 }
 
 export async function registerDevicesRoutes(app: FastifyInstance) {
@@ -39,11 +40,12 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
              l.status, l.dynamic, l.expires_after, l.router_last_seen, l.last_seen,
              l.reachable, l.reach_checked_at,
              dc.category,
-             m.id AS computer_id, m.name AS computer_name, m.reachable AS computer_reachable
+             m.id AS computer_id, m.name AS computer_name, m.reachable AS computer_reachable,
+             m.os_version AS computer_os
       FROM dhcp_leases l
       LEFT JOIN device_categories dc ON dc.mac_address = l.mac_address
       OUTER APPLY (
-        SELECT TOP 1 c.id, c.name, c.reachable
+        SELECT TOP 1 c.id, c.name, c.reachable, c.os_version
         FROM computers c
         WHERE (l.host_name IS NOT NULL AND LOWER(c.name) = LOWER(l.host_name))
            OR (l.ip_address IS NOT NULL AND c.ip_address = l.ip_address)
@@ -51,9 +53,14 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
       ) m
       ORDER BY l.site, l.ip_address
     `);
+    // `suggested` is a UI pre-select hint: a device matched to an AD computer is
+    // pre-selected pc/server from its AD os_version (we already know the type);
+    // unmatched devices fall back to the OUI/hostname printer/phone heuristic.
     const items = r.recordset.map((d) => ({
       ...d,
-      suggested: suggestCategory(d.host_name, d.mac_address),
+      suggested: d.computer_id != null
+        ? (/server/i.test(d.computer_os ?? '') ? 'server' : 'pc')
+        : suggestCategory(d.host_name, d.mac_address),
     }));
     return { items };
   });

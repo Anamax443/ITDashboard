@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem } from './api.js';
 import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { HealthCards } from './components/HealthCards.js';
@@ -18,6 +18,7 @@ import { ServicesPage } from './pages/ServicesPage.js';
 import { CriticalServicesPage } from './pages/CriticalServicesPage.js';
 import { PortsPage } from './pages/PortsPage.js';
 import { DevicesPage } from './pages/DevicesPage.js';
+import { DatabasePage } from './pages/DatabasePage.js';
 import { PerfPage } from './pages/PerfPage.js';
 import { HelpBox } from './components/HelpBox.js';
 import { AccessDenied } from './components/AccessDenied.js';
@@ -26,7 +27,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'perf' | 'activity' | 'settings';
+type View = 'dashboard' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'database' | 'perf' | 'activity' | 'settings';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -52,9 +53,12 @@ export function App() {
   const [serviceProblems, setServiceProblems] = useState<ServiceProblem[]>([]);
   const [criticalServices, setCriticalServices] = useState<CriticalServiceStatus[]>([]);
   const [ports, setPorts] = useState<PortStatusComputer[]>([]);
+  const [devices, setDevices] = useState<DeviceItem[]>([]);
   // One-shot: arriving on the Ports tab via the dashboard tile pre-checks the
   // "only issues" filter so the operator lands on the problem machines.
   const [portsInitialOnlyIssues, setPortsInitialOnlyIssues] = useState(false);
+  // Same one-shot for Devices → pre-checks "only printers".
+  const [devicesInitialOnlyPrinters, setDevicesInitialOnlyPrinters] = useState(false);
   // Same one-shot for Critical services → pre-checks "only down".
   const [critInitialOnlyDown, setCritInitialOnlyDown] = useState(false);
   // Same one-shot for Services → pre-checks "only ExitCode != 0".
@@ -86,6 +90,7 @@ export function App() {
     api.serviceProblems().then((r) => setServiceProblems(r.items)).catch(() => {});
     api.criticalServices().then((r) => setCriticalServices(r.items)).catch(() => {});
     api.portStatus().then((r) => setPorts(r.items)).catch(() => {});
+    api.devices().then((r) => setDevices(r.items)).catch(() => {});
     api.perfSummary(7).then(setPerfSummary).catch(() => {});
     api.inactiveStats().then(setInactiveStats).catch(() => {});
     api.pcHealth().then(setPcHealth).catch(() => {});
@@ -138,6 +143,15 @@ export function App() {
   // reachable machines (an offline PC holds a stale/unknown port state).
   const portsTotal = ports.length;
   const portsWithIssues = ports.filter((pc) => pc.reachable !== false && pc.ports.some((p) => !p.is_open)).length;
+  // Printers tile: only operator-confirmed printers (category === 'printer').
+  // Offline = effective reachability false (matched → AD computer's reachable;
+  // unmatched → the lease ping). NULL (never probed) is not counted as offline.
+  const confirmedPrinters = devices.filter((d) => d.category === 'printer');
+  const printersTotal = confirmedPrinters.length;
+  const printersOffline = confirmedPrinters.filter((d) => {
+    const r = d.computer_id != null ? d.computer_reachable : d.reachable;
+    return r === false;
+  }).length;
 
   const refreshComputers = useCallback(async () => {
     try {
@@ -200,6 +214,7 @@ export function App() {
             <button className={view === 'critsvc' ? 'active' : ''} onClick={() => setView('critsvc')}>{t('nav.critsvc')}</button>
             <button className={view === 'ports' ? 'active' : ''} onClick={() => setView('ports')}>{t('nav.ports')}</button>
             <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}>{t('nav.devices')}</button>
+            <button className={view === 'database' ? 'active' : ''} onClick={() => setView('database')}>{t('nav.database')}</button>
             <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>{t('nav.perf')}</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>{t('nav.activity')}</button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>{t('nav.settings')}</button>
@@ -286,6 +301,9 @@ export function App() {
             portsWithIssues={portsWithIssues}
             portsTotal={portsTotal}
             onClickPorts={() => { setPortsInitialOnlyIssues(true); setView('ports'); }}
+            printersOffline={printersOffline}
+            printersTotal={printersTotal}
+            onClickPrinters={() => { setDevicesInitialOnlyPrinters(true); setView('devices'); }}
             perfSummary={perfSummary}
             inactiveStats={inactiveStats}
             onClickMonitoredDisks={() => { setComputersPreFilter('disk-email'); setView('computers'); }}
@@ -365,7 +383,13 @@ export function App() {
 
       {view === 'devices' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <DevicesPage onJumpToComputer={jumpToComputer} />
+          <DevicesPage onJumpToComputer={jumpToComputer} initialOnlyPrinters={devicesInitialOnlyPrinters} onOnlyPrintersConsumed={() => setDevicesInitialOnlyPrinters(false)} />
+        </div>
+      )}
+
+      {view === 'database' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <DatabasePage />
         </div>
       )}
 

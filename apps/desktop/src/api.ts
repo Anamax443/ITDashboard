@@ -541,6 +541,21 @@ export interface DeviceItem {
   suggested: string;                    // UI-only category hint ('' = none)
 }
 
+/** Per-table footprint for the Database tab. */
+export interface DbTableStat {
+  table_name: string;
+  row_count: number;
+  reserved_kb: number;
+  used_kb: number;
+  data_kb: number;
+}
+
+/** Whole-DB size summary + per-table breakdown (GET /database). */
+export interface DatabaseOverview {
+  db: { name: string; data_kb: number; log_kb: number; total_kb: number; data_used_kb: number };
+  tables: DbTableStat[];
+}
+
 async function jget<T>(path: string): Promise<T> {
   const r = await fetch(`${API_BASE}${path}`);
   if (!r.ok) throw new Error(`${path} → ${r.status}`);
@@ -678,6 +693,7 @@ export const api = {
   portStatusRun: () => jpost<{ pcs: number; probed: number; skippedOffline: number; openPorts: number; durationMs: number }>('/port-status/run'),
   probeComputer: (computerId: number) => jpost<PerPcProbeResult>(`/computers/${computerId}/probe`),
   devices: () => jget<{ items: DeviceItem[] }>('/devices'),
+  database: () => jget<DatabaseOverview>('/database'),
   devicesRun: () => jpost<{ routers: number; leases: number; unmatchedPinged: number; reachable: number; errors: string[]; durationMs: number }>('/devices/run'),
   setDeviceCategory: async (mac: string, category: string) => {
     const r = await fetch(`${API_BASE}/devices/category`, {
@@ -769,6 +785,12 @@ export const api = {
     const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; down?: number; monitoredPcs?: number };
     if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/ports/test → ${r.status}`);
     return body as { ok: true; recipients: number; down: number; monitoredPcs: number };
+  },
+  sendPrinterAlertTest: async () => {
+    const r = await fetch(`${API_BASE}/alerts/printers/test`, { method: 'POST' });
+    const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; offline?: number };
+    if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/printers/test → ${r.status}`);
+    return body as { ok: true; recipients: number; offline: number };
   },
   reportOverview: () => jget<OverviewReport>('/reports/overview'),
   sendReportEmail: async (machines?: string[]) => {
