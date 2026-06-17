@@ -537,6 +537,7 @@ export interface DeviceItem {
   packet_loss: number | null;           // last measured packet loss % (0–100)
   reach_checked_at: string | null;
   category: string | null;              // operator-assigned category (by MAC)
+  operator_name: string | null;         // operator-edited device name (by MAC)
   computer_id: number | null;           // matched AD computer (host_name / IP)
   computer_name: string | null;
   computer_reachable: boolean | null;   // matched computer's reachability
@@ -705,6 +706,15 @@ export const api = {
     });
     if (!r.ok) throw new Error(`PATCH /devices/category → ${r.status}`);
     return r.json() as Promise<{ mac: string; category: string }>;
+  },
+  setDeviceName: async (mac: string, name: string) => {
+    const r = await fetch(`${API_BASE}/devices/name`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mac, name }),
+    });
+    if (!r.ok) throw new Error(`PATCH /devices/name → ${r.status}`);
+    return r.json() as Promise<{ mac: string; name: string }>;
   },
   probeDevice: async (site: string, mac: string, ip: string) => {
     const r = await fetch(`${API_BASE}/devices/probe`, {

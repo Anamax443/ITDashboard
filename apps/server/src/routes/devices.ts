@@ -26,6 +26,7 @@ interface DeviceRow {
   packet_loss: number | null;
   reach_checked_at: string | null;
   category: string | null;
+  operator_name: string | null;
   computer_id: number | null;
   computer_name: string | null;
   computer_reachable: boolean | null;
@@ -41,7 +42,7 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
       SELECT l.site, l.mac_address, l.ip_address, l.host_name, l.server, l.comment,
              l.status, l.dynamic, l.source, l.expires_after, l.router_last_seen, l.last_seen,
              l.reachable, l.packet_loss, l.reach_checked_at,
-             dc.category,
+             dc.category, dc.name AS operator_name,
              m.id AS computer_id, m.name AS computer_name, m.reachable AS computer_reachable,
              m.os_version AS computer_os
       FROM dhcp_leases l
@@ -77,7 +78,11 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
     const mac = body.mac.trim().toUpperCase();
     const pool = await getPool();
     if (body.category === '') {
-      await pool.request().input('mac', mac).query(`DELETE FROM device_categories WHERE mac_address = @mac`);
+      // Clear the category but keep the row if it still carries an operator name.
+      await pool.request().input('mac', mac).query(`
+        UPDATE device_categories SET category = NULL, updated_at = SYSUTCDATETIME() WHERE mac_address = @mac;
+        DELETE FROM device_categories WHERE mac_address = @mac AND (name IS NULL OR name = '');
+      `);
       return { mac, category: '' };
     }
     await pool.request().input('mac', mac).input('cat', body.category).input('note', body.note ?? null).query(`
@@ -86,6 +91,28 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
       WHEN NOT MATCHED THEN INSERT (mac_address, category, note) VALUES (@mac, @cat, @note);
     `);
     return { mac, category: body.category };
+  });
+
+  // Set / clear an operator-edited device name for a MAC (persists across reloads
+  // and collector overwrites; empty clears it). Stored in device_categories.
+  app.patch('/devices/name', async (req) => {
+    const body = z.object({ mac: z.string().min(1).max(32), name: z.string().max(255) }).parse(req.body);
+    const mac = body.mac.trim().toUpperCase();
+    const name = body.name.trim();
+    const pool = await getPool();
+    if (name === '') {
+      await pool.request().input('mac', mac).query(`
+        UPDATE device_categories SET name = NULL, updated_at = SYSUTCDATETIME() WHERE mac_address = @mac;
+        DELETE FROM device_categories WHERE mac_address = @mac AND name IS NULL AND (category IS NULL OR category = '');
+      `);
+      return { mac, name: '' };
+    }
+    await pool.request().input('mac', mac).input('name', name).query(`
+      MERGE device_categories AS t USING (SELECT @mac AS mac) AS s ON t.mac_address = s.mac
+      WHEN MATCHED THEN UPDATE SET name = @name, updated_at = SYSUTCDATETIME()
+      WHEN NOT MATCHED THEN INSERT (mac_address, name) VALUES (@mac, @name);
+    `);
+    return { mac, name };
   });
 
   // Manual one-off pull of every configured router — on demand from the tab.

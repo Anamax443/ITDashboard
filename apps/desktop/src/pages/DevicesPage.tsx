@@ -45,6 +45,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const [onlyUnmanaged, setOnlyUnmanaged] = useState(false);
   const [onlyPrinters, setOnlyPrinters] = useState(false);
   const [catFilter, setCatFilter] = useState('');
+  const [editName, setEditName] = useState<{ mac: string; value: string } | null>(null);
   const [running, setRunning] = useState(false);
   const [rowBusy, setRowBusy] = useState<Record<string, boolean>>({});
   const [consoleOut, setConsoleOut] = useState<{ name: string; text: string | null; error?: boolean } | null>(null);
@@ -81,6 +82,15 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     } finally {
       setRunning(false);
     }
+  };
+
+  const saveName = async (d: DeviceItem) => {
+    const v = (editName?.value ?? '').trim();
+    setEditName(null);
+    if (v === (d.operator_name ?? '')) return; // unchanged
+    setItems((arr) => arr.map((x) => x.mac_address === d.mac_address ? { ...x, operator_name: v || null } : x));
+    try { await api.setDeviceName(d.mac_address, v); }
+    catch (e) { setError(String(e)); refresh(); }
   };
 
   const setCategory = async (d: DeviceItem, category: string) => {
@@ -124,6 +134,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
       const q = search.toLowerCase();
       return (d.ip_address ?? '').toLowerCase().includes(q)
         || (d.host_name ?? '').toLowerCase().includes(q)
+        || (d.operator_name ?? '').toLowerCase().includes(q)
         || d.mac_address.toLowerCase().includes(q)
         || (d.comment ?? '').toLowerCase().includes(q);
     }
@@ -225,7 +236,26 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                           : d.ip_address)
                       : '—'}
                   </td>
-                  <td style={{ fontWeight: 600, fontSize: 12 }}>{d.host_name ?? <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>—</span>}</td>
+                  <td style={{ fontWeight: 600, fontSize: 12 }}>
+                    {editName?.mac === d.mac_address ? (
+                      <input
+                        autoFocus
+                        value={editName.value}
+                        onChange={(e) => setEditName({ mac: d.mac_address, value: e.target.value })}
+                        onKeyDown={(e) => { if (e.key === 'Enter') saveName(d); else if (e.key === 'Escape') setEditName(null); }}
+                        onBlur={() => saveName(d)}
+                        placeholder={d.host_name ?? ''}
+                        style={{ width: '100%', fontSize: 12, padding: '2px 4px' }}
+                      />
+                    ) : (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {(d.operator_name ?? d.host_name)
+                          ? <span style={{ color: d.operator_name ? 'var(--accent)' : undefined }} title={d.operator_name ? `${t('devices.editName')} · ${d.host_name ?? ''}`.trim() : undefined}>{d.operator_name ?? d.host_name}</span>
+                          : <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>—</span>}
+                        <span onClick={() => setEditName({ mac: d.mac_address, value: d.operator_name ?? '' })} title={t('devices.editName')} style={{ cursor: 'pointer', opacity: 0.4, fontSize: 10, fontWeight: 400 }}>✎</span>
+                      </span>
+                    )}
+                  </td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 10, fontFamily: 'Consolas, monospace' }}>{d.mac_address}</td>
                   <td style={{ fontSize: 11 }}>
                     {d.dynamic === false
