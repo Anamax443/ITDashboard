@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import http from 'node:http';
 import https from 'node:https';
-import type { IncomingMessage } from 'node:http';
+import zlib from 'node:zlib';
 
 // Best-effort reverse proxy for a device's embedded web UI (printer EWS etc.).
 //
@@ -18,7 +18,14 @@ import type { IncomingMessage } from 'node:http';
 
 const IP_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 
-function fetchUpstream(targetUrl: string, depth: number): Promise<{ res: IncomingMessage }> {
+interface Upstream { ct: string; enc: string; body: Buffer; }
+
+// Fetch the device page, following redirects, ignoring the self-signed cert. The
+// FULL body is buffered and returned (not streamed) so the Fastify handler can
+// `return` it: streaming via an async `reply.send` in an 'end' callback let the
+// handler resolve with undefined first, so Fastify sent an empty 200 before the
+// body arrived — the proxy looked like it "returned nothing".
+function fetchUpstream(targetUrl: string, depth: number): Promise<Upstream> {
   return new Promise((resolve, reject) => {
     if (depth > 5) { reject(new Error('too many redirects')); return; }
     let u: URL;
@@ -34,7 +41,14 @@ function fetchUpstream(targetUrl: string, depth: number): Promise<{ res: Incomin
         resolve(fetchUpstream(next, depth + 1));
         return;
       }
-      resolve({ res });
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => resolve({
+        ct: String(res.headers['content-type'] ?? 'application/octet-stream'),
+        enc: String(res.headers['content-encoding'] ?? ''),
+        body: Buffer.concat(chunks),
+      }));
+      res.on('error', reject);
     });
     req.on('error', reject);
     req.on('timeout', () => req.destroy(new Error('timeout')));
@@ -42,40 +56,42 @@ function fetchUpstream(targetUrl: string, depth: number): Promise<{ res: Incomin
   });
 }
 
-function serve(res: IncomingMessage, ip: string, reply: FastifyReply): void {
-  const ct = String(res.headers['content-type'] ?? 'application/octet-stream');
-  reply.header('content-type', ct);
-  if (/text\/html/i.test(ct)) {
-    // Inject a <base> so the device's RELATIVE links route back through the proxy.
-    const base = `/devices/web/${ip}/`;
-    let body = '';
-    res.setEncoding('utf8');
-    res.on('data', (c) => (body += c));
-    res.on('end', () => {
-      body = /<head[^>]*>/i.test(body)
-        ? body.replace(/<head[^>]*>/i, (m) => `${m}<base href="${base}">`)
-        : `<base href="${base}">${body}`;
-      reply.send(body);
-    });
-    res.on('error', () => reply.code(502).send('stream error'));
-  } else {
-    reply.send(res); // pipe binary/other content straight through
-  }
+// Decompress when the device used Content-Encoding (rare on printers, but cheap
+// to handle). Falls back to the raw bytes if decompression fails.
+function decodeBody(body: Buffer, enc: string): Buffer {
+  try {
+    if (/\bgzip\b/i.test(enc)) return zlib.gunzipSync(body);
+    if (/\bdeflate\b/i.test(enc)) return zlib.inflateSync(body);
+    if (/\bbr\b/i.test(enc)) return zlib.brotliDecompressSync(body);
+  } catch { /* fall through to raw */ }
+  return body;
 }
 
 export async function registerDeviceWebProxyRoutes(app: FastifyInstance) {
   const handler = async (req: FastifyRequest, reply: FastifyReply) => {
     const params = req.params as Record<string, string | undefined>;
     const ip = params.ip ?? '';
-    if (!IP_RE.test(ip) || ip.split('.').some((o) => Number(o) > 255)) { reply.code(400).send('bad ip'); return; }
+    if (!IP_RE.test(ip) || ip.split('.').some((o) => Number(o) > 255)) { reply.code(400); return 'bad ip'; }
     const star = params['*'] ?? '';
     const rest = star ? `/${star}` : '/';
     try {
       // Printers usually force HTTPS; the redirect-follow covers an HTTP landing too.
-      const { res } = await fetchUpstream(`https://${ip}${rest}`, 0).catch(() => fetchUpstream(`http://${ip}${rest}`, 0));
-      serve(res, ip, reply);
+      const up = await fetchUpstream(`https://${ip}${rest}`, 0).catch(() => fetchUpstream(`http://${ip}${rest}`, 0));
+      reply.header('content-type', up.ct);
+      const decoded = decodeBody(up.body, up.enc);
+      if (/text\/html/i.test(up.ct)) {
+        // Inject a <base> so the device's RELATIVE links route back through the proxy.
+        const base = `/devices/web/${ip}/`;
+        let html = decoded.toString('utf8');
+        html = /<head[^>]*>/i.test(html)
+          ? html.replace(/<head[^>]*>/i, (m) => `${m}<base href="${base}">`)
+          : `<base href="${base}">${html}`;
+        return html;
+      }
+      return decoded; // binary/other content as-is
     } catch (err) {
-      reply.code(502).send(`device unreachable: ${String(err).split('\n')[0]}`);
+      reply.code(502);
+      return `device unreachable: ${String(err).split('\n')[0]}`;
     }
   };
   app.get('/devices/web/:ip', handler);
