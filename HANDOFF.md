@@ -18,7 +18,7 @@ Last updated: 2026-06-17 (MikroTik allowed-address now permits .213/.181 — col
 - Runtime path on server: `C:\Apps\ITDashboard`
 - SQL server: `10.8.2.225`
 - Database: `ITDashboard`
-- Live commit: `e614639`
+- Live commit: `af24c0c`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
 
