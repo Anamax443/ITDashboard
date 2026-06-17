@@ -63,6 +63,8 @@ export function App() {
   const [devicesInitialOnlyPrinters, setDevicesInitialOnlyPrinters] = useState(false);
   // Same one-shot for Devices → pre-checks "issues only" (loss/latency).
   const [devicesInitialOnlyLossy, setDevicesInitialOnlyLossy] = useState(false);
+  // Same one-shot for Printer status → pre-checks "only problematic" supplies.
+  const [printersInitialOnlyProblem, setPrintersInitialOnlyProblem] = useState(false);
   // Same one-shot for Critical services → pre-checks "only down".
   const [critInitialOnlyDown, setCritInitialOnlyDown] = useState(false);
   // Same one-shot for Services → pre-checks "only ExitCode != 0".
@@ -324,7 +326,7 @@ export function App() {
             onClickDegraded={() => { setDevicesInitialOnlyLossy(true); setView('devices'); }}
             suppliesLow={suppliesLow}
             suppliesTotal={suppliesTotal}
-            onClickSupplies={() => setView('printers')}
+            onClickSupplies={() => { setPrintersInitialOnlyProblem(true); setView('printers'); }}
             perfSummary={perfSummary}
             inactiveStats={inactiveStats}
             onClickMonitoredDisks={() => { setComputersPreFilter('disk-email'); setView('computers'); }}
@@ -410,7 +412,7 @@ export function App() {
 
       {view === 'printers' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <PrinterSuppliesPage settings={settingsMap} />
+          <PrinterSuppliesPage settings={settingsMap} initialOnlyProblem={printersInitialOnlyProblem} onOnlyProblemConsumed={() => setPrintersInitialOnlyProblem(false)} />
         </div>
       )}
 

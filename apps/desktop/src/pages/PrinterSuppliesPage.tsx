@@ -43,7 +43,11 @@ function statusOf(p: PrinterDevice, lowPct: number): Status {
   return crit ? 'crit' : low ? 'low' : 'ok';
 }
 
-export function PrinterSuppliesPage({ settings = {} }: { settings?: Record<string, string> } = {}) {
+export function PrinterSuppliesPage({ settings = {}, initialOnlyProblem, onOnlyProblemConsumed }: {
+  settings?: Record<string, string>;
+  initialOnlyProblem?: boolean;
+  onOnlyProblemConsumed?: () => void;
+} = {}) {
   const { t } = useI18n();
   const webProxy = ['1', 'true', 'yes', 'on'].includes((settings['devices.web_proxy'] ?? '1').toLowerCase());
   const deviceWebUrl = (ip: string) => webProxy ? `${API_BASE}/devices/web/${ip}` : `http://${ip}`;
@@ -63,6 +67,11 @@ export function PrinterSuppliesPage({ settings = {} }: { settings?: Record<strin
     const id = setInterval(refresh, 30_000);
     return () => clearInterval(id);
   }, []);
+
+  // One-shot: arriving via the dashboard "Náplně" tile pre-checks "only problematic".
+  useEffect(() => {
+    if (initialOnlyProblem) { setOnlyProblem(true); onOnlyProblemConsumed?.(); }
+  }, [initialOnlyProblem, onOnlyProblemConsumed]);
 
   const runAll = async () => {
     if (running) return;
