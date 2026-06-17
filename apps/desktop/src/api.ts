@@ -534,6 +534,7 @@ export interface DeviceItem {
   router_last_seen: string | null;
   last_seen: string;
   reachable: boolean | null;            // ping verdict for UNMATCHED devices
+  packet_loss: number | null;           // last measured packet loss % (0–100)
   reach_checked_at: string | null;
   category: string | null;              // operator-assigned category (by MAC)
   computer_id: number | null;           // matched AD computer (host_name / IP)

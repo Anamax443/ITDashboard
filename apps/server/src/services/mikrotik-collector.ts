@@ -191,7 +191,9 @@ export function suggestCategory(hostName: string | null | undefined, mac: string
 // OWN ARP table to learn IP↔MAC for statically-addressed devices the router
 // never sees (same-subnet hosts it doesn't route for). Ranges are "Site=CIDR".
 
-interface ScanRange { site: string; base: number; prefix: number; }
+interface ScanRange { site: string; base: number; prefix: number; exclude: boolean; }
+
+function maskOf(prefix: number): number { return prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0; }
 
 function ipToInt(ip: string): number | null {
   const m = ip.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
@@ -237,16 +239,22 @@ function parseCidrOrWildcard(s: string): { base: number; prefix: number; netLabe
 }
 
 // "Site=range" per line/comma; the "Site=" is OPTIONAL (label derived from the
-// network when omitted). range = CIDR or wildcard.
+// network when omitted). range = CIDR or wildcard. A leading "!" or "<>" on the
+// line marks an EXCLUDE range — IPs inside it are skipped even if another range
+// covers them (same convention as the disk-scope syntax elsewhere in the app).
 function parseScanRanges(raw: string | undefined): ScanRange[] {
   const out: ScanRange[] = [];
-  for (const tok of (raw ?? '').split(/[,;\r\n]+/).map((s) => s.trim()).filter(Boolean)) {
+  for (const raw0 of (raw ?? '').split(/[,;\r\n]+/).map((s) => s.trim()).filter(Boolean)) {
+    let tok = raw0;
+    let exclude = false;
+    if (tok.startsWith('!')) { exclude = true; tok = tok.slice(1).trim(); }
+    else if (tok.startsWith('<>')) { exclude = true; tok = tok.slice(2).trim(); }
     const eq = tok.indexOf('=');
     const site = eq > 0 ? tok.slice(0, eq).trim() : '';
     const rangeStr = eq > 0 ? tok.slice(eq + 1).trim() : tok;
     const p = parseCidrOrWildcard(rangeStr);
     if (!p) continue;
-    out.push({ site: site || p.netLabel, base: p.base, prefix: p.prefix });
+    out.push({ site: site || p.netLabel, base: p.base, prefix: p.prefix, exclude });
   }
   return out;
 }
@@ -322,15 +330,25 @@ async function upsertDevice(d: NormDevice): Promise<{ mac: string; ip: string | 
   return { mac: d.mac, ip: d.ip, host: d.host };
 }
 
-async function persistReachable(site: string, mac: string, reachable: boolean): Promise<void> {
+async function persistReachable(site: string, mac: string, reachable: boolean, lossPct: number | null = null): Promise<void> {
   const pool = await getPool();
-  await pool.request().input('site', site).input('mac', mac).input('r', reachable ? 1 : 0).query(`
+  await pool.request().input('site', site).input('mac', mac).input('r', reachable ? 1 : 0).input('loss', lossPct).query(`
     UPDATE dhcp_leases
     SET reachable = @r,
+        packet_loss = @loss,
         reach_checked_at = SYSUTCDATETIME(),
         last_reachable_at = CASE WHEN @r = 1 THEN SYSUTCDATETIME() ELSE last_reachable_at END
     WHERE site = @site AND mac_address = @mac;
   `);
+}
+
+// Multi-ping reachability with PACKET LOSS. Locale-independent: counts the
+// "TTL=" reply lines (works on Czech/English ping alike) against the send count.
+async function pingStats(ip: string, count: number, timeoutMs: number): Promise<{ alive: boolean; lossPct: number }> {
+  const { output } = await pingWithOutput(ip, count, timeoutMs);
+  const received = (output.match(/TTL=/gi) ?? []).length;
+  const lossPct = Math.max(0, Math.min(100, Math.round(((count - received) / count) * 100)));
+  return { alive: received > 0, lossPct };
 }
 
 export interface MikrotikRunResult {
@@ -417,10 +435,10 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
         const d = toPing[idx++];
         if (!d) continue;
         try {
-          const ok = await icmpPing(d.ip, 2000);
-          await persistReachable(d.site, d.mac, ok);
+          const st = await pingStats(d.ip, 4, 1500);
+          await persistReachable(d.site, d.mac, st.alive, st.lossPct);
           unmatchedPinged++;
-          if (ok) reachable++;
+          if (st.alive) reachable++;
         } catch { /* skip on error, keep last state */ }
       }
     };
@@ -444,12 +462,19 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
         const knownIps = new Set<string>();
         for (const r of stored) if (r.ip_address) knownIps.add(r.ip_address);
 
-        // Discovery: ping only the UNKNOWN host IPs in the configured ranges.
+        // Discovery: ping only the UNKNOWN host IPs in the INCLUDE ranges, minus
+        // anything in an EXCLUDE ("!"/"<>") range.
+        const includeRanges = scanRanges.filter((r) => !r.exclude);
+        const excludeRanges = scanRanges.filter((r) => r.exclude);
+        const inExcluded = (ip: string): boolean => {
+          const n = ipToInt(ip);
+          return n != null && excludeRanges.some((r) => (n & maskOf(r.prefix)) >>> 0 === r.base);
+        };
         const targets: Array<{ site: string; ip: string }> = [];
         const targetIps = new Set<string>();
-        for (const range of scanRanges) {
+        for (const range of includeRanges) {
           for (const ip of hostsOf(range)) {
-            if (!knownIps.has(ip) && !targetIps.has(ip)) { targets.push({ site: range.site, ip }); targetIps.add(ip); }
+            if (!knownIps.has(ip) && !targetIps.has(ip) && !inExcluded(ip)) { targets.push({ site: range.site, ip }); targetIps.add(ip); }
           }
         }
         const aliveIps = new Set<string>();
@@ -502,7 +527,7 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
           while (ri < refresh.length) {
             const r = refresh[ri++];
             if (!r || !r.ip_address) continue;
-            try { await persistReachable(r.site, r.mac_address, await icmpPing(r.ip_address, 1500)); } catch { /* keep last */ }
+            try { const st = await pingStats(r.ip_address, 4, 1500); await persistReachable(r.site, r.mac_address, st.alive, st.lossPct); } catch { /* keep last */ }
           }
         };
         await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, refresh.length || 1) }, refreshWorker));
@@ -532,7 +557,9 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
 // Returns a cmd-like transcript and persists the verdict on the lease.
 export async function probeDeviceNow(site: string, mac: string, ip: string): Promise<{ alive: boolean; console: string }> {
   const res = await pingWithOutput(ip, 4, 2000);
-  try { await persistReachable(site, mac, res.alive); } catch { /* best effort */ }
+  const received = (res.output.match(/TTL=/gi) ?? []).length;
+  const lossPct = Math.max(0, Math.min(100, Math.round(((4 - received) / 4) * 100)));
+  try { await persistReachable(site, mac, res.alive, lossPct); } catch { /* best effort */ }
   const lines = [`> ping -n 4 ${ip}`, '', res.output.replace(/\r\n/g, '\n').trimEnd()];
   return { alive: res.alive, console: lines.join('\n') };
 }

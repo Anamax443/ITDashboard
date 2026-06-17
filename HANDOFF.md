@@ -135,6 +135,23 @@ for operator:** add the Zastávka CIDR(s) to `mikrotik.scan_ranges` in Settings 
 only the Brno `/24` is configured so far (Zastávka spans several subnets:
 10.10.181 / 10.90.181 / 10.130.181 — confirm the exact ranges before adding).
 
+### Scan refinements — exclude ranges + packet loss (migration 045)
+
+- **Exclude ranges**: a `!` (or `<>`) prefix on a `scan_ranges` line marks it an
+  EXCLUDE — those IPs are skipped even if an include range covers them (same
+  `!`/`<>` convention as the disk-scope syntax). E.g. `!Zastavka=10.150.181.*`.
+- **Wildcards + optional Site=** (from the prior commit): `10.8.2.*` = /24,
+  `10.8.*.*` = /16; `Site=` is optional.
+- **Discovery cache**: discovery only pings UNKNOWN IPs; a stored IP↔MAC is never
+  re-discovered. MAC is the key — a static device reappearing at a NEW IP moves
+  its `(site,mac)` row, freeing the OLD IP back into the discovery pool. A
+  separate light up/down re-ping keeps known static reachability fresh.
+- **Packet loss (migration 045)**: `dhcp_leases.packet_loss` (0–100). Reachability
+  pings are now `ping ×4` and store the loss % (locale-independent — counts `TTL=`
+  replies). A device can answer yet drop most echoes (degraded link); the Devices
+  tab Status shows `● online · NN% ztráta` (amber, red ≥ 50%). Verified live with
+  Brno+Zastávka ranges: 269 devices (Brno 200 / Zastávka 69), `source` dhcp/arp/scan.
+
 ## Session 2026-06-16 — MikroTik collection model simplified to in-app (decision, docs only)
 
 No code/runtime change this session — an **architecture decision** plus a docs/i18n

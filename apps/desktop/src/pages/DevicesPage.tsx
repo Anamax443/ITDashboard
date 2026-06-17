@@ -105,7 +105,17 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const statusCell = (d: DeviceItem) => {
     const r = effectiveReachable(d);
     if (r == null) return <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>—</span>;
-    return <span style={{ color: r ? 'var(--ok)' : 'var(--critical)', fontSize: 11, fontWeight: 700 }}>{r ? '● online' : '○ offline'}</span>;
+    const loss = d.packet_loss;
+    return (
+      <span style={{ fontSize: 11 }}>
+        <span style={{ color: r ? 'var(--ok)' : 'var(--critical)', fontWeight: 700 }}>{r ? '● online' : '○ offline'}</span>
+        {r && loss != null && loss > 0 && (
+          <span style={{ color: loss >= 50 ? 'var(--critical)' : 'var(--warning, #d97706)', fontSize: 10, marginLeft: 4, fontWeight: 600 }} title={t('devices.lossTip')}>
+            · {loss}% {t('devices.loss')}
+          </span>
+        )}
+      </span>
+    );
   };
 
   return (
