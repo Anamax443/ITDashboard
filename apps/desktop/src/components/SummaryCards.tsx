@@ -196,14 +196,25 @@ export function SummaryCards({
   );
 }
 
-export function Card({ label, value, sub, kind, onClick }: { label: string; value: number | string; sub?: string; kind: 'critical' | 'error' | 'warning' | 'info' | 'ok'; onClick?: () => void }) {
+export function Card({ label, value, sub, kind, onClick, badge, badgeTitle }: { label: string; value: number | string; sub?: string; kind: 'critical' | 'error' | 'warning' | 'info' | 'ok'; onClick?: () => void; badge?: React.ReactNode; badgeTitle?: string }) {
   return (
     <div
       className={`card ${kind}`}
       onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'default', userSelect: 'none' }}
+      style={{ cursor: onClick ? 'pointer' : 'default', userSelect: 'none', position: 'relative' }}
       title={onClick ? 'Click to drill down' : undefined}
     >
+      {badge != null && (
+        <div
+          title={badgeTitle}
+          style={{
+            position: 'absolute', top: 6, right: 8, fontSize: 11, fontWeight: 700,
+            lineHeight: 1, padding: '3px 7px', borderRadius: 10,
+            background: 'rgba(120,130,150,0.22)', color: 'var(--text)',
+            border: '1px solid var(--border, rgba(255,255,255,0.15))',
+          }}
+        >{badge}</div>
+      )}
       <div className="label">{label}</div>
       <div className="value">{value}</div>
       {sub && <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{sub}</div>}

@@ -107,9 +107,11 @@ export function HealthCards({ data, onJumpToComputer, onOpenEvents, onChanged }:
         <Card
           label={`🩺 ${t('health.reinstall')}`}
           value={activeRisk.length}
-          sub={`${t('health.score')} ≥ ${data.thresholdRisk} · ${win}${snoozed.length ? ` · 💤 ${snoozed.length}` : ''}`}
+          sub={`${t('health.score')} ≥ ${data.thresholdRisk} · ${win}`}
           kind={activeRisk.length > 0 ? 'critical' : 'ok'}
           onClick={(activeRisk.length > 0 || snoozed.length > 0) ? () => setOpen((o) => !o) : undefined}
+          badge={snoozed.length > 0 ? `💤 ${snoozed.length}` : undefined}
+          badgeTitle={snoozed.length > 0 ? `${snoozed.length} ${t('health.snoozedTileBadge')}` : undefined}
         />
       </div>
 
