@@ -1,6 +1,84 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-22 (**eventlog "PC v problémech" dočasné per-PC uspání / snooze** with signature — migration 050, `POST /events/snooze[/clear]`, HealthCards inline editor + "Uspané" list + Events 💤 banner; 79 tests; see Session 2026-06-22 below). Prior: 2026-06-17 (LIVE `e456fd0`; **full doc sweep done incl. G2** — README, ARCHITECTURE, dashboard.html CS+EN, project-status.html, i18n all current). **G2 — printer supplies + EWS proxy**: new "Stav tiskáren / Printer status" tab + 🖨 Náplně tile reading ink/toner/maintenance-box/drum/belt via **SNMP Printer-MIB primary + HTTP fallback** (Brother toner %, Epson maint box) with a self-contained `node:dgram` SNMP client; the device web-UI **cert-bypass proxy is now ON by default** and was reworked to actually render Epson/HP/Brother EWS (buffers body, `<base>`=doc dir, absolute-URL rewrite, relaxed CSP + MIME correction, client-side redirects); migrations 048–049; 74 tests. Earlier device-platform batch: MikroTik DHCP collection LIVE + fully DB-driven (no MIKROTIK_* env except MIKROTIK_SECRET); multi-source inventory merged by MAC = DHCP (dynamic+static reservations) + router ARP + active app-server subnet scan (configurable ranges CIDR/wildcard, `!` excludes a subnet, discovery cache, remote subnets via router ARP); NetBIOS (nbtstat) device names → printer auto-suggest (NPI/BRN/BRW/RNP/KMBT); Static/Dynamic Type column; operator-editable device name (mig 046); generic + configurable categories; per-device packet loss + latency (mig 045/047) as `ms/%` column with tunable problem thresholds, "Loss/latency" tile + "issues only" filter; printer-offline alert agenda (mig 043); 🖨 Printers tile; printer IP→web-UI with optional cert-bypass server proxy; new Database tab; deploy robocopy `/MIR` excludes `dist` (frontend-window fix). Migrations 043–047. — prior 2026-06-16: (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
+Last updated: 2026-06-22 (LIVE `e3838a5`; **full doc sweep done — README, dashboard.html CS+EN, project-status.html, i18n all current**). This day's work (newest first): **shared/USB printers** (net view → Devices rows + Stav tiskáren section, located by host PC); **Devices tab UX** (editable note, row numbers, sortable headers, general search across ALL columns, "uncategorized only" filter, "Devices" dashboard tile = unidentified/total); **managerial report** (pie charts + summary incl. network-vs-USB printer counts + full list, A4, opened in a tab to dodge the HTTP insecure-download block); **device-scan reach** (nbtstat MAC fallback for remote subnets + Option B MAC-less-by-IP storage so live hosts always show; scan ranges 10.8.3/10.181.3/10.181.90 added); **per-category notebook eventlog noise suppression** (mig 051); **eventlog "PC v problémech" temporary per-PC snooze** with signature (mig 050). 102 tests. Draggable dashboard tiles were built then **reverted** per operator. See sessions below. Prior: 2026-06-17 (LIVE `e456fd0`; **full doc sweep done incl. G2** — README, ARCHITECTURE, dashboard.html CS+EN, project-status.html, i18n all current). **G2 — printer supplies + EWS proxy**: new "Stav tiskáren / Printer status" tab + 🖨 Náplně tile reading ink/toner/maintenance-box/drum/belt via **SNMP Printer-MIB primary + HTTP fallback** (Brother toner %, Epson maint box) with a self-contained `node:dgram` SNMP client; the device web-UI **cert-bypass proxy is now ON by default** and was reworked to actually render Epson/HP/Brother EWS (buffers body, `<base>`=doc dir, absolute-URL rewrite, relaxed CSP + MIME correction, client-side redirects); migrations 048–049; 74 tests. Earlier device-platform batch: MikroTik DHCP collection LIVE + fully DB-driven (no MIKROTIK_* env except MIKROTIK_SECRET); multi-source inventory merged by MAC = DHCP (dynamic+static reservations) + router ARP + active app-server subnet scan (configurable ranges CIDR/wildcard, `!` excludes a subnet, discovery cache, remote subnets via router ARP); NetBIOS (nbtstat) device names → printer auto-suggest (NPI/BRN/BRW/RNP/KMBT); Static/Dynamic Type column; operator-editable device name (mig 046); generic + configurable categories; per-device packet loss + latency (mig 045/047) as `ms/%` column with tunable problem thresholds, "Loss/latency" tile + "issues only" filter; printer-offline alert agenda (mig 043); 🖨 Printers tile; printer IP→web-UI with optional cert-bypass server proxy; new Database tab; deploy robocopy `/MIR` excludes `dist` (frontend-window fix). Migrations 043–047. — prior 2026-06-16: (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
+
+## Session 2026-06-22 (batch 3) — Shared/USB printers, Devices UX, managerial report
+
+A large feature batch on the **Devices** tab + **Stav tiskáren** + the dashboard.
+LIVE `e3838a5`. No new migrations (all of this is collectors/routes/UI on the
+existing schema).
+
+### Shared / USB printers (net view) — `services/shared-printers-collector.ts`
+A USB printer attached to and shared from a PC has **no IP of its own**, so the
+network scan can't see it. Verified live that WMI is `Access denied` from `.213`
+but **`net view \\<pc>` works** and returns the printer shares. New collector:
+- Iterates **reachable** AD computers, runs `net view`, parses **printer-type
+  shares** (`netview-util.ts parseNetViewPrinters` — locale-tolerant `Tisk`/`Print`;
+  pure + unit-tested), and stores each as a **device row in the same inventory**
+  (`dhcp_leases`, `source='share'`, synthetic key `SHR-<ip>-<hash>`), so it shows
+  in **Devices** AND the **Stav tiskáren** page and **persists even when offline**.
+- **Location** (Lokalita) = the **host PC's site**, derived from the host IP
+  (own row or a sibling on the same /24; computer-by-name IP lookup if needed).
+  If the location can't be determined the printer is **skipped** — we never invent
+  a "USB" location (operator: "USB neexistuje"); a run-start purge removes any
+  legacy `site='USB'` rows. The host PC is carried in `comment` and shown in the
+  Type cell as **"🖨 USB · <PC>"**.
+- Own hourly schedule (`startSharedPrintersSchedule`, settings
+  `checks.run_shared_printers` / `shared_printers.interval_sec`, defaults, no
+  migration). Manual `POST /shared-printers/run`. Stav tiskáren gained a
+  **"Sdílené / USB tiskárny"** section (name · host PC · online/offline). Verified
+  live: 17 shared printers across Brno/Zastavka/Jihlava, 0 "USB".
+
+> Note: net view is run/parsed in the **server's locale** (Czech → "Tisk"); the
+> parser also matches Print/Druck/Stampa/… If a host shows in another locale and a
+> printer is missed, extend `PRINTER_TYPE` in `netview-util.ts` (or move to a
+> `NetShareEnum` P/Invoke for a locale-independent STYPE).
+
+### Devices tab UX
+- **Editable note** column next to IP (`device_categories.note`, `PATCH
+  /devices/note`; the category PATCH no longer clobbers it — `COALESCE`; GET
+  returns `operator_note`).
+- **Row-number `#`** column (numbers the current sorted+filtered selection); header
+  shows `shown / total` when filtered.
+- **Sortable column headers** (`useSort`): Lokalita, IP (numeric), Poznámka,
+  Hostname, MAC, Typ, Kategorie, Stav, AD, Naposledy — drives the table, export AND
+  report order.
+- **General search across EVERY column** (site, IP, hostname, note, MAC, host PC,
+  category label, AD computer, source, online/offline) — not just IP/host/MAC.
+- **"jen nezařazené"** filter (devices with no confirmed category — triage).
+- **Dashboard "🖧 Zařízení" tile** (unidentified / total) → drills into Devices
+  pre-filtered to "uncategorized only".
+
+### Managerial report (pie charts) — `lib/deviceReport.ts`
+`Export → 🌐 HTML report (grafy)` / `🖨 PDF report (grafy)` builds a standalone
+**managerial** doc: inline-SVG **pie charts** (by category, by site, online/offline)
++ **summary cards** (incl. **Tiskárny síťové / Tiskárny USB** counts) + the **full
+device list**. **A4**-paginated (`@page A4` + `break-inside`). It is **opened in a
+new browser tab** (not downloaded) — a plain-HTTP origin blocks `.html` downloads
+as "insecure", and a tab sidesteps that (Save/Print from there). CSV/TXT stay raw
+downloads. `ExportMenu` gained an optional `richHtml` generator; the standalone
+"Report" button was folded into the Export menu.
+
+### Device-scan reach (recap, also batch 2)
+- **nbtstat MAC fallback** in the active scan: when ARP yields no MAC (remote subnet
+  not behind a configured router), `nbtstat -A` is tried for the real MAC + name
+  over L3. **Live finding:** nbtstat (UDP 137) is **firewalled from `.213`**, so —
+- **Option B (MAC-less by IP):** an alive host with no resolvable MAC is stored
+  keyed by a synthetic `IP-<ip>` id (`isSyntheticMac()`; UI shows "—" for the MAC),
+  so all live hosts appear (the inventory grew 251 → ~370). A synthetic row whose IP
+  matches an AD computer still pairs by IP, so AD machines show their name. MAC
+  backfills if ARP/NetBIOS/SNMP ever resolves it.
+- **SNMP is open from `.213`** (printer supplies read for remote sites) → the next
+  obvious step to enrich IP-only printers with model + MAC is SNMP
+  (`sysName`/`sysDescr`/`ifPhysAddress`) — documented in
+  `docs/nacitani-mac-hostname.html`.
+- Scan ranges **10.8.3.\* / 10.181.3.\* / 10.181.90.\*** added (derived from AD
+  computer IPs / operator).
+
+### Reverted: draggable dashboard tiles
+Built (drag + Save/Default-layout buttons persisting `dashboard.tile_order` in DB)
+then **reverted at operator request**. The `dashboard.tile_order` settings key may
+linger in the DB, unused and harmless.
 
 ## Session 2026-06-22 (batch 2) — Device scan: nbtstat MAC fallback (remote subnets)
 
@@ -258,7 +336,7 @@ Default ON (migration 049, `devices.web_proxy=1`); operator can disable in Setti
 - Runtime path on server: `C:\Apps\ITDashboard`
 - SQL server: `10.8.2.225`
 - Database: `ITDashboard`
-- Live commit: `e456fd0`
+- Live commit: `e3838a5`
 - Browser URL: `http://10.8.2.213:4000/`
 - Docs URL: `http://10.8.2.213:4000/docs`
 

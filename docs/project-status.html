@@ -42,7 +42,7 @@
 <body>
 <main>
   <h1>ITDashboard <span class="badge live">LIVE</span></h1>
-  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-17</span> <span class="pill">commit e456fd0</span></p>
+  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-22</span> <span class="pill">commit e3838a5</span></p>
 
   <h2>Stav nasazení</h2>
   <div class="grid">
@@ -101,6 +101,33 @@
     <tr><td>Sken podsítí (Devices)</td><td>Settings → rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť). Aktivní sken běží z aplikačního serveru; vzdálené podsítě přes ARP routerů. Nic v <code>.env</code>.</td></tr>
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
+
+  <h2>Poslední změny (2026-06-22) — sdílené/USB tiskárny, UX Zařízení, manažerský report, snooze</h2>
+  <p class="sub" style="margin:0 0 .75rem">Velká dávka na záložce <strong>Zařízení</strong> + <strong>Stav tiskáren</strong> + úvodní stránce. Eventlog skórování dostalo <strong>dočasné uspání (snooze)</strong> a <strong>per-kategorii potlačení šumu u notebooků</strong> (migrace 050–051); zbytek je bez migrací. Živý commit <span class="pill">e3838a5</span>. <strong>102 testů.</strong></p>
+
+  <p style="margin:0 0 4px"><strong>Eventlog „PC v problémech" — dočasné uspání (snooze) + potlačení šumu notebooků</strong> <span class="pill">e3838a5</span> <span class="pill">migrace 050–051</span></p>
+  <ul>
+    <li>Operátor může <strong>dočasně uspat</strong> problémové PC na zvolený počet dní s <strong>podpisem</strong> (kdo/kdy/poznámka) — zmizí z dlaždice 🩺 a po vypršení se samo vrátí do standardu (nebo ručně). Routy <code>POST /events/snooze</code> + <code>/snooze/clear</code> (migrace 050).</li>
+    <li><strong>Per-kategorii potlačení šumu</strong>: notebooky (dle AD OU/DN vzoru <code>faulty.notebook_ou</code>) mají roaming/logon signatury (NETLOGON 5719, GroupPolicy 1129, Time-Service 131, DCOM 10016, Netwtw*) vyloučené ze skóre; PC a servery se skórují plně (migrace 051). U notebooku se ukáže <code>💻 −N</code>.</li>
+  </ul>
+
+  <p style="margin:8px 0 4px"><strong>Sdílené / USB tiskárny (net view)</strong> <span class="pill">e3838a5</span> <span class="pill">bez migrace</span></p>
+  <ul>
+    <li>USB tiskárna sdílená z PC nemá IP, takže ji síťový sken nevidí. Sběrač ji najde jako sdílený SMB prostředek přes <code>net view</code> (funguje tam, kde je WMI „Access denied") a uloží jako řádek do inventáře (<code>source=share</code>).</li>
+    <li>Zobrazuje se v <strong>Zařízeních</strong> (Typ „🖨 USB · <em>hostitelské PC</em>", Lokalita = lokalita hostitelského PC) i v sekci <strong>„Sdílené / USB tiskárny"</strong> na Stav tiskáren; <strong>zůstává i offline</strong>. Jen identifikace (název + PC), bez SNMP náplní. Vlastní hodinový časovač, <code>POST /shared-printers/run</code>.</li>
+  </ul>
+
+  <p style="margin:8px 0 4px"><strong>UX Zařízení: poznámka, čísla řádků, řazení, hledání přes vše, dlaždice</strong> <span class="pill">e3838a5</span></p>
+  <ul>
+    <li>Editovatelná <strong>poznámka</strong> vedle IP (dle MAC), sloupec <strong>#</strong>, <strong>řazení klikem na hlavičku</strong>, <strong>obecné hledání přes všechny sloupce</strong>, filtr <strong>„jen nezařazené"</strong> a úvodní dlaždice <strong>„🖧 Zařízení"</strong> (neidentifikováno / celkem).</li>
+    <li>Dosah skenu i za routerem: <strong>nbtstat MAC fallback</strong> + ukládání bez MAC pod syntetickým <code>IP-&lt;ip&gt;</code>, takže se objeví <strong>každý živý host</strong> (NetBIOS je z aplikačního serveru blokovaný, ICMP funguje). Doplněny scan rozsahy 10.8.3 / 10.181.3 / 10.181.90.</li>
+  </ul>
+
+  <p style="margin:8px 0 4px"><strong>Manažerský report (koláčové grafy)</strong> <span class="pill">e3838a5</span></p>
+  <ul>
+    <li><strong>Export → HTML / PDF report</strong> = koláčové grafy (kategorie / lokalita / dostupnost) + souhrnné karty (vč. <strong>počtu síťových vs USB tiskáren</strong>) + plný seznam, stránkováno na <strong>A4</strong>. Otevírá se v nové záložce (HTTP web blokuje stažení <code>.html</code>). CSV/TXT zůstávají syrová data.</li>
+    <li>Drag přesouvání dlaždic na úvodní stránce bylo postaveno a <strong>na přání operátora vráceno</strong>.</li>
+  </ul>
 
   <h2>Poslední změny (2026-06-17) — Stav tiskáren (náplně) + cert-bypass proxy defaultně</h2>
   <p class="sub" style="margin:0 0 .75rem">Nová agenda <strong>G2 — Stav tiskáren / Printer status</strong>: per-tiskárna hladiny náplní čtené přes SNMP Printer-MIB s cíleným HTTP fallbackem; cert-bypass proxy na web UI tiskáren je nově zapnut defaultně a ověřen napříč Epson/HP/Brother. Zásahy do DB — <strong>migrace 048–049</strong>. Živý commit <span class="pill">e456fd0</span>.</p>
