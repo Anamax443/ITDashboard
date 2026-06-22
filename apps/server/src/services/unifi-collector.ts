@@ -106,6 +106,10 @@ async function upsertUnifiClient(site: string, mac: string, ip: string | null, h
         comment = COALESCE(t.comment, @comment),
         status = 'unifi',
         source = CASE WHEN t.source = 'dhcp' THEN 'dhcp' ELSE 'unifi' END,
+        -- UniFi (stat/sta) doesn't report static-vs-DHCP, so don't assert it: a
+        -- DHCP-owned row keeps its real flag, anything UniFi takes over goes NULL
+        -- (unknown) instead of falsely showing "Statická".
+        dynamic = CASE WHEN t.source = 'dhcp' THEN t.dynamic ELSE NULL END,
         reachable = 1,
         last_reachable_at = SYSUTCDATETIME(),
         reach_checked_at = SYSUTCDATETIME(),
@@ -113,7 +117,7 @@ async function upsertUnifiClient(site: string, mac: string, ip: string | null, h
       WHEN NOT MATCHED THEN INSERT
         (site, mac_address, ip_address, host_name, comment, status, dynamic, source,
          reachable, last_reachable_at, reach_checked_at, last_seen)
-        VALUES (@site, @mac, @ip, @host, @comment, 'unifi', 0, 'unifi',
+        VALUES (@site, @mac, @ip, @host, @comment, 'unifi', NULL, 'unifi',
          1, SYSUTCDATETIME(), SYSUTCDATETIME(), SYSUTCDATETIME());
     `);
 }
