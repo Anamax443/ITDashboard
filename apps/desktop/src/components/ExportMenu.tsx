@@ -76,10 +76,12 @@ function toHTML<T>(rows: T[], columns: ExportColumn<T>[], title: string, filterS
   th { background: #f3f4f6; text-align: left; padding: 6px 8px; border-bottom: 2px solid #d1d5db; font-weight: 600; }
   td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; word-break: break-word; }
   tr:nth-child(even) td { background: #fafafa; }
+  @page { size: A4; margin: 12mm; }
   @media print {
-    body { margin: 12mm; }
+    body { margin: 0; }
     .banner { background: #fff; }
     thead { display: table-header-group; }
+    tr { break-inside: avoid; }
   }
 </style>
 </head>

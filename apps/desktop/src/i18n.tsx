@@ -290,6 +290,8 @@ const dict = {
     'dashboard.help.bullet.computers': 'Počítače — aktivní / celkový inventář → záložka Počítače',
     'dashboard.help.collector': 'Collector bar ukazuje živý progress eventlog skenu (▶ Spustit teď / ⏹ Stop) a může spouštět všechny checks sekvenčně (eventlog → disk → services).',
     'dashboard.help.footer': 'Detailní seznamy (Události, Počítače, Služby, Aktivita, Nastavení) mají vlastní záložky.',
+    'dashboard.resetLayout': 'Obnovit výchozí rozložení dlaždic',
+    'dashboard.resetLayoutTip': 'Dlaždice lze přetahovat myší; pořadí se ukládá do serveru (sdílené). Tímto se vrátí výchozí pořadí.',
 
     'help.tabTitle': 'Co tato záložka ukazuje',
 
@@ -807,6 +809,8 @@ const dict = {
     'dashboard.help.bullet.computers': 'Computers — active / total inventory → Computers tab',
     'dashboard.help.collector': 'Collector bar shows live progress of the eventlog scan (▶ Run now / ⏹ Stop) and can run all checks sequentially (eventlog → disk → services).',
     'dashboard.help.footer': 'The detailed lists (Events, Computers, Services, Activity, Settings) have their own tabs.',
+    'dashboard.resetLayout': 'Reset tile layout',
+    'dashboard.resetLayoutTip': 'Tiles can be dragged to reorder; the order is saved on the server (shared). This restores the default order.',
 
     'help.tabTitle': 'What this tab shows',
 

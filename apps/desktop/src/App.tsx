@@ -346,7 +346,26 @@ export function App() {
             onClickDiskWarning={() => { setComputersPreFilter('disk-warning'); setView('computers'); }}
             onClickUnreachable={() => { setComputersPreFilter('failing'); setView('computers'); }}
             onClickInactive={() => { setComputersPreFilter('inactive'); setView('computers'); }}
+            tileOrder={(settingsMap['dashboard.tile_order'] ?? '').split(',').map((s) => s.trim()).filter(Boolean)}
+            onReorderTiles={(order) => {
+              const v = order.join(',');
+              setSettingsMap((m) => ({ ...m, 'dashboard.tile_order': v }));
+              api.saveSettings({ 'dashboard.tile_order': v }).catch(() => {});
+            }}
           />
+          {settingsMap['dashboard.tile_order'] && (
+            <div style={{ gridColumn: '1 / -1', marginTop: -4 }}>
+              <button
+                className="refresh-btn"
+                style={{ fontSize: 11, padding: '2px 10px', opacity: 0.7 }}
+                title={t('dashboard.resetLayoutTip')}
+                onClick={() => {
+                  setSettingsMap((m) => ({ ...m, 'dashboard.tile_order': '' }));
+                  api.saveSettings({ 'dashboard.tile_order': '' }).catch(() => {});
+                }}
+              >⤺ {t('dashboard.resetLayout')}</button>
+            </div>
+          )}
           <HealthCards
             data={pcHealth}
             onJumpToComputer={jumpToComputer}

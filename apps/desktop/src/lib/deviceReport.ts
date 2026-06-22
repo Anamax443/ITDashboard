@@ -98,7 +98,8 @@ export function openDeviceReport(opts: {
   .chart h3{font-size:13px;margin:0 0 8px;} .chart-row{display:flex;align-items:flex-start;gap:14px;}
   table.legend{border-collapse:collapse;font-size:12px;} .legend td{padding:2px 6px;} .legend .num{text-align:right;} .legend .dim{color:#6b7280;}
   .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;}
-  @media print{body{margin:10mm;} .banner{background:#fff;}}
+  @page{size:A4;margin:10mm;}
+  @media print{body{margin:0;} .banner{background:#fff;} .charts{gap:14px;} .chart{break-inside:avoid;} .card{break-inside:avoid;}}
 </style></head><body>
 <h1>📊 Report zařízení v síti</h1>
 <div class="meta">ITDashboard — ${esc(now)} — ${total} zařízení</div>
