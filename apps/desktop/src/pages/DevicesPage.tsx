@@ -4,6 +4,7 @@ import { api, timeAgo, deviceDegraded, deviceProblemThresholds, isSyntheticMac, 
 import { HelpBox } from '../components/HelpBox.js';
 import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { openDeviceReport, type ReportTableColumn } from '../lib/deviceReport.js';
+import { useSort, SortHeader } from '../lib/useSort.jsx';
 import { useI18n } from '../i18n.js';
 
 // MikroTik DHCP device inventory. Each lease is paired with an AD computer (by
@@ -176,6 +177,8 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   // used only by the "only printers" filter so the operator can find candidates.
   const isPrinterish = (d: DeviceItem) => d.category === 'printer' || (!d.category && d.suggested === 'printer');
 
+  const { sort, toggle, apply } = useSort<DeviceItem>({ col: 'ip_address', dir: 'asc' });
+
   const filtered = items.filter((d) => {
     if (site && d.site !== site) return false;
     if (onlyUnmanaged && d.computer_id != null) return false;
@@ -187,15 +190,18 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     if (onlyLossy && !deviceDegraded(d, problemTh)) return false;
     if (onlyUncategorized && d.category) return false;
     if (search) {
-      const q = search.toLowerCase();
-      return (d.ip_address ?? '').toLowerCase().includes(q)
-        || (d.host_name ?? '').toLowerCase().includes(q)
-        || (d.operator_name ?? '').toLowerCase().includes(q)
-        || d.mac_address.toLowerCase().includes(q)
-        || (d.comment ?? '').toLowerCase().includes(q);
+      // General search covers EVERY column the operator can see.
+      const reach = effectiveReachable(d);
+      const blob = [
+        d.site, d.ip_address, d.host_name, d.operator_name, d.operator_note, d.mac_address,
+        d.comment, d.category ? catLabel(d.category) : '', d.computer_name, d.source, d.status,
+        reach === true ? 'online' : reach === false ? 'offline' : '',
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (!blob.includes(search.toLowerCase())) return false;
     }
     return true;
   });
+  const sorted = apply(filtered);
 
   const total = items.length;
   const unmanaged = items.filter((d) => d.computer_id == null).length;
@@ -248,7 +254,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
 
   // --- Export (HTML / PDF / CSV / TXT) of the currently displayed (filtered) rows ---
   type ExportRow = DeviceItem & { __num: number };
-  const exportRows: ExportRow[] = filtered.map((d, i) => ({ ...d, __num: i + 1 }));
+  const exportRows: ExportRow[] = sorted.map((d, i) => ({ ...d, __num: i + 1 }));
   const reachText = (d: DeviceItem) => { const r = effectiveReachable(d); return r == null ? '—' : r ? 'online' : 'offline'; };
   const exportColumns: ExportColumn<ExportRow>[] = [
     { key: 'num', label: '#', get: (d) => d.__num },
@@ -340,7 +346,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
             style={{ padding: '4px 10px', fontSize: 11 }}
             title={t('devices.reportTip')}
             onClick={() => openDeviceReport({
-              rows: filtered,
+              rows: sorted,
               catLabel,
               reachOf: effectiveReachable,
               filterSummary,
@@ -363,22 +369,22 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
             <thead>
               <tr>
                 <th style={{ width: 36, textAlign: 'right' }} title={t('devices.rowNum')}>#</th>
-                <th style={{ width: 80 }}>{t('devices.site')}</th>
-                <th style={{ width: 120 }}>IP</th>
-                <th style={{ width: 150 }}>{t('devices.note')}</th>
-                <th style={{ width: 190 }}>{t('devices.hostname')}</th>
-                <th style={{ width: 150 }}>MAC</th>
-                <th style={{ width: 95 }}>{t('devices.type')}</th>
-                <th style={{ width: 170 }}>{t('devices.category')}</th>
-                <th style={{ width: 90 }}>{t('devices.status')}</th>
+                <SortHeader<DeviceItem> col="site" label={t('devices.site')} sort={sort} toggle={toggle} width={80} />
+                <SortHeader<DeviceItem> col="ip_address" label="IP" sort={sort} toggle={toggle} width={120} />
+                <SortHeader<DeviceItem> col="operator_note" label={t('devices.note')} sort={sort} toggle={toggle} width={150} />
+                <SortHeader<DeviceItem> col="host_name" label={t('devices.hostname')} sort={sort} toggle={toggle} width={190} />
+                <SortHeader<DeviceItem> col="mac_address" label="MAC" sort={sort} toggle={toggle} width={150} />
+                <SortHeader<DeviceItem> col="source" label={t('devices.type')} sort={sort} toggle={toggle} width={95} />
+                <SortHeader<DeviceItem> col="category" label={t('devices.category')} sort={sort} toggle={toggle} width={170} />
+                <SortHeader<DeviceItem> col="reachable" label={t('devices.status')} sort={sort} toggle={toggle} width={90} />
                 <th style={{ width: 80 }} title={t('devices.qualityTip')}>{t('devices.quality')}</th>
-                <th style={{ width: 130 }}>AD</th>
-                <th style={{ width: 100 }}>{t('devices.lastSeen')}</th>
+                <SortHeader<DeviceItem> col="computer_name" label="AD" sort={sort} toggle={toggle} width={130} />
+                <SortHeader<DeviceItem> col="last_seen" label={t('devices.lastSeen')} sort={sort} toggle={toggle} width={100} />
                 <th style={{ width: 120 }} />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((d, idx) => (
+              {sorted.map((d, idx) => (
                 <tr key={`${d.site}-${d.mac_address}`}>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11, textAlign: 'right' }}>{idx + 1}</td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{d.site}</td>
