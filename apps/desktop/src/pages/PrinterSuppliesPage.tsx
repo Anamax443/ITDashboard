@@ -58,6 +58,8 @@ export function PrinterSuppliesPage({ settings = {}, initialOnlyProblem, onOnlyP
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [onlyProblem, setOnlyProblem] = useState(false);
+  const [search, setSearch] = useState('');
+  const [site, setSite] = useState('');
   const [running, setRunning] = useState(false);
 
   const refresh = () => {
@@ -90,7 +92,23 @@ export function PrinterSuppliesPage({ settings = {}, initialOnlyProblem, onOnlyP
     }
   };
 
-  const withStatus = printers.map((p) => ({ p, st: statusOf(p, lowPct) }));
+  // Distinct sites for the location dropdown (printers carry the host/device site).
+  const sites = Array.from(new Set(printers.map((p) => p.site).filter((s): s is string => !!s))).sort();
+
+  // Free-text match across every visible identifier of a printer card.
+  const q = search.trim().toLowerCase();
+  const matchesSearch = (p: PrinterDevice): boolean => {
+    if (!q) return true;
+    const hay = [
+      p.operator_name, p.model, p.host_name, p.ip_address, p.mac_address, p.site,
+      ...p.supplies.map((s) => s.part_code),
+    ].filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(q);
+  };
+
+  const withStatus = printers
+    .filter((p) => (site ? p.site === site : true) && matchesSearch(p))
+    .map((p) => ({ p, st: statusOf(p, lowPct) }));
   const shown = onlyProblem ? withStatus.filter((x) => x.st !== 'ok') : withStatus;
   const nCrit = withStatus.filter((x) => x.st === 'crit').length;
   const nLow = withStatus.filter((x) => x.st === 'low').length;
@@ -117,10 +135,17 @@ export function PrinterSuppliesPage({ settings = {}, initialOnlyProblem, onOnlyP
         <h2>
           🖨 {t('supplies.title')}{' '}
           <span style={{ color: 'var(--text-dim)', fontSize: 12, fontWeight: 400 }}>
-            ({printers.length} · <span style={{ color: nCrit ? 'var(--critical)' : undefined }}>{nCrit} {t('supplies.empty')}</span> · <span style={{ color: nLow ? 'var(--warning)' : undefined }}>{nLow} {t('supplies.low')}</span> · {nOk} OK)
+            ({withStatus.length !== printers.length ? `${withStatus.length} / ` : ''}{printers.length} · <span style={{ color: nCrit ? 'var(--critical)' : undefined }}>{nCrit} {t('supplies.empty')}</span> · <span style={{ color: nLow ? 'var(--warning)' : undefined }}>{nLow} {t('supplies.low')}</span> · {nOk} OK)
           </span>
         </h2>
         <div className="panel-actions filters">
+          <input type="text" placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 200 }} />
+          {sites.length > 1 && (
+            <select value={site} onChange={(e) => setSite(e.target.value)} style={{ fontSize: 12 }}>
+              <option value="">{t('devices.allSites')}</option>
+              {sites.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
           <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }}>
             <input type="checkbox" checked={onlyProblem} onChange={(e) => setOnlyProblem(e.target.checked)} />
             {t('supplies.onlyProblem')}
