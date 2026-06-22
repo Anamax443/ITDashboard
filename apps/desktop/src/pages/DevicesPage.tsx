@@ -400,13 +400,19 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                   </td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 10, fontFamily: 'Consolas, monospace' }} title={isSyntheticMac(d.mac_address) ? t('devices.macUnknown') : undefined}>{isSyntheticMac(d.mac_address) ? '—' : d.mac_address}</td>
                   <td style={{ fontSize: 11 }}>
-                    {d.dynamic === false
-                      ? <span style={{ color: 'var(--warning, #d97706)', fontWeight: 600 }}>{t('devices.static')}</span>
-                      : d.dynamic === true
-                        ? <span style={{ color: 'var(--text-dim)' }}>{t('devices.dynamic')}</span>
-                        : <span style={{ color: 'var(--text-dim)' }}>—</span>}
-                    {d.source && d.source !== 'dhcp' && (
-                      <span style={{ color: 'var(--text-dim)', fontSize: 9, marginLeft: 4 }} title={t('devices.sourceTip')}>· {d.source}</span>
+                    {d.source === 'share' ? (
+                      <span style={{ color: 'var(--accent)', fontWeight: 600 }} title={t('devices.sharedTip')}>🖨 USB{d.comment ? ` · ${d.comment}` : ''}</span>
+                    ) : (
+                      <>
+                        {d.dynamic === false
+                          ? <span style={{ color: 'var(--warning, #d97706)', fontWeight: 600 }}>{t('devices.static')}</span>
+                          : d.dynamic === true
+                            ? <span style={{ color: 'var(--text-dim)' }}>{t('devices.dynamic')}</span>
+                            : <span style={{ color: 'var(--text-dim)' }}>—</span>}
+                        {d.source && d.source !== 'dhcp' && (
+                          <span style={{ color: 'var(--text-dim)', fontSize: 9, marginLeft: 4 }} title={t('devices.sourceTip')}>· {d.source}</span>
+                        )}
+                      </>
                     )}
                   </td>
                   <td>

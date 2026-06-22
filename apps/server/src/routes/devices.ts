@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../db/pool.js';
 import { runMikrotikCollectOnce, probeDeviceNow, suggestCategory } from '../services/mikrotik-collector.js';
+import { runSharedPrintersOnce } from '../services/shared-printers-collector.js';
 
 // Device categories are operator-configurable (Settings → devices.categories),
 // so any non-empty string up to 32 chars is accepted; '' clears the assignment.
@@ -148,6 +149,19 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
       return result;
     } catch (err) {
       app.log.error({ err }, 'DHCP collect failed');
+      reply.code(500);
+      return { error: String(err) };
+    }
+  });
+
+  // Manual run of the shared/USB-printer scan (net view across reachable PCs).
+  app.post('/shared-printers/run', async (_req, reply) => {
+    try {
+      const result = await runSharedPrintersOnce();
+      if (result === null) { reply.code(409); return { error: 'Shared-printers scan already running' }; }
+      return result;
+    } catch (err) {
+      app.log.error({ err }, 'shared-printers run failed');
       reply.code(500);
       return { error: String(err) };
     }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import type { PrinterDevice, PrinterSupply } from '../api.js';
+import type { PrinterDevice, PrinterSupply, DeviceItem } from '../api.js';
 import { api, timeAgo, API_BASE } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { useI18n } from '../i18n.js';
@@ -53,6 +53,7 @@ export function PrinterSuppliesPage({ settings = {}, initialOnlyProblem, onOnlyP
   const deviceWebUrl = (ip: string) => webProxy ? `${API_BASE}/devices/web/${ip}` : `http://${ip}`;
 
   const [printers, setPrinters] = useState<PrinterDevice[]>([]);
+  const [shared, setShared] = useState<DeviceItem[]>([]);
   const [lowPct, setLowPct] = useState(15);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -61,6 +62,7 @@ export function PrinterSuppliesPage({ settings = {}, initialOnlyProblem, onOnlyP
 
   const refresh = () => {
     api.printerSupplies().then((r) => { setPrinters(r.printers); setLowPct(r.lowPct); }).catch((e) => setError(String(e)));
+    api.devices().then((r) => setShared(r.items.filter((d) => d.source === 'share'))).catch(() => {});
   };
   useEffect(() => {
     refresh();
@@ -201,6 +203,35 @@ export function PrinterSuppliesPage({ settings = {}, initialOnlyProblem, onOnlyP
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {shared.length > 0 && (
+          <div style={{ padding: '4px 12px 16px' }}>
+            <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>🖨 {t('supplies.sharedTitle')} <span style={{ color: 'var(--text-dim)', fontWeight: 400, fontSize: 12 }}>({shared.length})</span></h3>
+            <p style={{ fontSize: 11, color: 'var(--text-dim)', margin: '0 0 10px' }}>{t('supplies.sharedHelp')}</p>
+            <table>
+              <thead><tr>
+                <th>{t('supplies.sharedName')}</th>
+                <th style={{ width: 240 }}>{t('supplies.sharedHost')}</th>
+                <th style={{ width: 100 }}>{t('devices.status')}</th>
+              </tr></thead>
+              <tbody>
+                {shared.map((d) => {
+                  const r = d.computer_reachable ?? d.reachable;
+                  return (
+                    <tr key={d.mac_address}>
+                      <td style={{ fontWeight: 600 }}>{d.host_name ?? d.operator_name ?? '—'}</td>
+                      <td>
+                        <span style={{ color: 'var(--accent)' }}>{d.comment ?? d.computer_name ?? '—'}</span>
+                        {d.ip_address && <span style={{ color: 'var(--text-dim)', fontSize: 11 }}> · {d.ip_address}</span>}
+                      </td>
+                      <td>{r == null ? <span style={{ color: 'var(--text-dim)' }}>—</span> : r ? <span style={{ color: 'var(--ok)', fontWeight: 700 }}>● online</span> : <span style={{ color: 'var(--critical)', fontWeight: 700 }}>○ offline</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
