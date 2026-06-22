@@ -118,6 +118,29 @@ async function upsertUnifiClient(site: string, mac: string, ip: string | null, h
     `);
 }
 
+// Remove synthetic "IP-<ip>" placeholder rows once a real-MAC row exists for the
+// same IP (any source). Matches on IP alone — an IP belongs to one device, so a
+// real MAC at that IP supersedes the MAC-less guess. OUTPUT yields one row per
+// delete, so recordset.length is the count removed. Best-effort.
+async function dedupSyntheticByIp(): Promise<number> {
+  try {
+    const pool = await getPool();
+    const r = await pool.request().query<{ n: number }>(`
+      DELETE s OUTPUT 1 AS n
+      FROM dhcp_leases s
+      WHERE s.mac_address LIKE 'IP-%'
+        AND s.ip_address IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM dhcp_leases r
+          WHERE r.ip_address = s.ip_address AND r.mac_address NOT LIKE 'IP-%'
+        );
+    `);
+    return r.recordset.length;
+  } catch {
+    return 0;
+  }
+}
+
 export interface UnifiRunResult { clients: number; upserted: number; errors: string[]; durationMs: number; }
 
 let runInFlight = false;
@@ -173,9 +196,14 @@ export async function runUnifiCollectOnce(): Promise<UnifiRunResult | null> {
     // Release the controller session (it caps concurrent logins).
     try { await httpsJson(`${cfg.baseUrl}/api/logout`, { method: 'POST', cookie }); } catch { /* ignore */ }
 
+    // Dedup: a synthetic "IP-<ip>" scan row (a host the scan saw alive but couldn't
+    // key — no MAC) is now redundant if UniFi supplied a real MAC at the SAME IP.
+    // Drop the MAC-less placeholder so the device shows once, with its real MAC.
+    const deduped = await dedupSyntheticByIp();
+
     const durationMs = Date.now() - t0;
     logActivity(errors.length ? 'warn' : 'info', 'unifi',
-      `UniFi: ${upserted}/${clients} clients${errors.length ? ` · errors: ${errors.join('; ')}` : ''} (${(durationMs / 1000).toFixed(1)}s)`);
+      `UniFi: ${upserted}/${clients} clients${deduped ? `, deduped ${deduped} IP-only row(s)` : ''}${errors.length ? ` · errors: ${errors.join('; ')}` : ''} (${(durationMs / 1000).toFixed(1)}s)`);
     return { clients, upserted, errors, durationMs };
   } catch (err) {
     logActivity('error', 'unifi', `UniFi collect failed: ${String(err).split('\n')[0]}`);
