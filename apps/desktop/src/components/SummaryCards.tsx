@@ -44,19 +44,13 @@ interface Props {
   onClickServices?: () => void;
   onClickPerf?: () => void;
   onClickInactive?: () => void;
-  /** Persisted tile order (ids); unknown/new ids fall to the end. */
-  tileOrder?: string[];
-  /** Called with the new id order when the operator drags a tile. */
-  onReorderTiles?: (order: string[]) => void;
 }
 
 export function SummaryCards({
   summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, portsWithIssues = 0, portsTotal = 0, onClickPorts, printersOffline = 0, printersTotal = 0, onClickPrinters, degradedDevices = 0, devicesTotal = 0, onClickDegraded, devicesUnidentified = 0, onClickDevices, suppliesLow = 0, suppliesTotal = 0, onClickSupplies, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
   onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
-  tileOrder, onReorderTiles,
 }: Props) {
-  const [dragId, setDragId] = React.useState<string | null>(null);
   const { t } = useI18n();
   const windowDays = summary?.window_days ?? 1;
   const windowLabel = windowDays === 1 ? '24h' : `${windowDays}d`;
@@ -116,48 +110,19 @@ export function SummaryCards({
     { id: 'computers', el: <Card label={t('cards.computers')} value={`${enabledCount}/${total}`} kind="info" onClick={onClickComputers} /> },
   ];
 
-  // Apply the persisted order; unknown ids drop out, new ids (added later) append.
-  const knownIds = new Set(tiles.map((x) => x.id));
-  const pref = (tileOrder ?? []).filter((id) => knownIds.has(id));
-  const orderedIds = [...pref, ...tiles.map((x) => x.id).filter((id) => !pref.includes(id))];
-  const byId = new Map(tiles.map((x) => [x.id, x.el]));
-
-  const handleDrop = (targetId: string) => {
-    if (!dragId || dragId === targetId) { setDragId(null); return; }
-    const cur = orderedIds.filter((x) => x !== dragId);
-    cur.splice(cur.indexOf(targetId), 0, dragId);
-    setDragId(null);
-    onReorderTiles?.(cur);
-  };
-
   return (
     <div className="cards">
-      {orderedIds.map((id) => {
-        const el = byId.get(id);
-        if (!el) return null;
-        return React.cloneElement(el, {
-          key: id,
-          draggable: !!onReorderTiles,
-          dragging: dragId === id,
-          onDragStart: () => setDragId(id),
-          onDragOver: (e: React.DragEvent) => { if (onReorderTiles) e.preventDefault(); },
-          onDrop: () => handleDrop(id),
-        });
-      })}
+      {tiles.map((t) => React.cloneElement(t.el, { key: t.id }))}
     </div>
   );
 }
 
-export function Card({ label, value, sub, kind, onClick, badge, badgeTitle, draggable, dragging, onDragStart, onDragOver, onDrop }: { label: string; value: number | string; sub?: string; kind: 'critical' | 'error' | 'warning' | 'info' | 'ok'; onClick?: () => void; badge?: React.ReactNode; badgeTitle?: string; draggable?: boolean; dragging?: boolean; onDragStart?: (e: React.DragEvent) => void; onDragOver?: (e: React.DragEvent) => void; onDrop?: (e: React.DragEvent) => void }) {
+export function Card({ label, value, sub, kind, onClick, badge, badgeTitle }: { label: string; value: number | string; sub?: string; kind: 'critical' | 'error' | 'warning' | 'info' | 'ok'; onClick?: () => void; badge?: React.ReactNode; badgeTitle?: string }) {
   return (
     <div
       className={`card ${kind}`}
       onClick={onClick}
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      style={{ cursor: draggable ? 'grab' : onClick ? 'pointer' : 'default', userSelect: 'none', position: 'relative', opacity: dragging ? 0.4 : 1 }}
+      style={{ cursor: onClick ? 'pointer' : 'default', userSelect: 'none', position: 'relative' }}
       title={onClick ? 'Click to drill down' : undefined}
     >
       {badge != null && (

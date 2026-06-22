@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
 import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem, PrinterSuppliesResult } from './api.js';
 import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions, deviceDegraded, deviceProblemThresholds, isSnoozeActive } from './api.js';
@@ -65,10 +65,6 @@ export function App() {
   const [devicesInitialOnlyLossy, setDevicesInitialOnlyLossy] = useState(false);
   // Same one-shot for Devices → pre-checks "uncategorized only".
   const [devicesInitialOnlyUncat, setDevicesInitialOnlyUncat] = useState(false);
-  // Dashboard tile order — local working copy (so a drag isn't clobbered by a
-  // settings refetch); persisted to DB only on explicit Save.
-  const [tileOrder, setTileOrder] = useState<string[]>([]);
-  const tileOrderInited = useRef(false);
   // Same one-shot for Printer status → pre-checks "only problematic" supplies.
   const [printersInitialOnlyProblem, setPrintersInitialOnlyProblem] = useState(false);
   // Same one-shot for Critical services → pre-checks "only down".
@@ -138,24 +134,6 @@ export function App() {
     const t = setInterval(() => { api.pcHealth().then(setPcHealth).catch(() => {}); }, 300_000);
     return () => clearInterval(t);
   }, []);
-
-  // Seed the tile order from settings ONCE (when settings first load) — afterwards
-  // the local working copy owns it, so drags aren't reverted by a settings refetch.
-  useEffect(() => {
-    if (tileOrderInited.current) return;
-    const v = settingsMap['dashboard.tile_order'];
-    if (v === undefined) return; // settings not loaded yet
-    tileOrderInited.current = true;
-    setTileOrder(v ? v.split(',').map((s) => s.trim()).filter(Boolean) : []);
-  }, [settingsMap]);
-
-  const savedTileOrder = (settingsMap['dashboard.tile_order'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  const tileLayoutDirty = tileOrder.join(',') !== savedTileOrder.join(',');
-  const saveTileOrder = (order: string[]) => {
-    const v = order.join(',');
-    setSettingsMap((m) => ({ ...m, 'dashboard.tile_order': v }));
-    api.saveSettings({ 'dashboard.tile_order': v }).catch(() => {});
-  };
 
   const thresholds = parseDiskThresholds(settingsMap);
   const diskSummary = summarizeDisks(disks, thresholds);
@@ -368,25 +346,7 @@ export function App() {
             onClickDiskWarning={() => { setComputersPreFilter('disk-warning'); setView('computers'); }}
             onClickUnreachable={() => { setComputersPreFilter('failing'); setView('computers'); }}
             onClickInactive={() => { setComputersPreFilter('inactive'); setView('computers'); }}
-            tileOrder={tileOrder}
-            onReorderTiles={setTileOrder}
           />
-          <div style={{ gridColumn: '1 / -1', marginTop: -2, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{t('dashboard.dragHint')}</span>
-            <button
-              className="refresh-btn"
-              style={{ fontSize: 11, padding: '2px 10px', fontWeight: tileLayoutDirty ? 700 : 400, color: tileLayoutDirty ? 'var(--accent)' : undefined }}
-              disabled={!tileLayoutDirty}
-              title={t('dashboard.saveLayoutTip')}
-              onClick={() => saveTileOrder(tileOrder)}
-            >💾 {t('dashboard.saveLayout')}{tileLayoutDirty ? ' *' : ''}</button>
-            <button
-              className="refresh-btn"
-              style={{ fontSize: 11, padding: '2px 10px', opacity: 0.7 }}
-              title={t('dashboard.resetLayoutTip')}
-              onClick={() => { setTileOrder([]); saveTileOrder([]); }}
-            >⤺ {t('dashboard.resetLayout')}</button>
-          </div>
           <HealthCards
             data={pcHealth}
             onJumpToComputer={jumpToComputer}
