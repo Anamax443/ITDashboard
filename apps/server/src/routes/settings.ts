@@ -6,7 +6,7 @@ import { encryptSecret } from '../services/secret-crypto.js';
 
 // Settings keys holding a secret: stored encrypted (key + '_enc'), never
 // returned to the client in the clear, and shown as this mask in the UI.
-const SECRET_KEYS = ['mikrotik.password'] as const;
+const SECRET_KEYS = ['mikrotik.password', 'unifi.password'] as const;
 const MASK = '••••••••';
 
 export async function registerSettingsRoutes(app: FastifyInstance) {

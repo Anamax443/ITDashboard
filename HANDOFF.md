@@ -2,6 +2,42 @@
 
 Last updated: 2026-06-22 (LIVE `e3838a5`; **full doc sweep done — README, dashboard.html CS+EN, project-status.html, i18n all current**). This day's work (newest first): **shared/USB printers** (net view → Devices rows + Stav tiskáren section, located by host PC); **Devices tab UX** (editable note, row numbers, sortable headers, general search across ALL columns, "uncategorized only" filter, "Devices" dashboard tile = unidentified/total); **managerial report** (pie charts + summary incl. network-vs-USB printer counts + full list, A4, opened in a tab to dodge the HTTP insecure-download block); **device-scan reach** (nbtstat MAC fallback for remote subnets + Option B MAC-less-by-IP storage so live hosts always show; scan ranges 10.8.3/10.181.3/10.181.90 added); **per-category notebook eventlog noise suppression** (mig 051); **eventlog "PC v problémech" temporary per-PC snooze** with signature (mig 050). 102 tests. Draggable dashboard tiles were built then **reverted** per operator. See sessions below. Prior: 2026-06-17 (LIVE `e456fd0`; **full doc sweep done incl. G2** — README, ARCHITECTURE, dashboard.html CS+EN, project-status.html, i18n all current). **G2 — printer supplies + EWS proxy**: new "Stav tiskáren / Printer status" tab + 🖨 Náplně tile reading ink/toner/maintenance-box/drum/belt via **SNMP Printer-MIB primary + HTTP fallback** (Brother toner %, Epson maint box) with a self-contained `node:dgram` SNMP client; the device web-UI **cert-bypass proxy is now ON by default** and was reworked to actually render Epson/HP/Brother EWS (buffers body, `<base>`=doc dir, absolute-URL rewrite, relaxed CSP + MIME correction, client-side redirects); migrations 048–049; 74 tests. Earlier device-platform batch: MikroTik DHCP collection LIVE + fully DB-driven (no MIKROTIK_* env except MIKROTIK_SECRET); multi-source inventory merged by MAC = DHCP (dynamic+static reservations) + router ARP + active app-server subnet scan (configurable ranges CIDR/wildcard, `!` excludes a subnet, discovery cache, remote subnets via router ARP); NetBIOS (nbtstat) device names → printer auto-suggest (NPI/BRN/BRW/RNP/KMBT); Static/Dynamic Type column; operator-editable device name (mig 046); generic + configurable categories; per-device packet loss + latency (mig 045/047) as `ms/%` column with tunable problem thresholds, "Loss/latency" tile + "issues only" filter; printer-offline alert agenda (mig 043); 🖨 Printers tile; printer IP→web-UI with optional cert-bypass server proxy; new Database tab; deploy robocopy `/MIR` excludes `dist` (frontend-window fix). Migrations 043–047. — prior 2026-06-16: (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
 
+## Session 2026-06-22 (batch 7) — UniFi controller as a device source (mig 053) + printer filters
+
+**UniFi integration.** Operator handed working C# proof that reads a (legacy,
+:8443) UniFi controller's connected-client list. Verified the core live first
+(`/api/login` → cookie → `/api/s/default/stat/sta` returned **110 clients** with
+real MAC/IP/hostname/oui, incl. Wi-Fi-only devices on subnets we don't even scan —
+e.g. `10.181.3.141 = Cidlo-Zastavka-1`, which was an IP-only MAC-less row before).
+This is the best fix yet for the MAC-less / remote-Wi-Fi gap.
+
+- **`unifi-collector.ts`** — DB-driven (`resolveConfig` off Settings), self-hosted
+  on `.213`, own schedule (`startUnifiSchedule`, idles while disabled/unconfigured).
+  Logs in over `node:https` (self-signed cert accepted, cookie session), reads
+  `stat/sta`, **upserts each client into `dhcp_leases` keyed by MAC** as
+  `source='unifi'` (merges, not duplicates). Site (Lokalita) derived from the
+  client IP via the shared `siteForIp` against the scan ranges, so UniFi rows carry
+  the same Brno/Zastavka labels. Non-destructive upsert: keeps a DHCP name/comment,
+  never relabels a `dhcp` row; UniFi owns live reachability (`stat/sta` = connected
+  → reachable=1) + a name when none exists. Logs out after (controller caps logins).
+- **Migration 053** seeds `unifi.*` settings **empty + disabled** — no IPs/secrets
+  in the repo (same principle as MikroTik). Password stored encrypted
+  (`unifi.password_enc`, secret-crypto / MIKROTIK_SECRET); `unifi.password` added to
+  the settings route `SECRET_KEYS` (encrypt-on-PUT, mask-on-GET).
+- **Settings UI** — new "UniFi kontrolér" section (enable, interval, URL, site,
+  user, password) CS+EN. **Route** `POST /unifi/run` (manual pull). Wired into
+  `index.ts` bootstrap. `source='unifi'` added to the Devices Type/source tooltips.
+- Typecheck clean, 112 tests. **Next:** after deploy, configure it in Settings (or
+  PUT /settings) + run; the controller creds the operator gave were NOT committed.
+
+> Open follow-up (pre-existing): a synthetic `IP-<ip>` scan row and the real-MAC
+> UniFi row for the SAME device coexist until the synthetic is deduped — UniFi now
+> makes that dedup worthwhile (it resolves the very MACs the scan couldn't).
+
+**Printer status filters.** The "Stav tiskáren" page gained a **text search**
+(name/model/host/IP/MAC/site/part codes) and a **location dropdown** (mirroring the
+Devices tab); header count shows shown/total when filtered. Client-only.
+
 ## Session 2026-06-22 (batch 6) — Long-term packet loss (24h rolling window, mig 052)
 
 **Operator finding:** the Devices "ms / %" column showed **momentary** loss — a PC

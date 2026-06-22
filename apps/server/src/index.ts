@@ -32,6 +32,7 @@ import { startPortStatusSchedule } from './services/port-status-collector.js';
 import { startMikrotikSchedule } from './services/mikrotik-collector.js';
 import { startPrinterSuppliesSchedule } from './services/printer-supplies-collector.js';
 import { startSharedPrintersSchedule } from './services/shared-printers-collector.js';
+import { startUnifiSchedule } from './services/unifi-collector.js';
 import { refreshIpGuard } from './services/ip-guard.js';
 import { startRetentionSchedule } from './services/retention-runner.js';
 
@@ -93,6 +94,7 @@ app.listen({ port: PORT, host: BIND }).then(async () => {
   await startMikrotikSchedule();
   await startPrinterSuppliesSchedule();
   await startSharedPrintersSchedule();
+  await startUnifiSchedule();
   await startRetentionSchedule();
 }).catch((err) => {
   app.log.error(err);

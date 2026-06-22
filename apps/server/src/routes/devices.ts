@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../db/pool.js';
 import { runMikrotikCollectOnce, probeDeviceNow, suggestCategory } from '../services/mikrotik-collector.js';
+import { runUnifiCollectOnce } from '../services/unifi-collector.js';
 import { runSharedPrintersOnce } from '../services/shared-printers-collector.js';
 
 // Device categories are operator-configurable (Settings → devices.categories),
@@ -149,6 +150,22 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
       return result;
     } catch (err) {
       app.log.error({ err }, 'DHCP collect failed');
+      reply.code(500);
+      return { error: String(err) };
+    }
+  });
+
+  // Manual one-off pull of the UniFi controller's connected-client list.
+  app.post('/unifi/run', async (_req, reply) => {
+    try {
+      const result = await runUnifiCollectOnce();
+      if (result === null) {
+        reply.code(409);
+        return { error: 'UniFi collect already running' };
+      }
+      return result;
+    } catch (err) {
+      app.log.error({ err }, 'UniFi collect failed');
       reply.code(500);
       return { error: String(err) };
     }

@@ -507,6 +507,59 @@ export function SettingsPage() {
           </p>
         </Section>
 
+        <Section title={t('settings.section.unifi')} description={t('settings.section.unifiDesc')}>
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.unifiEnabled')}
+              checked={value('unifi.enabled', '0') === '1'}
+              onChange={(checked) => set('unifi.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.unifiInterval')}>
+              <IntervalInput v={value('unifi.interval_sec', '300')} onChange={(v) => set('unifi.interval_sec', v)} />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.unifiUrl')}>
+            <input
+              type="text"
+              value={value('unifi.url', '')}
+              onChange={(e) => set('unifi.url', e.target.value)}
+              placeholder="https://10.8.2.229:8443"
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace' }}
+            />
+          </Field>
+          <FieldGroup>
+            <Field label={t('settings.field.unifiSite')}>
+              <input
+                type="text"
+                value={value('unifi.site', 'default')}
+                onChange={(e) => set('unifi.site', e.target.value)}
+                style={{ ...fieldStyle, width: 140 }}
+              />
+            </Field>
+            <Field label={t('settings.field.unifiUser')}>
+              <input
+                type="text"
+                value={value('unifi.user', '')}
+                onChange={(e) => set('unifi.user', e.target.value)}
+                style={{ ...fieldStyle, width: 200 }}
+              />
+            </Field>
+            <Field label={t('settings.field.unifiPassword')}>
+              <input
+                type="password"
+                value={value('unifi.password', '')}
+                onChange={(e) => set('unifi.password', e.target.value)}
+                placeholder={t('settings.field.mikrotikPasswordPlaceholder')}
+                autoComplete="new-password"
+                style={{ ...fieldStyle, width: 200 }}
+              />
+            </Field>
+          </FieldGroup>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+            {t('settings.field.unifiHelp')}
+          </p>
+        </Section>
+
         <Section title={t('settings.section.deviceWeb')} description={t('settings.section.deviceWebDesc')}>
           <CheckField
             label={t('settings.field.webProxy')}
