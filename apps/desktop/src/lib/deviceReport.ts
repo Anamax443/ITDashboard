@@ -51,6 +51,8 @@ function chartBlock(title: string, slices: Slice[]): string {
   return `<div class="chart"><h3>${esc(title)}</h3><div class="chart-row">${pieSvg(slices)}${legend(slices, total)}</div></div>`;
 }
 
+export interface ReportTableColumn { label: string; get: (r: DeviceItem) => string | number | boolean | null | undefined; }
+
 export function openDeviceReport(opts: {
   rows: DeviceItem[];
   catLabel: (k: string) => string;
@@ -58,8 +60,10 @@ export function openDeviceReport(opts: {
   filterSummary: string;
   uncategorizedLabel: string;
   now: string;
+  tableColumns: ReportTableColumn[];
+  listTitle: string;
 }): void {
-  const { rows, catLabel, reachOf, filterSummary, uncategorizedLabel, now } = opts;
+  const { rows, catLabel, reachOf, filterSummary, uncategorizedLabel, now, tableColumns, listTitle } = opts;
 
   const byCategory = countBy(rows, (d) => d.category ? catLabel(d.category) : uncategorizedLabel);
   const bySite = countBy(rows, (d) => d.site || '—');
@@ -98,6 +102,11 @@ export function openDeviceReport(opts: {
   .chart h3{font-size:13px;margin:0 0 8px;} .chart-row{display:flex;align-items:flex-start;gap:14px;}
   table.legend{border-collapse:collapse;font-size:12px;} .legend td{padding:2px 6px;} .legend .num{text-align:right;} .legend .dim{color:#6b7280;}
   .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;}
+  .list-h{font-size:15px;margin:26px 0 8px;}
+  table.list{width:100%;border-collapse:collapse;font-size:11px;}
+  table.list th{background:#f3f4f6;text-align:left;padding:5px 7px;border-bottom:2px solid #d1d5db;}
+  table.list td{padding:4px 7px;border-bottom:1px solid #e5e7eb;word-break:break-word;}
+  table.list tr:nth-child(even) td{background:#fafafa;}
   @page{size:A4;margin:10mm;}
   @media print{body{margin:0;} .banner{background:#fff;} .charts{gap:14px;} .chart{break-inside:avoid;} .card{break-inside:avoid;}}
 </style></head><body>
@@ -110,6 +119,11 @@ ${filterSummary ? `<div class="banner">⚠ <strong>Filtrováno:</strong> ${esc(f
   ${chartBlock('Podle lokality', bySite)}
   ${chartBlock('Dostupnost', reach)}
 </div>
+<h2 class="list-h">${esc(listTitle)}</h2>
+<table class="list">
+<thead><tr><th>#</th>${tableColumns.map((c) => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>
+<tbody>${rows.map((r, i) => `<tr><td>${i + 1}</td>${tableColumns.map((c) => { const v = c.get(r); return `<td>${esc(v == null ? '' : String(v))}</td>`; }).join('')}</tr>`).join('')}</tbody>
+</table>
 </body></html>`;
 
   const w = window.open('', '_blank', 'width=1100,height=800');

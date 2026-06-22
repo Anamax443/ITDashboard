@@ -61,10 +61,16 @@ function netViewPrinters(host: string, timeoutMs: number): Promise<{ ok: boolean
 async function siteForHost(ip: string | null): Promise<string> {
   if (!ip) return SITE_FALLBACK;
   const pool = await getPool();
-  const r = await pool.request().input('ip', ip).query<{ site: string }>(`
+  // Prefer the host's own device row; else inherit the site of any sibling on the
+  // same /24 (a host not itself stored still gets the right branch). Never inherit
+  // the 'USB' fallback label.
+  const subnet = ip.split('.').slice(0, 3).join('.') + '.';
+  const r = await pool.request().input('ip', ip).input('net', subnet + '%').query<{ site: string }>(`
     SELECT TOP 1 site FROM dhcp_leases
-    WHERE ip_address = @ip AND source <> 'share'
-    ORDER BY CASE source WHEN 'dhcp' THEN 0 WHEN 'arp' THEN 1 ELSE 2 END`);
+    WHERE source <> 'share' AND site <> '${SITE_FALLBACK}' AND ip_address IS NOT NULL
+      AND (ip_address = @ip OR ip_address LIKE @net)
+    ORDER BY CASE WHEN ip_address = @ip THEN 0 ELSE 1 END,
+             CASE source WHEN 'dhcp' THEN 0 WHEN 'arp' THEN 1 ELSE 2 END`);
   return r.recordset[0]?.site ?? SITE_FALLBACK;
 }
 
@@ -88,17 +94,18 @@ async function upsertShare(site: string, pcName: string, ip: string | null, prin
 // After a SUCCESSFUL net view, drop this PC's share rows that are no longer shared
 // (genuine removal). Never called when net view failed, so an offline PC keeps its
 // last-known shares.
-async function pruneStaleShares(pcName: string, keepMacs: string[]): Promise<void> {
+async function pruneStaleShares(pcName: string, site: string, keepMacs: string[]): Promise<void> {
   const pool = await getPool();
-  // Prune across ALL sites for this PC (the derived site can change if the host's
-  // network classification changes), keyed by the host PC in `comment`.
-  const req = pool.request().input('pc', pcName);
+  // Drop every share row for this PC EXCEPT the ones just upserted at the current
+  // site — so a row left at an old/changed site (e.g. the legacy 'USB' label) is
+  // removed instead of duplicating the printer.
+  const req = pool.request().input('pc', pcName).input('site', site);
   if (keepMacs.length === 0) {
     await req.query(`DELETE FROM dhcp_leases WHERE comment = @pc AND source = 'share'`);
     return;
   }
   const params = keepMacs.map((m, i) => { req.input(`k${i}`, m); return `@k${i}`; });
-  await req.query(`DELETE FROM dhcp_leases WHERE comment = @pc AND source = 'share' AND mac_address NOT IN (${params.join(',')})`);
+  await req.query(`DELETE FROM dhcp_leases WHERE comment = @pc AND source = 'share' AND NOT (site = @site AND mac_address IN (${params.join(',')}))`);
 }
 
 export interface SharedPrintersRunResult { pcs: number; probed: number; printers: number; durationMs: number; }
@@ -126,7 +133,7 @@ export async function runSharedPrintersOnce(): Promise<SharedPrintersRunResult |
           const site = await siteForHost(pc.ip);
           const keep: string[] = [];
           for (const p of found) keep.push(await upsertShare(site, pc.name, pc.ip, p));
-          await pruneStaleShares(pc.name, keep);
+          await pruneStaleShares(pc.name, site, keep);
           printers += found.length;
         } catch { /* keep this PC's last-known shares on a transient error */ }
       }

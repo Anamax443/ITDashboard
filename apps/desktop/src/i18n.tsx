@@ -290,8 +290,11 @@ const dict = {
     'dashboard.help.bullet.computers': 'Počítače — aktivní / celkový inventář → záložka Počítače',
     'dashboard.help.collector': 'Collector bar ukazuje živý progress eventlog skenu (▶ Spustit teď / ⏹ Stop) a může spouštět všechny checks sekvenčně (eventlog → disk → services).',
     'dashboard.help.footer': 'Detailní seznamy (Události, Počítače, Služby, Aktivita, Nastavení) mají vlastní záložky.',
-    'dashboard.resetLayout': 'Obnovit výchozí rozložení dlaždic',
-    'dashboard.resetLayoutTip': 'Dlaždice lze přetahovat myší; pořadí se ukládá do serveru (sdílené). Tímto se vrátí výchozí pořadí.',
+    'dashboard.dragHint': '↕ Dlaždice lze přetahovat myší — pak ulož.',
+    'dashboard.saveLayout': 'Uložit rozložení',
+    'dashboard.saveLayoutTip': 'Uloží aktuální pořadí dlaždic na server (sdílené pro všechny).',
+    'dashboard.resetLayout': 'Výchozí rozložení',
+    'dashboard.resetLayoutTip': 'Vrátí výchozí pořadí dlaždic a uloží.',
 
     'help.tabTitle': 'Co tato záložka ukazuje',
 
@@ -809,8 +812,11 @@ const dict = {
     'dashboard.help.bullet.computers': 'Computers — active / total inventory → Computers tab',
     'dashboard.help.collector': 'Collector bar shows live progress of the eventlog scan (▶ Run now / ⏹ Stop) and can run all checks sequentially (eventlog → disk → services).',
     'dashboard.help.footer': 'The detailed lists (Events, Computers, Services, Activity, Settings) have their own tabs.',
-    'dashboard.resetLayout': 'Reset tile layout',
-    'dashboard.resetLayoutTip': 'Tiles can be dragged to reorder; the order is saved on the server (shared). This restores the default order.',
+    'dashboard.dragHint': '↕ Drag tiles to reorder — then save.',
+    'dashboard.saveLayout': 'Save layout',
+    'dashboard.saveLayoutTip': 'Saves the current tile order to the server (shared for everyone).',
+    'dashboard.resetLayout': 'Default layout',
+    'dashboard.resetLayoutTip': 'Restores the default tile order and saves.',
 
     'help.tabTitle': 'What this tab shows',
 

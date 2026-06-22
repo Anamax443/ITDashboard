@@ -3,7 +3,7 @@ import type { DeviceItem, PrinterSuppliesResult } from '../api.js';
 import { api, timeAgo, deviceDegraded, deviceProblemThresholds, isSyntheticMac, API_BASE } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
-import { openDeviceReport } from '../lib/deviceReport.js';
+import { openDeviceReport, type ReportTableColumn } from '../lib/deviceReport.js';
 import { useI18n } from '../i18n.js';
 
 // MikroTik DHCP device inventory. Each lease is paired with an AD computer (by
@@ -264,6 +264,18 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     { key: 'ad', label: 'AD', get: (d) => d.computer_name ?? '' },
     { key: 'lastSeen', label: t('devices.lastSeen'), get: (d) => d.last_seen ?? '' },
   ];
+  // Columns for the managerial report's device list (DeviceItem-based).
+  const reportColumns: ReportTableColumn[] = [
+    { label: t('devices.site'), get: (d) => d.site },
+    { label: 'IP', get: (d) => d.ip_address ?? '' },
+    { label: t('devices.note'), get: (d) => d.operator_note ?? '' },
+    { label: t('devices.hostname'), get: (d) => d.operator_name ?? d.host_name ?? '' },
+    { label: 'MAC', get: (d) => isSyntheticMac(d.mac_address) ? '' : d.mac_address },
+    { label: t('devices.type'), get: (d) => d.source === 'share' ? `USB · ${d.comment ?? ''}` : `${d.dynamic === false ? t('devices.static') : d.dynamic === true ? t('devices.dynamic') : '—'}${d.source && d.source !== 'dhcp' ? ' · ' + d.source : ''}` },
+    { label: t('devices.category'), get: (d) => d.category ? catLabel(d.category) : '' },
+    { label: t('devices.status'), get: (d) => reachText(d) },
+    { label: 'AD', get: (d) => d.computer_name ?? '' },
+  ];
   const filterSummary = [
     site && `${t('devices.site')}=${site}`,
     onlyUnmanaged && t('devices.onlyUnmanaged'),
@@ -334,6 +346,8 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
               filterSummary,
               uncategorizedLabel: t('devices.noCat'),
               now: new Date().toLocaleString(),
+              tableColumns: reportColumns,
+              listTitle: t('devices.title'),
             })}
           >📊 {t('devices.report')}</button>
           <ExportMenu rows={exportRows} columns={exportColumns} title={t('devices.title')} filterSummary={filterSummary} filenameBase="zarizeni" />
