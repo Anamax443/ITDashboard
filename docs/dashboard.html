@@ -400,6 +400,7 @@ service restarts on new dist/, in-memory state cleared</div>
     <li><strong>Click a tile</strong> → an inline <strong>breakdown table expands</strong> below it (it is hidden by default): score, critical/error/warning counts, number of error types and number of days with errors. Click the tile again or ✕ to collapse.</li>
     <li>In the table the numbers are <strong>click-throughs to the Events tab</strong>: the <strong>score</strong> opens all error events for that PC over the window (and its tooltip explains how the score is computed); <strong>crit / err / warn</strong> open events for that PC filtered to that severity. The PC name jumps to the Computers tab.</li>
     <li>Everything — window, cap, thresholds — is tunable in <strong>Settings → "Problem PCs"</strong>.</li>
+    <li><strong>Temporary snooze (sign-off).</strong> Once a box's eventlog problems are reviewed and resolved, click <strong>"✓ Resolve / snooze"</strong> on its row to snooze that PC for a chosen number of <strong>days</strong> (default 7), with a <strong>signature</strong> — the logged-in user, or a typed name — and an optional note. A snoozed PC drops out of the tile count and into a collapsible <strong>"💤 Snoozed"</strong> list (until / by / note) and is flagged with a 💤 banner in the Events tab. It <strong>returns to standard automatically</strong> when the snooze expires; you can also clear it early with <strong>"↩ Return to standard"</strong>. The snooze is deliberately temporary and <strong>per-PC</strong> — it mutes known-resolved noise for a bounded window without hiding the box for good.</li>
   </ul>
 </div>
 <div data-lang="cs">
@@ -414,6 +415,7 @@ service restarts on new dist/, in-memory state cleared</div>
     <li><strong>Kliknutím na dlaždici</strong> → se pod ní <strong>rozbalí tabulka</strong> s rozpadem (defaultně skrytá): skóre, počty critical/error/warning, počet typů chyb a počet dní s chybami. Dalším klikem na dlaždici nebo ✕ ji sbalíte.</li>
     <li>Čísla v tabulce jsou <strong>proklikatelná do záložky Události</strong>: <strong>skóre</strong> otevře všechny chybové události daného PC za okno (a tooltip vysvětlí, jak se skóre počítá); <strong>crit / err / warn</strong> otevřou události toho PC profiltrované na danou závažnost. Jméno PC skočí do záložky Počítače.</li>
     <li>Vše — okno, strop, prahy — se ladí v <strong>Nastavení → „PC v problémech"</strong>.</li>
+    <li><strong>Dočasné uspání (sign-off).</strong> Jakmile máš eventlog daného PC projetý a problém vyřešený, klikni v jeho řádku na <strong>„✓ Vyřešit / uspat"</strong> a PC uspíš na zvolený <strong>počet dní</strong> (výchozí 7), s <strong>podpisem</strong> — přihlášený uživatel, nebo zadané jméno — a volitelnou poznámkou. Uspané PC vypadne z počtu na dlaždici do rozbalovacího seznamu <strong>„💤 Uspané"</strong> (do kdy / kdo / poznámka) a v záložce Události se označí 💤 banerem. Po vypršení se <strong>samo vrátí do standardu</strong>; můžeš ho vrátit i dřív přes <strong>„↩ Vrátit do standardu"</strong>. Uspání je záměrně dočasné a <strong>na úrovni PC</strong> — utlumí známý vyřešený šum na omezené okno, ale neschová stroj natrvalo.</li>
   </ul>
 </div>
 

@@ -1,6 +1,45 @@
 # ITDashboard Handoff
 
-Last updated: 2026-06-17 (LIVE `e456fd0`; **full doc sweep done incl. G2** — README, ARCHITECTURE, dashboard.html CS+EN, project-status.html, i18n all current). **G2 — printer supplies + EWS proxy**: new "Stav tiskáren / Printer status" tab + 🖨 Náplně tile reading ink/toner/maintenance-box/drum/belt via **SNMP Printer-MIB primary + HTTP fallback** (Brother toner %, Epson maint box) with a self-contained `node:dgram` SNMP client; the device web-UI **cert-bypass proxy is now ON by default** and was reworked to actually render Epson/HP/Brother EWS (buffers body, `<base>`=doc dir, absolute-URL rewrite, relaxed CSP + MIME correction, client-side redirects); migrations 048–049; 74 tests. Earlier device-platform batch: MikroTik DHCP collection LIVE + fully DB-driven (no MIKROTIK_* env except MIKROTIK_SECRET); multi-source inventory merged by MAC = DHCP (dynamic+static reservations) + router ARP + active app-server subnet scan (configurable ranges CIDR/wildcard, `!` excludes a subnet, discovery cache, remote subnets via router ARP); NetBIOS (nbtstat) device names → printer auto-suggest (NPI/BRN/BRW/RNP/KMBT); Static/Dynamic Type column; operator-editable device name (mig 046); generic + configurable categories; per-device packet loss + latency (mig 045/047) as `ms/%` column with tunable problem thresholds, "Loss/latency" tile + "issues only" filter; printer-offline alert agenda (mig 043); 🖨 Printers tile; printer IP→web-UI with optional cert-bypass server proxy; new Database tab; deploy robocopy `/MIR` excludes `dist` (frontend-window fix). Migrations 043–047. — prior 2026-06-16: (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
+Last updated: 2026-06-22 (**eventlog "PC v problémech" dočasné per-PC uspání / snooze** with signature — migration 050, `POST /events/snooze[/clear]`, HealthCards inline editor + "Uspané" list + Events 💤 banner; 79 tests; see Session 2026-06-22 below). Prior: 2026-06-17 (LIVE `e456fd0`; **full doc sweep done incl. G2** — README, ARCHITECTURE, dashboard.html CS+EN, project-status.html, i18n all current). **G2 — printer supplies + EWS proxy**: new "Stav tiskáren / Printer status" tab + 🖨 Náplně tile reading ink/toner/maintenance-box/drum/belt via **SNMP Printer-MIB primary + HTTP fallback** (Brother toner %, Epson maint box) with a self-contained `node:dgram` SNMP client; the device web-UI **cert-bypass proxy is now ON by default** and was reworked to actually render Epson/HP/Brother EWS (buffers body, `<base>`=doc dir, absolute-URL rewrite, relaxed CSP + MIME correction, client-side redirects); migrations 048–049; 74 tests. Earlier device-platform batch: MikroTik DHCP collection LIVE + fully DB-driven (no MIKROTIK_* env except MIKROTIK_SECRET); multi-source inventory merged by MAC = DHCP (dynamic+static reservations) + router ARP + active app-server subnet scan (configurable ranges CIDR/wildcard, `!` excludes a subnet, discovery cache, remote subnets via router ARP); NetBIOS (nbtstat) device names → printer auto-suggest (NPI/BRN/BRW/RNP/KMBT); Static/Dynamic Type column; operator-editable device name (mig 046); generic + configurable categories; per-device packet loss + latency (mig 045/047) as `ms/%` column with tunable problem thresholds, "Loss/latency" tile + "issues only" filter; printer-offline alert agenda (mig 043); 🖨 Printers tile; printer IP→web-UI with optional cert-bypass server proxy; new Database tab; deploy robocopy `/MIR` excludes `dist` (frontend-window fix). Migrations 043–047. — prior 2026-06-16: (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
+
+## Session 2026-06-22 — Eventlog "PC v problémech" dočasné uspání (snooze)
+
+New operator sign-off on the **🩺 PC v problémech** tile: when a box's eventlog
+problems have been reviewed and resolved, the operator can **temporarily snooze**
+that PC for a chosen number of days, with a **signature** (who / when / optional
+note), so the tile stops lighting up needlessly without muting the warning system
+for good.
+
+**Always time-bounded.** The snooze stores a hard `snoozed_until`; after it passes
+the PC returns to standard automatically (no timer — `GET /events/pc-health`
+treats only `snoozed_until > now` as active). Operator can also clear a snooze
+early ("vrátit do standardu"). Deliberately temporary-until-resolved, per operator:
+"takovéto pozastavení by mělo být vážně dočasné … a potom by to opět šlo do
+standardu" — snooze is **per-PC** (not per-signature).
+
+- **Migration 050** (`050_eventlog_snooze.sql`) — table `eventlog_snooze`
+  (PK `computer_id`: `snoozed_at`, `snoozed_until`, `snoozed_by`, `note`, FK→
+  `computers` ON DELETE CASCADE) + setting `faulty.snooze_default_days` (default 7).
+  One active snooze per PC; re-snoozing MERGE-overwrites. Full history → `activity_log`
+  (source `eventlog-snooze`).
+- **Server** (`routes/events.ts`) — `GET /events/pc-health` LEFT JOINs the snooze
+  and returns `snoozed` / `snoozedUntil` / `snoozedBy` / `snoozeNote` per item plus
+  `snoozeDefaultDays`. `POST /events/snooze` `{computer, days(1–90), note?, by?}`
+  upserts; the **signature** is the authenticated session user (cookie `itd-session`)
+  when present, else the typed `by` (400 `signature_required` if neither).
+  `POST /events/snooze/clear` `{computer}` removes it. Both log to `activity_log`.
+- **Frontend** — `HealthCards` tile counts only `risk && !active-snooze`; each risk
+  row gets a **"✓ Vyřešit / uspat"** inline editor (days prefilled from
+  `snoozeDefaultDays`, note, optional signature), and snoozed PCs drop into a
+  collapsible **"💤 Uspané"** list with until/by/note + **"↩ Vrátit do standardu"**.
+  The **Events tab** shows a 💤 banner when filtered to a snoozed PC. New pure helper
+  `isSnoozeActive(snoozedUntil, now)` (api.ts) drives the client decision so an
+  expired snooze self-corrects before the next refetch; unit-tested (Vitest, desktop
+  now 39 cases / **79 total**). Typecheck clean, all tests pass. i18n CS+EN.
+
+> Open follow-up: no Settings UI for `faulty.snooze_default_days` yet (DB-tunable);
+> eventlog scoring still sends no email, so the snooze's email scope is a prepared
+> hook (`isSnoozeActive`/`snoozed`), not a live suppression path.
 
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in

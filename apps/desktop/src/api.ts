@@ -59,6 +59,14 @@ export interface PcHealth {
   /** Damped-blend score; higher = more likely a reinstall candidate. */
   score: number;
   level: 'watch' | 'risk';
+  /** Temporarily snoozed by the operator (excluded from the risk tile count). */
+  snoozed: boolean;
+  /** ISO expiry of the snooze (null when not snoozed). After this it returns to standard. */
+  snoozedUntil: string | null;
+  /** Signature: who snoozed it (null when not snoozed). */
+  snoozedBy: string | null;
+  /** Operator note attached to the snooze (null when not snoozed / no note). */
+  snoozeNote: string | null;
 }
 export interface PcHealthScoring {
   cap: number;
@@ -72,8 +80,22 @@ export interface PcHealthResult {
   windowDays: number;
   thresholdWatch: number;
   thresholdRisk: number;
+  /** Default snooze length (days) offered in the UI; operator can override. */
+  snoozeDefaultDays: number;
   scoring: PcHealthScoring;
   items: PcHealth[];
+}
+
+/**
+ * A per-PC eventlog snooze is active only while its expiry is still in the future.
+ * Pure (no clock capture beyond the passed `now`) so the dashboard self-corrects
+ * an expired snooze even before the next pc-health refetch, and so it's unit
+ * testable. Returns false for a missing/invalid expiry.
+ */
+export function isSnoozeActive(snoozedUntil: string | null | undefined, now: Date = new Date()): boolean {
+  if (!snoozedUntil) return false;
+  const t = new Date(snoozedUntil).getTime();
+  return Number.isFinite(t) && t > now.getTime();
 }
 
 export interface ServiceProblem {
@@ -734,6 +756,27 @@ export const api = {
   topIds: (hours = 24, limit = 15) => jget<{ items: TopEventId[] }>(`/events/top-ids?hours=${hours}&limit=${limit}`),
   timeline: (hours = 24) => jget<{ items: TimelineBucket[] }>(`/events/timeline?hours=${hours}`),
   pcHealth: () => jget<PcHealthResult>('/events/pc-health'),
+  snoozePc: async (computer: string, days: number, note?: string, by?: string) => {
+    const r = await fetch(`${API_BASE}/events/snooze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ computer, days, note, by }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((j as { error?: string }).error || `POST /events/snooze → ${r.status}`);
+    return j as { ok: true; computer: string; days: number; by: string; snoozedUntil: string | null };
+  },
+  unsnoozePc: async (computer: string) => {
+    const r = await fetch(`${API_BASE}/events/snooze/clear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ computer }),
+    });
+    if (!r.ok) throw new Error(`POST /events/snooze/clear → ${r.status}`);
+    return r.json() as Promise<{ ok: true; computer: string; cleared: number }>;
+  },
   topComputers: (hours = 24, limit = 10) => jget<{ items: TopComputer[] }>(`/events/top-computers?hours=${hours}&limit=${limit}`),
   computers: () => jget<{ items: ComputerItem[] }>('/computers'),
   inactiveStats: () => jget<InactiveStats>('/computers/inactive-stats'),

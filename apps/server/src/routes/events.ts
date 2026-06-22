@@ -1,7 +1,19 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../db/pool.js';
 import { getSetting, getAllSettings } from '../services/settings.js';
+import { getSession } from '../auth/session-store.js';
+import { logActivity } from '../services/activity-log.js';
+
+// The "signature" on a snooze. Prefer the authenticated session user (the dashboard
+// auth gate, cookie itd-session) so it can't be spoofed; fall back to a name typed
+// in the request body when the operator browses without logging in.
+function sessionUser(req: FastifyRequest): string | null {
+  const cookies = (req as unknown as { cookies?: Record<string, string | undefined> }).cookies ?? {};
+  const id = cookies['itd-session'];
+  if (!id) return null;
+  return getSession(id)?.user ?? null;
+}
 
 const ListQuery = z.object({
   computer: z.string().optional(),
@@ -174,24 +186,112 @@ export async function registerEventsRoutes(app: FastifyInstance) {
         SELECT c.id AS computer_id, c.name,
           a.critical, a.[error], a.warning, a.signatures,
           ISNULL(d.active_days, 0) AS active_days,
-          CAST(a.weighted + a.signatures * @wb + ISNULL(d.active_days, 0) * @wp AS INT) AS score
+          CAST(a.weighted + a.signatures * @wb + ISNULL(d.active_days, 0) * @wp AS INT) AS score,
+          sn.snoozed_until, sn.snoozed_by, sn.note AS snooze_note,
+          CASE WHEN sn.snoozed_until > SYSUTCDATETIME() THEN 1 ELSE 0 END AS snoozed
         FROM agg a
         JOIN computers c ON c.id = a.computer_id
         LEFT JOIN dys d ON d.computer_id = a.computer_id
+        LEFT JOIN eventlog_snooze sn ON sn.computer_id = c.id
         WHERE c.enabled = 1 AND c.excluded = 0
         ORDER BY score DESC
       `);
 
     const items = r.recordset
-      .map((row) => ({ ...row, level: row.score >= risk ? 'risk' : row.score >= watch ? 'watch' : 'ok' }))
+      .map((row) => ({
+        computer_id: row.computer_id,
+        name: row.name,
+        critical: row.critical,
+        error: row.error,
+        warning: row.warning,
+        signatures: row.signatures,
+        active_days: row.active_days,
+        score: row.score,
+        level: row.score >= risk ? 'risk' : row.score >= watch ? 'watch' : 'ok',
+        snoozed: !!row.snoozed,
+        snoozedUntil: row.snoozed ? row.snoozed_until : null,
+        snoozedBy: row.snoozed ? row.snoozed_by : null,
+        snoozeNote: row.snoozed ? (row.snooze_note ?? null) : null,
+      }))
       .filter((row) => row.level !== 'ok');
+
+    const snoozeDefaultDaysRaw = Number(s['faulty.snooze_default_days']);
+    const snoozeDefaultDays = Number.isFinite(snoozeDefaultDaysRaw) && snoozeDefaultDaysRaw >= 1
+      ? Math.floor(snoozeDefaultDaysRaw) : 7;
 
     return {
       windowDays,
       thresholdWatch: watch,
       thresholdRisk: risk,
+      snoozeDefaultDays,
       scoring: { cap, weightCritical: wc, weightError: we, weightWarning: ww, weightBreadth: wb, weightPersistence: wp },
       items,
     };
+  });
+
+  // Temporary per-PC snooze of the eventlog "problem PC" tile. ALWAYS time-bounded
+  // (days → snoozed_until); after expiry the PC returns to standard on its own (the
+  // pc-health query treats only `snoozed_until > now` as active). The signature is
+  // the authenticated user when available, else a name supplied in the body.
+  const SnoozeBody = z.object({
+    computer: z.string().min(1).max(256),
+    days: z.coerce.number().int().min(1).max(90),
+    note: z.string().max(1000).optional(),
+    by: z.string().max(128).optional(),
+  });
+
+  app.post('/events/snooze', async (req, reply) => {
+    const parsed = SnoozeBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ ok: false, error: 'invalid_body' });
+    const signer = sessionUser(req) ?? (parsed.data.by?.trim() || null);
+    if (!signer) return reply.code(400).send({ ok: false, error: 'signature_required' });
+
+    const pool = await getPool();
+    const cr = await pool.request().input('name', parsed.data.computer)
+      .query('SELECT id FROM computers WHERE name = @name');
+    const computerId = cr.recordset[0]?.id as number | undefined;
+    if (!computerId) return reply.code(404).send({ ok: false, error: 'computer_not_found' });
+
+    const upd = await pool.request()
+      .input('cid', computerId)
+      .input('days', parsed.data.days)
+      .input('by', signer)
+      .input('note', parsed.data.note?.trim() || null)
+      .query(`
+        MERGE eventlog_snooze AS t
+        USING (SELECT @cid AS computer_id) AS s ON t.computer_id = s.computer_id
+        WHEN MATCHED THEN UPDATE SET
+          snoozed_at = SYSUTCDATETIME(),
+          snoozed_until = DATEADD(DAY, @days, SYSUTCDATETIME()),
+          snoozed_by = @by, note = @note
+        WHEN NOT MATCHED THEN INSERT (computer_id, snoozed_at, snoozed_until, snoozed_by, note)
+          VALUES (@cid, SYSUTCDATETIME(), DATEADD(DAY, @days, SYSUTCDATETIME()), @by, @note)
+        OUTPUT inserted.snoozed_until;
+      `);
+    const snoozedUntil = upd.recordset[0]?.snoozed_until ?? null;
+    logActivity('info', 'eventlog-snooze',
+      `${parsed.data.computer} uspáno na ${parsed.data.days} d (${signer})${parsed.data.note?.trim() ? ' – ' + parsed.data.note.trim() : ''}`);
+    return reply.send({ ok: true, computer: parsed.data.computer, days: parsed.data.days, by: signer, snoozedUntil });
+  });
+
+  const ClearBody = z.object({ computer: z.string().min(1).max(256) });
+
+  app.post('/events/snooze/clear', async (req, reply) => {
+    const parsed = ClearBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ ok: false, error: 'invalid_body' });
+    const signer = sessionUser(req);
+    const pool = await getPool();
+    const r = await pool.request().input('name', parsed.data.computer)
+      .query(`
+        DELETE sn FROM eventlog_snooze sn
+        JOIN computers c ON c.id = sn.computer_id
+        WHERE c.name = @name
+      `);
+    const cleared = r.rowsAffected?.[0] ?? 0;
+    if (cleared > 0) {
+      logActivity('info', 'eventlog-snooze',
+        `${parsed.data.computer} vráceno do standardu${signer ? ' (' + signer + ')' : ''}`);
+    }
+    return reply.send({ ok: true, computer: parsed.data.computer, cleared });
   });
 }

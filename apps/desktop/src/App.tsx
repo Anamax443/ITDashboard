@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
 import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem, PrinterSuppliesResult } from './api.js';
-import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions, deviceDegraded, deviceProblemThresholds } from './api.js';
+import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions, deviceDegraded, deviceProblemThresholds, isSnoozeActive } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { HealthCards } from './components/HealthCards.js';
 import { EventsTable } from './components/EventsTable.js';
@@ -351,6 +351,7 @@ export function App() {
               setFilterHours((pcHealth?.windowDays ?? 14) * 24);
               setView('events');
             }}
+            onChanged={() => { api.pcHealth().then(setPcHealth).catch(() => {}); }}
           />
           <OsBreakdownChart
             items={computers}
@@ -376,6 +377,11 @@ export function App() {
             onChangeHours={setFilterHours}
             onRefresh={refresh}
             onJumpToComputer={jumpToComputer}
+            snoozeBanner={(() => {
+              if (!filterComputer) return null;
+              const p = pcHealth?.items.find((i) => i.name === filterComputer && isSnoozeActive(i.snoozedUntil));
+              return p ? { until: p.snoozedUntil, by: p.snoozedBy, note: p.snoozeNote } : null;
+            })()}
           />
         </div>
       )}

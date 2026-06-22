@@ -17,6 +17,8 @@ interface Props {
   onChangeHours: (v: number) => void;
   onRefresh: () => void;
   onJumpToComputer?: (name: string) => void;
+  /** When the filtered computer is currently snoozed, its sign-off info for a banner. */
+  snoozeBanner?: { until: string | null; by: string | null; note: string | null } | null;
 }
 
 export function EventsTable(props: Props) {
@@ -99,8 +101,19 @@ export function EventsTable(props: Props) {
     { key: 'message', label: 'Message', get: (r) => (r.message ?? '').replace(/\s+/g, ' ').trim() },
   ];
 
+  const snoozeUntil = props.snoozeBanner?.until ? new Date(props.snoozeBanner.until) : null;
+  const snoozeUntilStr = snoozeUntil && !Number.isNaN(snoozeUntil.getTime()) ? snoozeUntil.toLocaleDateString() : '';
+
   return (
     <div className="panel events-panel">
+      {props.snoozeBanner && (
+        <div style={{ margin: '12px 12px 0', padding: '8px 12px', borderRadius: 6, background: 'rgba(120,120,120,0.15)', border: '1px solid var(--border, rgba(255,255,255,0.12))', fontSize: 13 }}>
+          💤 {t('health.snoozeTitle')}: {props.filterComputer}
+          {snoozeUntilStr && ` · ${t('health.snoozedUntil')} ${snoozeUntilStr}`}
+          {props.snoozeBanner.by && ` · ${props.snoozeBanner.by}`}
+          {props.snoozeBanner.note && ` · ${props.snoozeBanner.note}`}
+        </div>
+      )}
       <div style={{ padding: 12 }}>
         <HelpBox title={t('help.tabTitle')}>
           <p>{t('events.help.intro')}</p>

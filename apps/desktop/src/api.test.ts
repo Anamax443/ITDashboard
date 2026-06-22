@@ -12,6 +12,7 @@ import {
   osBucket,
   isStaleComputer,
   levelName,
+  isSnoozeActive,
 } from './api.js';
 
 // Minimal builders — only the fields the pure functions actually read.
@@ -190,6 +191,27 @@ describe('isStaleComputer', () => {
   });
   it('excluded machines are never stale', () => {
     expect(isStaleComputer(mk(100, true), 90)).toBe(false);
+  });
+});
+
+describe('isSnoozeActive', () => {
+  const now = new Date('2026-06-22T12:00:00Z');
+  it('future expiry → active', () => {
+    expect(isSnoozeActive('2026-06-29T12:00:00Z', now)).toBe(true);
+  });
+  it('past expiry → returned to standard', () => {
+    expect(isSnoozeActive('2026-06-20T12:00:00Z', now)).toBe(false);
+  });
+  it('exact now is not active (strictly future)', () => {
+    expect(isSnoozeActive('2026-06-22T12:00:00Z', now)).toBe(false);
+  });
+  it('null / undefined / empty → not snoozed', () => {
+    expect(isSnoozeActive(null, now)).toBe(false);
+    expect(isSnoozeActive(undefined, now)).toBe(false);
+    expect(isSnoozeActive('', now)).toBe(false);
+  });
+  it('invalid date string → not snoozed', () => {
+    expect(isSnoozeActive('not-a-date', now)).toBe(false);
   });
 });
 
