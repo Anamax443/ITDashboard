@@ -673,6 +673,33 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
   }
 }
 
+// Lightweight per-router API connectivity test for the Settings panel. Hits the
+// SAME REST endpoint the collector uses (so it exercises the real auth path) with
+// a short timeout, but does NO scan — so it returns in seconds, not minutes.
+// Per router: ok + lease count on success, or the HTTP/transport error.
+export interface RouterTest { site: string; ip: string; ok: boolean; count: number | null; ms: number; error?: string }
+
+export async function testRouters(): Promise<{ tested: number; results: RouterTest[] }> {
+  const settings = await getAllSettings();
+  const routers = parseRouters(settings['mikrotik.routers']);
+  const user = (settings['mikrotik.user'] ?? '').trim() || 'dhcp-reader';
+  const enc = settings['mikrotik.password_enc'] ?? '';
+  let pass = '';
+  try { pass = enc ? decryptSecret(enc) : ''; } catch { pass = ''; }
+
+  const results: RouterTest[] = [];
+  for (const r of routers) {
+    const t0 = Date.now();
+    try {
+      const leases = await routerGet<RawLease>(r.ip, '/rest/ip/dhcp-server/lease', user, pass, 5000);
+      results.push({ site: r.site, ip: r.ip, ok: true, count: leases.length, ms: Date.now() - t0 });
+    } catch (e) {
+      results.push({ site: r.site, ip: r.ip, ok: false, count: null, ms: Date.now() - t0, error: String(e).split('\n')[0] });
+    }
+  }
+  return { tested: results.length, results };
+}
+
 // On-demand ICMP ping of one device IP (per-row "Ping" in the Devices tab).
 // Returns a cmd-like transcript and persists the verdict on the lease.
 export async function probeDeviceNow(site: string, mac: string, ip: string): Promise<{ alive: boolean; console: string }> {

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../db/pool.js';
-import { runMikrotikCollectOnce, probeDeviceNow, suggestCategory } from '../services/mikrotik-collector.js';
+import { runMikrotikCollectOnce, probeDeviceNow, suggestCategory, testRouters } from '../services/mikrotik-collector.js';
 import { runUnifiCollectOnce } from '../services/unifi-collector.js';
 import { runSharedPrintersOnce } from '../services/shared-printers-collector.js';
 
@@ -153,6 +153,11 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
       reply.code(500);
       return { error: String(err) };
     }
+  });
+
+  // Fast per-router MikroTik API connectivity test (no scan) for Settings.
+  app.post('/mikrotik/test', async () => {
+    return testRouters();
   });
 
   // Connectivity status of the API-based collectors (MikroTik routers, UniFi
