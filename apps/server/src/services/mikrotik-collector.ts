@@ -7,6 +7,7 @@ import { evaluateAndSendPrinterAlerts } from './alerts.js';
 import { logActivity } from './activity-log.js';
 import { icmpPing } from './reachability-collector.js';
 import { pingWithOutput } from './port-status-collector.js';
+import { parseNbtstat } from './netbios-util.js';
 
 // MikroTik DHCP lease collector. Pulls active leases from each configured
 // RouterOS v7 router via the REST API and upserts them into dhcp_leases.
@@ -377,19 +378,23 @@ async function pingStats(ip: string, count: number, timeoutMs: number): Promise<
 // DIRECTLY over NetBIOS with `nbtstat -A <ip>` — peer-to-peer, no DNS needed.
 // The node-status table lists the machine name under the "<00>" type. Returns
 // null for devices that don't speak NetBIOS (many IoT) — name just stays unknown.
-function resolveName(ip: string, timeoutMs: number): Promise<string | null> {
+// Query a device's NetBIOS node status (`nbtstat -A <ip>`) — peer-to-peer over L3,
+// no DNS or router needed. The node-status table yields the machine name (the
+// "<00>" entry) AND, crucially, the device's real MAC ("MAC Address = …"). The MAC
+// lets the active scan key remote-subnet hosts that ARP (L2, router-local) can't
+// reach — works for Windows PCs and most network printers (Brother/HP speak
+// NetBIOS). Returns nulls for devices that don't answer NetBIOS (many IoT).
+export function resolveNode(ip: string, timeoutMs: number): Promise<{ name: string | null; mac: string | null }> {
   return new Promise((resolve) => {
     execFile('nbtstat', ['-A', ip], { windowsHide: true, timeout: timeoutMs, maxBuffer: 1 << 20 }, (_err, stdout) => {
-      const out = stdout || '';
-      for (const line of out.split(/\r?\n/)) {
-        // "   EPSONB523FE    <00>  UNIQUE      Registered" — capture the name
-        // before <00> (status word is locale-dependent, so we don't match it).
-        const m = line.match(/^\s*([A-Za-z0-9][A-Za-z0-9._-]{0,14})\s+<00>/i);
-        if (m && m[1]) { resolve(m[1].trim()); return; }
-      }
-      resolve(null);
+      resolve(parseNbtstat(stdout || ''));
     });
   });
+}
+
+// Name-only convenience for the paths that already have the MAC (ARP / refresh).
+function resolveName(ip: string, timeoutMs: number): Promise<string | null> {
+  return resolveNode(ip, timeoutMs).then((r) => r.name);
 }
 
 export interface MikrotikRunResult {
@@ -560,19 +565,40 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
             }
           } catch { /* skip a router that fails ARP */ }
         }
-        for (const a of aliveList) {
-          const mac = arpMap.get(a.ip);
-          if (!mac) continue; // alive but no MAC resolved — can't key it
-          const [st, host] = await Promise.all([pingStats(a.ip, 4, 1500), resolveName(a.ip, 2500)]);
-          await upsertDevice({ site: a.site, mac, ip: a.ip, host, server: null, comment: null, status: 'scan', dynamic: false, exp: null, rls: null, source: 'scan' });
-          if (known.ips.has(a.ip)) {
-            await pool.request().input('site', a.site).input('mac', mac)
-              .query(`UPDATE dhcp_leases SET reachable = NULL, reach_checked_at = NULL WHERE site = @site AND mac_address = @mac`);
-          } else {
-            await persistReachable(a.site, mac, st.alive, st.lossPct, null, st.latencyMs);
+        // Resolve + store each alive host (parallelized — was sequential). ARP (L2)
+        // only covers router-attached subnets; for the rest, fall back to nbtstat
+        // node status, which returns the real MAC + name over L3 (cross-subnet) —
+        // so remote-site PCs and printers that ping alive but have no ARP MAC still
+        // get keyed and stored, instead of being silently dropped.
+        let ai = 0;
+        const storeWorker = async () => {
+          while (ai < aliveList.length) {
+            const a = aliveList[ai++];
+            if (!a) continue;
+            let mac = arpMap.get(a.ip) ?? null;
+            let host: string | null = null;
+            if (!mac) {
+              const node = await resolveNode(a.ip, 2500);
+              mac = node.mac;
+              host = node.name;
+            } else {
+              host = await resolveName(a.ip, 2500);
+            }
+            if (!mac) continue; // no ARP and no NetBIOS MAC — genuinely unidentifiable
+            try {
+              const st = await pingStats(a.ip, 4, 1500);
+              await upsertDevice({ site: a.site, mac, ip: a.ip, host, server: null, comment: null, status: 'scan', dynamic: false, exp: null, rls: null, source: 'scan' });
+              if (known.ips.has(a.ip)) {
+                await pool.request().input('site', a.site).input('mac', mac)
+                  .query(`UPDATE dhcp_leases SET reachable = NULL, reach_checked_at = NULL WHERE site = @site AND mac_address = @mac`);
+              } else {
+                await persistReachable(a.site, mac, st.alive, st.lossPct, null, st.latencyMs);
+              }
+              scanned++;
+            } catch { /* one host's DB/probe error shouldn't abort the sweep */ }
           }
-          scanned++;
-        }
+        };
+        await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, aliveList.length || 1) }, storeWorker));
 
         // Reachability refresh for ALREADY-KNOWN static devices (scan/arp) not
         // matched to an AD computer — a targeted up/down re-ping by stored IP, NOT

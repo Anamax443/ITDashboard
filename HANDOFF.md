@@ -2,6 +2,45 @@
 
 Last updated: 2026-06-22 (**eventlog "PC v problémech" dočasné per-PC uspání / snooze** with signature — migration 050, `POST /events/snooze[/clear]`, HealthCards inline editor + "Uspané" list + Events 💤 banner; 79 tests; see Session 2026-06-22 below). Prior: 2026-06-17 (LIVE `e456fd0`; **full doc sweep done incl. G2** — README, ARCHITECTURE, dashboard.html CS+EN, project-status.html, i18n all current). **G2 — printer supplies + EWS proxy**: new "Stav tiskáren / Printer status" tab + 🖨 Náplně tile reading ink/toner/maintenance-box/drum/belt via **SNMP Printer-MIB primary + HTTP fallback** (Brother toner %, Epson maint box) with a self-contained `node:dgram` SNMP client; the device web-UI **cert-bypass proxy is now ON by default** and was reworked to actually render Epson/HP/Brother EWS (buffers body, `<base>`=doc dir, absolute-URL rewrite, relaxed CSP + MIME correction, client-side redirects); migrations 048–049; 74 tests. Earlier device-platform batch: MikroTik DHCP collection LIVE + fully DB-driven (no MIKROTIK_* env except MIKROTIK_SECRET); multi-source inventory merged by MAC = DHCP (dynamic+static reservations) + router ARP + active app-server subnet scan (configurable ranges CIDR/wildcard, `!` excludes a subnet, discovery cache, remote subnets via router ARP); NetBIOS (nbtstat) device names → printer auto-suggest (NPI/BRN/BRW/RNP/KMBT); Static/Dynamic Type column; operator-editable device name (mig 046); generic + configurable categories; per-device packet loss + latency (mig 045/047) as `ms/%` column with tunable problem thresholds, "Loss/latency" tile + "issues only" filter; printer-offline alert agenda (mig 043); 🖨 Printers tile; printer IP→web-UI with optional cert-bypass server proxy; new Database tab; deploy robocopy `/MIR` excludes `dist` (frontend-window fix). Migrations 043–047. — prior 2026-06-16: (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
 
+## Session 2026-06-22 (batch 2) — Device scan: nbtstat MAC fallback (remote subnets)
+
+**Problem found live:** the active subnet scan was nearly inert — every cycle logged
+`+ 1 scanned` across all ~17 ranges, and remote subnets (Svitavy `10.90.182.*`,
+Jihlava `10.90.183.*`, also `10.8.3.*` with 11 live PCs) showed **0 devices** despite
+hosts pinging alive. Root cause: the scan keyed devices by MAC and resolved it only
+from **ARP** (L2 — only the router *directly attached* to a subnet has it). For
+subnets none of the two configured routers (Brno/Zastávka) is attached to, alive
+hosts had no ARP MAC and hit `if (!mac) continue` → silently dropped. The 251-device
+inventory we *do* have is really DHCP+ARP from the two routers, not the active scan.
+
+**Fix (Stage 1):** resolve the MAC over **L3 via NetBIOS node status** (`nbtstat -A`)
+as a fallback when ARP fails. Verified live first: `nbtstat -A 10.90.182.5` →
+`BRN94DDF8306EB0` + `MAC 94-DD-F8-30-6E-B0`; `10.90.183.8` → `JIHLAVA6W11` +
+`2C-58-B9-34-AB-46`. We already ran nbtstat for the *name* — we just threw the MAC
+line away.
+
+- `mikrotik-collector.ts`: `resolveName` → **`resolveNode(ip)`** returning
+  `{name, mac}`; the scan's alive-host loop now falls back to nbtstat when ARP has no
+  MAC, stores the device with the **real MAC** (works for Windows PCs and Brother/HP
+  network printers), and was **parallelized** (`SCAN_CONCURRENCY` workers — was a
+  sequential for-loop, which would have ballooned with nbtstat added).
+- Parser extracted to **`netbios-util.ts` `parseNbtstat()`** (pure) + Vitest with the
+  real captured output (server 57 / **96 total**). The test caught a latent bug: a
+  full **15-char** NetBIOS name has NO padding space before `<00>`
+  (`BRN94DDF8306EB0<00>`), so the old `\s+<00>` regex never resolved such names —
+  fixed to `\s*<00>`.
+- MAC normalized to colon/upper (RouterOS form) so a device keys identically via ARP
+  or NetBIOS. All-zero MAC ignored.
+- Also added scan ranges `Brno=10.8.3.*` + `10.181.3.*` (derived from AD computer
+  IPs — `10.8.3` had 11 live PCs and wasn't scanned).
+
+> Expected after deploy: `+ N scanned` jumps and Svitavy/Jihlava/10.8.3 populate.
+> Open follow-ups (Stage 2/3): per-device "resolve MAC" button (nbtstat/SNMP on
+> demand); auto-derive scan ranges from `computers.ip_address` (filter to corporate
+> 10.x, merge with manual + DHCP); shared/USB printers per PC via `net view`
+> (verified: `net view \\10.90.183.12` returns the USB Brother HL-1110); non-NetBIOS
+> hosts still need a MAC-less fallback or SNMP.
+
 ## Session 2026-06-22 — Eventlog "PC v problémech" dočasné uspání (snooze)
 
 New operator sign-off on the **🩺 PC v problémech** tile: when a box's eventlog
