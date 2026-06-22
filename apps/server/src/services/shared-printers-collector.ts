@@ -58,20 +58,28 @@ function netViewPrinters(host: string, timeoutMs: number): Promise<{ ok: boolean
 // from the host's IP via the existing network inventory (so a USB printer shows the
 // branch it physically sits in, not a generic label). Falls back to 'USB' when the
 // host PC isn't in the inventory.
-async function siteForHost(ip: string | null): Promise<string> {
-  if (!ip) return SITE_FALLBACK;
+// The host PC's site (= the USB printer's location). Derived from the host's IP:
+// its own device row, else any sibling on the same /24. If the host has no IP on
+// the target row, look up its computer's IP by name. Returns null when the location
+// genuinely can't be determined — the caller then SKIPS the printer rather than
+// inventing a 'USB' location (the operator does not want that label).
+async function siteForHost(ip: string | null, pcName: string): Promise<string | null> {
   const pool = await getPool();
-  // Prefer the host's own device row; else inherit the site of any sibling on the
-  // same /24 (a host not itself stored still gets the right branch). Never inherit
-  // the 'USB' fallback label.
-  const subnet = ip.split('.').slice(0, 3).join('.') + '.';
-  const r = await pool.request().input('ip', ip).input('net', subnet + '%').query<{ site: string }>(`
+  let useIp = ip;
+  if (!useIp) {
+    const c = await pool.request().input('n', pcName)
+      .query<{ ip: string }>(`SELECT TOP 1 ip_address AS ip FROM computers WHERE name = @n AND ip_address IS NOT NULL`);
+    useIp = c.recordset[0]?.ip ?? null;
+  }
+  if (!useIp) return null;
+  const subnet = useIp.split('.').slice(0, 3).join('.') + '.';
+  const r = await pool.request().input('ip', useIp).input('net', subnet + '%').query<{ site: string }>(`
     SELECT TOP 1 site FROM dhcp_leases
     WHERE source <> 'share' AND site <> '${SITE_FALLBACK}' AND ip_address IS NOT NULL
       AND (ip_address = @ip OR ip_address LIKE @net)
     ORDER BY CASE WHEN ip_address = @ip THEN 0 ELSE 1 END,
              CASE source WHEN 'dhcp' THEN 0 WHEN 'arp' THEN 1 ELSE 2 END`);
-  return r.recordset[0]?.site ?? SITE_FALLBACK;
+  return r.recordset[0]?.site ?? null;
 }
 
 async function upsertShare(site: string, pcName: string, ip: string | null, printer: SharedPrinter): Promise<string> {
@@ -117,6 +125,9 @@ export async function runSharedPrintersOnce(): Promise<SharedPrintersRunResult |
   try {
     const settings = await getAllSettings();
     const timeoutMs = Number(settings['shared_printers.timeout_ms'] ?? 8000) || 8000;
+    // Purge legacy rows stored under the old 'USB' fallback label (the operator
+    // doesn't want it) — correct rows are recreated with the host's real site.
+    await (await getPool()).request().query(`DELETE FROM dhcp_leases WHERE source = 'share' AND site = '${SITE_FALLBACK}'`);
     const targets = await listReachablePcs();
     let probed = 0;
     let printers = 0;
@@ -130,7 +141,8 @@ export async function runSharedPrintersOnce(): Promise<SharedPrintersRunResult |
           const { ok, printers: found } = await netViewPrinters(host, timeoutMs);
           if (!ok) continue; // offline / denied — keep last-known shares
           probed++;
-          const site = await siteForHost(pc.ip);
+          const site = await siteForHost(pc.ip, pc.name);
+          if (!site) continue; // location undeterminable — don't invent a 'USB' row
           const keep: string[] = [];
           for (const p of found) keep.push(await upsertShare(site, pc.name, pc.ip, p));
           await pruneStaleShares(pc.name, site, keep);
