@@ -200,6 +200,15 @@ export async function runUnifiCollectOnce(): Promise<UnifiRunResult | null> {
     // Release the controller session (it caps concurrent logins).
     try { await httpsJson(`${cfg.baseUrl}/api/logout`, { method: 'POST', cookie }); } catch { /* ignore */ }
 
+    // Normalize ALL unifi-owned rows to dynamic=NULL (unknown), not just the ones
+    // seen this cycle — a currently-disconnected Wi-Fi client (e.g. a watch) isn't
+    // in stat/sta, so its row wouldn't get the MATCHED fix otherwise and would keep
+    // falsely showing "Statická". Cheap idempotent sweep.
+    try {
+      await (await getPool()).request().query(
+        `UPDATE dhcp_leases SET dynamic = NULL WHERE source = 'unifi' AND dynamic IS NOT NULL`);
+    } catch { /* best-effort */ }
+
     // Dedup: a synthetic "IP-<ip>" scan row (a host the scan saw alive but couldn't
     // key — no MAC) is now redundant if UniFi supplied a real MAC at the SAME IP.
     // Drop the MAC-less placeholder so the device shows once, with its real MAC.
