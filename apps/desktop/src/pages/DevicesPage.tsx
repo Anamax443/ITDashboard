@@ -43,12 +43,14 @@ function effectiveReachable(d: DeviceItem): boolean | null {
   return d.computer_id != null ? d.computer_reachable : d.reachable;
 }
 
-export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrintersConsumed, initialOnlyLossy, onOnlyLossyConsumed, settings = {}, printerSupplies, onJumpToPrinters }: {
+export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrintersConsumed, initialOnlyLossy, onOnlyLossyConsumed, initialOnlyUncategorized, onOnlyUncategorizedConsumed, settings = {}, printerSupplies, onJumpToPrinters }: {
   onJumpToComputer?: (name: string) => void;
   initialOnlyPrinters?: boolean;
   onOnlyPrintersConsumed?: () => void;
   initialOnlyLossy?: boolean;
   onOnlyLossyConsumed?: () => void;
+  initialOnlyUncategorized?: boolean;
+  onOnlyUncategorizedConsumed?: () => void;
   settings?: Record<string, string>;
   printerSupplies?: PrinterSuppliesResult | null;
   onJumpToPrinters?: () => void;
@@ -98,6 +100,11 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   useEffect(() => {
     if (initialOnlyLossy) { setOnlyLossy(true); onOnlyLossyConsumed?.(); }
   }, [initialOnlyLossy, onOnlyLossyConsumed]);
+
+  // One-shot: arriving via the dashboard "Devices" tile pre-checks "uncategorized only".
+  useEffect(() => {
+    if (initialOnlyUncategorized) { setOnlyUncategorized(true); onOnlyUncategorizedConsumed?.(); }
+  }, [initialOnlyUncategorized, onOnlyUncategorizedConsumed]);
 
   const runAll = async () => {
     if (running) return;

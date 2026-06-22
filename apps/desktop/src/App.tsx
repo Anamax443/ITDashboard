@@ -63,6 +63,8 @@ export function App() {
   const [devicesInitialOnlyPrinters, setDevicesInitialOnlyPrinters] = useState(false);
   // Same one-shot for Devices → pre-checks "issues only" (loss/latency).
   const [devicesInitialOnlyLossy, setDevicesInitialOnlyLossy] = useState(false);
+  // Same one-shot for Devices → pre-checks "uncategorized only".
+  const [devicesInitialOnlyUncat, setDevicesInitialOnlyUncat] = useState(false);
   // Same one-shot for Printer status → pre-checks "only problematic" supplies.
   const [printersInitialOnlyProblem, setPrintersInitialOnlyProblem] = useState(false);
   // Same one-shot for Critical services → pre-checks "only down".
@@ -162,6 +164,7 @@ export function App() {
   // Degraded devices: online but with loss/latency at/above the Settings thresholds.
   const problemTh = deviceProblemThresholds(settingsMap);
   const degradedDevices = devices.filter((d) => deviceDegraded(d, problemTh)).length;
+  const devicesUnidentified = devices.filter((d) => !d.category).length;
   // Printer supplies tile: printers with any ink/toner/maintenance at or below the
   // "low" threshold (or empty). NULL levels ("some remaining") are not counted.
   const suppliesTotal = printerSupplies?.printers.length ?? 0;
@@ -324,6 +327,8 @@ export function App() {
             degradedDevices={degradedDevices}
             devicesTotal={devices.length}
             onClickDegraded={() => { setDevicesInitialOnlyLossy(true); setView('devices'); }}
+            devicesUnidentified={devicesUnidentified}
+            onClickDevices={() => { setDevicesInitialOnlyUncat(true); setView('devices'); }}
             suppliesLow={suppliesLow}
             suppliesTotal={suppliesTotal}
             onClickSupplies={() => { setPrintersInitialOnlyProblem(true); setView('printers'); }}
@@ -412,7 +417,7 @@ export function App() {
 
       {view === 'devices' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <DevicesPage onJumpToComputer={jumpToComputer} settings={settingsMap} initialOnlyPrinters={devicesInitialOnlyPrinters} onOnlyPrintersConsumed={() => setDevicesInitialOnlyPrinters(false)} initialOnlyLossy={devicesInitialOnlyLossy} onOnlyLossyConsumed={() => setDevicesInitialOnlyLossy(false)} printerSupplies={printerSupplies} onJumpToPrinters={() => setView('printers')} />
+          <DevicesPage onJumpToComputer={jumpToComputer} settings={settingsMap} initialOnlyPrinters={devicesInitialOnlyPrinters} onOnlyPrintersConsumed={() => setDevicesInitialOnlyPrinters(false)} initialOnlyLossy={devicesInitialOnlyLossy} onOnlyLossyConsumed={() => setDevicesInitialOnlyLossy(false)} initialOnlyUncategorized={devicesInitialOnlyUncat} onOnlyUncategorizedConsumed={() => setDevicesInitialOnlyUncat(false)} printerSupplies={printerSupplies} onJumpToPrinters={() => setView('printers')} />
         </div>
       )}
 
