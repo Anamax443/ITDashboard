@@ -75,6 +75,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const [onlyPrinters, setOnlyPrinters] = useState(false);
   const [catFilter, setCatFilter] = useState('');
   const [onlyLossy, setOnlyLossy] = useState(false);
+  const [onlyUncategorized, setOnlyUncategorized] = useState(false);
   const [editName, setEditName] = useState<{ mac: string; value: string } | null>(null);
   const [editNote, setEditNote] = useState<{ mac: string; value: string } | null>(null);
   const [running, setRunning] = useState(false);
@@ -176,6 +177,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
       else if ((d.category ?? '') !== catFilter) return false;
     }
     if (onlyLossy && !deviceDegraded(d, problemTh)) return false;
+    if (onlyUncategorized && d.category) return false;
     if (search) {
       const q = search.toLowerCase();
       return (d.ip_address ?? '').toLowerCase().includes(q)
@@ -259,6 +261,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     onlyUnmanaged && t('devices.onlyUnmanaged'),
     onlyPrinters && t('devices.onlyPrinters'),
     onlyLossy && t('devices.onlyLossy'),
+    onlyUncategorized && t('devices.onlyUncategorized'),
     catFilter && `${t('devices.category')}=${catFilter === '__none' ? t('devices.noCat') : catLabel(catFilter)}`,
     search && `"${search}"`,
   ].filter(Boolean).join(' · ');
@@ -303,6 +306,10 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
           <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }} title={t('devices.lossTip')}>
             <input type="checkbox" checked={onlyLossy} onChange={(e) => setOnlyLossy(e.target.checked)} />
             {t('devices.onlyLossy')}
+          </label>
+          <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 4 }} title={t('devices.onlyUncategorizedTip')}>
+            <input type="checkbox" checked={onlyUncategorized} onChange={(e) => setOnlyUncategorized(e.target.checked)} />
+            {t('devices.onlyUncategorized')}
           </label>
           <button className="refresh-btn" onClick={runAll} disabled={running} style={{ fontWeight: 600 }}>
             {running ? t('devices.running') : `🔄 ${t('devices.refreshNow')}`}
