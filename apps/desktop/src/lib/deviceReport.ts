@@ -53,7 +53,7 @@ function chartBlock(title: string, slices: Slice[]): string {
 
 export interface ReportTableColumn { label: string; get: (r: DeviceItem) => string | number | boolean | null | undefined; }
 
-export function openDeviceReport(opts: {
+export interface DeviceReportOpts {
   rows: DeviceItem[];
   catLabel: (k: string) => string;
   reachOf: (d: DeviceItem) => boolean | null;
@@ -62,7 +62,9 @@ export function openDeviceReport(opts: {
   now: string;
   tableColumns: ReportTableColumn[];
   listTitle: string;
-}): void {
+}
+
+export function buildDeviceReportHtml(opts: DeviceReportOpts): string {
   const { rows, catLabel, reachOf, filterSummary, uncategorizedLabel, now, tableColumns, listTitle } = opts;
 
   const byCategory = countBy(rows, (d) => d.category ? catLabel(d.category) : uncategorizedLabel);
@@ -126,8 +128,12 @@ ${filterSummary ? `<div class="banner">⚠ <strong>Filtrováno:</strong> ${esc(f
 </table>
 </body></html>`;
 
+  return html;
+}
+
+export function openDeviceReport(opts: DeviceReportOpts): void {
   const w = window.open('', '_blank', 'width=1100,height=800');
   if (!w) return;
-  w.document.open(); w.document.write(html); w.document.close();
+  w.document.open(); w.document.write(buildDeviceReportHtml(opts)); w.document.close();
   setTimeout(() => { try { w.focus(); w.print(); } catch { /* manual print */ } }, 300);
 }

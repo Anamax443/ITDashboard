@@ -12,6 +12,10 @@ export interface ExportMenuProps<T> {
   title: string;
   filterSummary: string;
   filenameBase: string;
+  /** Optional rich HTML generator (charts + summary + list). When provided, the
+   *  HTML and PDF/print options use it instead of the plain data table; CSV/TXT
+   *  stay raw data. */
+  richHtml?: () => string;
 }
 
 function escapeCsvCell(value: unknown): string {
@@ -110,25 +114,19 @@ function downloadBlob(filename: string, content: string, mime: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function exportPDF<T>(rows: T[], columns: ExportColumn<T>[], title: string, filterSummary: string): void {
-  const html = toHTML(rows, columns, title, filterSummary);
+// Open the report in a NEW TAB rather than downloading a file. On a plain-HTTP
+// origin the browser blocks .html downloads as "insecure" — opening it in a tab
+// sidesteps that, and the user can still Save (Ctrl+S) or Print from there.
+function openHtml(html: string, print = false): void {
   const w = window.open('', '_blank', 'width=1024,height=720');
   if (!w) return;
   w.document.open();
   w.document.write(html);
   w.document.close();
-  // Allow rendering before triggering print
-  setTimeout(() => {
-    try {
-      w.focus();
-      w.print();
-    } catch {
-      /* user can print manually */
-    }
-  }, 250);
+  if (print) setTimeout(() => { try { w.focus(); w.print(); } catch { /* manual print */ } }, 250);
 }
 
-export function ExportMenu<T>({ rows, columns, title, filterSummary, filenameBase }: ExportMenuProps<T>) {
+export function ExportMenu<T>({ rows, columns, title, filterSummary, filenameBase, richHtml }: ExportMenuProps<T>) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -154,8 +152,8 @@ export function ExportMenu<T>({ rows, columns, title, filterSummary, filenameBas
     const base = `itdashboard-${filenameBase}-${ts}${filterSummary ? '-filtered' : ''}`;
     if (format === 'csv') return downloadBlob(`${base}.csv`, toCSV(rows, columns), 'text/csv;charset=utf-8');
     if (format === 'tsv') return downloadBlob(`${base}.txt`, toTSV(rows, columns), 'text/plain;charset=utf-8');
-    if (format === 'html') return downloadBlob(`${base}.html`, toHTML(rows, columns, title, filterSummary), 'text/html;charset=utf-8');
-    if (format === 'pdf') return exportPDF(rows, columns, title, filterSummary);
+    if (format === 'html') return openHtml(richHtml ? richHtml() : toHTML(rows, columns, title, filterSummary), false);
+    if (format === 'pdf') return openHtml(richHtml ? richHtml() : toHTML(rows, columns, title, filterSummary), true);
   };
 
   const itemStyle: React.CSSProperties = {
@@ -184,8 +182,8 @@ export function ExportMenu<T>({ rows, columns, title, filterSummary, filenameBas
             boxShadow: '0 6px 16px rgba(0,0,0,0.4)',
           }}
         >
-          <button style={itemStyle} onClick={() => exportAs('pdf')}>🖨 PDF / Tisk</button>
-          <button style={itemStyle} onClick={() => exportAs('html')}>🌐 HTML</button>
+          <button style={itemStyle} onClick={() => exportAs('pdf')}>🖨 {richHtml ? 'PDF report (grafy) / Tisk' : 'PDF / Tisk'}</button>
+          <button style={itemStyle} onClick={() => exportAs('html')}>🌐 {richHtml ? 'HTML report (grafy)' : 'HTML'}</button>
           <button style={itemStyle} onClick={() => exportAs('csv')}>📊 CSV (Excel)</button>
           <button style={itemStyle} onClick={() => exportAs('tsv')}>📝 TXT (Tab)</button>
         </div>

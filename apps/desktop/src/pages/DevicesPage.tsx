@@ -3,7 +3,7 @@ import type { DeviceItem, PrinterSuppliesResult } from '../api.js';
 import { api, timeAgo, deviceDegraded, deviceProblemThresholds, isSyntheticMac, API_BASE } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
-import { openDeviceReport, type ReportTableColumn } from '../lib/deviceReport.js';
+import { buildDeviceReportHtml, type ReportTableColumn } from '../lib/deviceReport.js';
 import { useSort, SortHeader } from '../lib/useSort.jsx';
 import { useI18n } from '../i18n.js';
 
@@ -341,11 +341,13 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
             {running ? t('devices.running') : `🔄 ${t('devices.refreshNow')}`}
           </button>
           <button className="refresh-btn" onClick={refresh}>↻</button>
-          <button
-            className="refresh-btn"
-            style={{ padding: '4px 10px', fontSize: 11 }}
-            title={t('devices.reportTip')}
-            onClick={() => openDeviceReport({
+          <ExportMenu
+            rows={exportRows}
+            columns={exportColumns}
+            title={t('devices.title')}
+            filterSummary={filterSummary}
+            filenameBase="zarizeni"
+            richHtml={() => buildDeviceReportHtml({
               rows: sorted,
               catLabel,
               reachOf: effectiveReachable,
@@ -355,8 +357,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
               tableColumns: reportColumns,
               listTitle: t('devices.title'),
             })}
-          >📊 {t('devices.report')}</button>
-          <ExportMenu rows={exportRows} columns={exportColumns} title={t('devices.title')} filterSummary={filterSummary} filenameBase="zarizeni" />
+          />
         </div>
       </div>
       <div className="panel-body">
