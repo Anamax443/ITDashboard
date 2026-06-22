@@ -810,6 +810,8 @@ export const api = {
   printerSuppliesRun: () => jpost<{ printers: number; read: number; supplies: number; errors: string[]; durationMs: number }>('/printer-supplies/run'),
   database: () => jget<DatabaseOverview>('/database'),
   devicesRun: () => jpost<{ routers: number; leases: number; unmatchedPinged: number; reachable: number; scanned: number; errors: string[]; durationMs: number }>('/devices/run'),
+  unifiRun: () => jpost<{ clients: number; upserted: number; errors: string[]; durationMs: number }>('/unifi/run'),
+  integrationsStatus: () => jget<{ items: Record<string, { ts: string; level: string; message: string; lastOk: string | null }> }>('/integrations/status'),
   setDeviceCategory: async (mac: string, category: string) => {
     const r = await fetch(`${API_BASE}/devices/category`, {
       method: 'PATCH',

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import { api, timeAgo } from '../api.js';
 import type { DomainProfileStatus } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { useI18n } from '../i18n.js';
@@ -22,6 +22,46 @@ const SCHEDULE_DAYS: { value: number; tkey: TKey }[] = [
   { value: 6, tkey: 'settings.day.sa' },
   { value: 0, tkey: 'settings.day.su' },
 ];
+
+// Connectivity readout for an API-based collector (MikroTik / UniFi): the last
+// run result from the activity log (green = ok, red = error) + a "test now" button
+// that triggers a live pull and refreshes the status.
+function IntegrationStatus({ source, onTest }: { source: 'mikrotik' | 'unifi'; onTest: () => Promise<unknown> }) {
+  const { t } = useI18n();
+  const [st, setSt] = useState<{ ts: string; level: string; message: string; lastOk: string | null } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
+  const load = () => api.integrationsStatus()
+    .then((r) => setSt(r.items[source] ?? null))
+    .catch(() => { /* keep last */ })
+    .finally(() => setLoading(false));
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  const test = async () => {
+    if (testing) return;
+    setTesting(true);
+    try { await onTest(); } catch { /* the result lands in the activity log */ } finally { setTesting(false); load(); }
+  };
+  const ok = !!st && (st.level === 'info' || st.level === 'success');
+  const dot = !st ? 'var(--text-dim)' : ok ? 'var(--ok)' : 'var(--critical)';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '8px 0 2px' }}>
+      <button className="refresh-btn" onClick={test} disabled={testing} style={{ fontWeight: 600 }}>
+        {testing ? t('settings.integ.testing') : `🔌 ${t('settings.integ.test')}`}
+      </button>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, minWidth: 0 }}>
+        <span style={{ width: 9, height: 9, borderRadius: '50%', background: dot, flex: '0 0 auto' }} />
+        {loading ? <span style={{ color: 'var(--text-dim)' }}>…</span>
+          : !st ? <span style={{ color: 'var(--text-dim)' }}>{t('settings.integ.never')}</span>
+            : (
+              <span style={{ color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={`${st.message} · ${st.ts}`}>
+                <span style={{ color: ok ? 'var(--ok)' : 'var(--critical)', fontWeight: 600 }}>{ok ? t('settings.integ.ok') : t('settings.integ.err')}</span>
+                {` · ${st.message} · ${timeAgo(st.ts)}`}
+              </span>
+            )}
+      </span>
+    </div>
+  );
+}
 
 function NetworkAccessSection() {
   const { t } = useI18n();
@@ -519,6 +559,10 @@ export function SettingsPage() {
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
             {t('settings.field.leaseRetentionHelp')}
           </p>
+
+          <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 6px' }} />
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-dim)' }}>{t('settings.integ.title')}</div>
+          <IntegrationStatus source="mikrotik" onTest={() => api.devicesRun()} />
         </Section>
 
         <Section title={t('settings.section.unifi')} description={t('settings.section.unifiDesc')}>
@@ -572,6 +616,10 @@ export function SettingsPage() {
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
             {t('settings.field.unifiHelp')}
           </p>
+
+          <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 6px' }} />
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-dim)' }}>{t('settings.integ.title')}</div>
+          <IntegrationStatus source="unifi" onTest={() => api.unifiRun()} />
         </Section>
 
         <Section title={t('settings.section.deviceWeb')} description={t('settings.section.deviceWebDesc')}>

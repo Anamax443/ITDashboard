@@ -2,6 +2,26 @@
 
 Last updated: 2026-06-22 (LIVE `e3838a5`; **full doc sweep done — README, dashboard.html CS+EN, project-status.html, i18n all current**). This day's work (newest first): **shared/USB printers** (net view → Devices rows + Stav tiskáren section, located by host PC); **Devices tab UX** (editable note, row numbers, sortable headers, general search across ALL columns, "uncategorized only" filter, "Devices" dashboard tile = unidentified/total); **managerial report** (pie charts + summary incl. network-vs-USB printer counts + full list, A4, opened in a tab to dodge the HTTP insecure-download block); **device-scan reach** (nbtstat MAC fallback for remote subnets + Option B MAC-less-by-IP storage so live hosts always show; scan ranges 10.8.3/10.181.3/10.181.90 added); **per-category notebook eventlog noise suppression** (mig 051); **eventlog "PC v problémech" temporary per-PC snooze** with signature (mig 050). 102 tests. Draggable dashboard tiles were built then **reverted** per operator. See sessions below. Prior: 2026-06-17 (LIVE `e456fd0`; **full doc sweep done incl. G2** — README, ARCHITECTURE, dashboard.html CS+EN, project-status.html, i18n all current). **G2 — printer supplies + EWS proxy**: new "Stav tiskáren / Printer status" tab + 🖨 Náplně tile reading ink/toner/maintenance-box/drum/belt via **SNMP Printer-MIB primary + HTTP fallback** (Brother toner %, Epson maint box) with a self-contained `node:dgram` SNMP client; the device web-UI **cert-bypass proxy is now ON by default** and was reworked to actually render Epson/HP/Brother EWS (buffers body, `<base>`=doc dir, absolute-URL rewrite, relaxed CSP + MIME correction, client-side redirects); migrations 048–049; 74 tests. Earlier device-platform batch: MikroTik DHCP collection LIVE + fully DB-driven (no MIKROTIK_* env except MIKROTIK_SECRET); multi-source inventory merged by MAC = DHCP (dynamic+static reservations) + router ARP + active app-server subnet scan (configurable ranges CIDR/wildcard, `!` excludes a subnet, discovery cache, remote subnets via router ARP); NetBIOS (nbtstat) device names → printer auto-suggest (NPI/BRN/BRW/RNP/KMBT); Static/Dynamic Type column; operator-editable device name (mig 046); generic + configurable categories; per-device packet loss + latency (mig 045/047) as `ms/%` column with tunable problem thresholds, "Loss/latency" tile + "issues only" filter; printer-offline alert agenda (mig 043); 🖨 Printers tile; printer IP→web-UI with optional cert-bypass server proxy; new Database tab; deploy robocopy `/MIR` excludes `dist` (frontend-window fix). Migrations 043–047. — prior 2026-06-16: (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
 
+## Session 2026-06-22 (batch 9) — UniFi static-label fix + API connectivity panel
+
+**UniFi rows no longer claim "Statická".** Operator spotted a watch (`10.8.5.63`)
+shown as `Statická · unifi` — wrong, it's a DHCP Wi-Fi client. Verified live that
+UniFi's `stat/sta` AND `rest/user` carry **no** `use_fixedip` field on this
+controller (0 fixed IPs anywhere), so static-vs-DHCP is simply unknown from the
+API. Fix: UniFi inserts `dynamic = NULL` (UI already renders null as "—"); on
+match, a non-dhcp row UniFi takes over goes NULL while a dhcp-owned row keeps its
+real flag; plus an idempotent per-cycle sweep `UPDATE … SET dynamic = NULL WHERE
+source='unifi' AND dynamic IS NOT NULL` so even currently-disconnected clients
+(not in this run's stat/sta) get corrected.
+
+**API connectivity panel in Settings.** New `GET /integrations/status` returns, per
+API collector (`mikrotik`, `unifi`), the latest `activity_log` entry (level =
+ok/error) + last-ok timestamp. The MikroTik and UniFi Settings sections each gained
+an **"API connectivity"** readout — a green/red dot + last result message + "time
+ago", and a **"🔌 Test now"** button that triggers a live pull (`/devices/run` /
+`/unifi/run`) and refreshes the status. New `api.unifiRun` / `api.integrationsStatus`
+helpers; i18n CS+EN. Typecheck clean, 112 tests.
+
 ## Session 2026-06-22 (batch 8) — UniFi LIVE + dedup + stale-lease pruning (mig 054)
 
 **UniFi went live.** Operator configured it in Settings (the API write was blocked

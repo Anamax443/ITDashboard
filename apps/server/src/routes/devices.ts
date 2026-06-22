@@ -155,6 +155,35 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
     }
   });
 
+  // Connectivity status of the API-based collectors (MikroTik routers, UniFi
+  // controller) for the Settings page: the latest activity_log entry per source
+  // (level says ok/error) + the timestamp of the last NON-error entry (last ok).
+  app.get('/integrations/status', async () => {
+    const pool = await getPool();
+    const r = await pool.request().query(`
+      WITH ranked AS (
+        SELECT source, ts, level, message,
+               ROW_NUMBER() OVER (PARTITION BY source ORDER BY ts DESC, id DESC) AS rn
+        FROM activity_log
+        WHERE source IN ('mikrotik', 'unifi')
+      ),
+      lastok AS (
+        SELECT source, MAX(ts) AS last_ok
+        FROM activity_log
+        WHERE source IN ('mikrotik', 'unifi') AND level IN ('info', 'success')
+        GROUP BY source
+      )
+      SELECT k.source, k.ts, k.level, k.message, o.last_ok
+      FROM ranked k LEFT JOIN lastok o ON o.source = k.source
+      WHERE k.rn = 1;
+    `);
+    const items: Record<string, { ts: string; level: string; message: string; lastOk: string | null }> = {};
+    for (const row of r.recordset as Array<{ source: string; ts: string; level: string; message: string; last_ok: string | null }>) {
+      items[row.source] = { ts: row.ts, level: row.level, message: row.message, lastOk: row.last_ok };
+    }
+    return { items };
+  });
+
   // Manual one-off pull of the UniFi controller's connected-client list.
   app.post('/unifi/run', async (_req, reply) => {
     try {
