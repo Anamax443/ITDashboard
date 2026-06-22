@@ -8,6 +8,7 @@ import { logActivity } from './activity-log.js';
 import { icmpPing } from './reachability-collector.js';
 import { pingWithOutput } from './port-status-collector.js';
 import { parseNbtstat } from './netbios-util.js';
+import { type ScanRange, maskOf, ipToInt, parseScanRanges, siteForIp, hostsOf } from './mikrotik-util.js';
 
 // MikroTik DHCP lease collector. Pulls active leases from each configured
 // RouterOS v7 router via the REST API and upserts them into dhcp_leases.
@@ -194,81 +195,6 @@ export function suggestCategory(hostName: string | null | undefined, mac: string
 // The application server pings each host in the configured ranges and reads its
 // OWN ARP table to learn IP↔MAC for statically-addressed devices the router
 // never sees (same-subnet hosts it doesn't route for). Ranges are "Site=CIDR".
-
-interface ScanRange { site: string; base: number; prefix: number; exclude: boolean; }
-
-function maskOf(prefix: number): number { return prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0; }
-
-function ipToInt(ip: string): number | null {
-  const m = ip.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!m) return null;
-  const o = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
-  if (o.some((x) => x > 255)) return null;
-  return ((o[0]! << 24) >>> 0) + (o[1]! << 16) + (o[2]! << 8) + o[3]!;
-}
-function intToIp(n: number): string {
-  return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
-}
-
-// Accepts CIDR ("10.8.2.0/24") OR wildcard ("10.8.2.*" = /24, "10.8.*.*" = /16).
-// Returns the masked network base, the prefix, and a short network label.
-// Capped to /16../30 so a typo can't launch a /8 (16M-host) sweep.
-function parseCidrOrWildcard(s: string): { base: number; prefix: number; netLabel: string } | null {
-  const str = s.trim();
-  if (str.includes('*')) {
-    const parts = str.split('.');
-    if (parts.length !== 4) return null;
-    const octs: number[] = [];
-    let fixed = 0;
-    let seenStar = false;
-    for (const p of parts) {
-      if (p === '*') { seenStar = true; octs.push(0); continue; }
-      if (seenStar) return null;            // a number after a '*' is invalid
-      const n = Number(p);
-      if (!Number.isInteger(n) || n < 0 || n > 255) return null;
-      octs.push(n); fixed++;
-    }
-    const prefix = fixed * 8;
-    if (prefix < 16 || prefix > 24) return null;
-    const base = (((octs[0]! << 24) >>> 0) + (octs[1]! << 16) + (octs[2]! << 8) + octs[3]!) >>> 0;
-    return { base, prefix, netLabel: octs.slice(0, fixed).join('.') };
-  }
-  const m = str.match(/^(\d{1,3}(?:\.\d{1,3}){3})\/(\d{1,2})$/);
-  if (!m) return null;
-  const ip = ipToInt(m[1]!);
-  const prefix = Number(m[2]);
-  if (ip == null || prefix < 16 || prefix > 30) return null;
-  const base = (ip & ((~0 << (32 - prefix)) >>> 0)) >>> 0;
-  return { base, prefix, netLabel: intToIp(base).replace(/(\.0)+$/, '') };
-}
-
-// "Site=range" per line/comma; the "Site=" is OPTIONAL (label derived from the
-// network when omitted). range = CIDR or wildcard. A leading "!" or "<>" on the
-// line marks an EXCLUDE range — IPs inside it are skipped even if another range
-// covers them (same convention as the disk-scope syntax elsewhere in the app).
-function parseScanRanges(raw: string | undefined): ScanRange[] {
-  const out: ScanRange[] = [];
-  for (const raw0 of (raw ?? '').split(/[,;\r\n]+/).map((s) => s.trim()).filter(Boolean)) {
-    let tok = raw0;
-    let exclude = false;
-    if (tok.startsWith('!')) { exclude = true; tok = tok.slice(1).trim(); }
-    else if (tok.startsWith('<>')) { exclude = true; tok = tok.slice(2).trim(); }
-    const eq = tok.indexOf('=');
-    const site = eq > 0 ? tok.slice(0, eq).trim() : '';
-    const rangeStr = eq > 0 ? tok.slice(eq + 1).trim() : tok;
-    const p = parseCidrOrWildcard(rangeStr);
-    if (!p) continue;
-    out.push({ site: site || p.netLabel, base: p.base, prefix: p.prefix, exclude });
-  }
-  return out;
-}
-
-// Usable host IPs of a range (skip network + broadcast).
-function* hostsOf(r: ScanRange): Generator<string> {
-  const size = 2 ** (32 - r.prefix);
-  if (size <= 2) { yield intToIp(r.base); return; }
-  for (let i = 1; i < size - 1; i++) yield intToIp((r.base + i) >>> 0);
-}
 
 // Read the host's ARP cache (Windows `arp -a`) → map of ip → normalized MAC.
 // Lines look like:  "  10.8.2.100            64-c6-d2-73-08-70     dynamic".
@@ -533,6 +459,27 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
         // Discovery: ping only the UNKNOWN host IPs in the INCLUDE ranges, minus
         // anything in an EXCLUDE ("!"/"<>") range (inExcluded is hoisted above).
         const includeRanges = scanRanges.filter((r) => !r.exclude);
+
+        // Reconcile the Site= label of EXISTING scan rows. Discovery never re-pings
+        // a known IP, so a range renamed after a row was created (bare "10.181.3.*"
+        // → "Zastavka=10.181.3.*") would otherwise leave the old row stuck under the
+        // netLabel "10.181.3" forever. If a stored scan row's IP now falls in an
+        // include range whose label differs, adopt the configured label. PK is
+        // (site,mac); the rename is a key move, so drop a colliding target row first
+        // (same mac+ip = same device). Categories key by MAC, so they survive.
+        for (const r of stored) {
+          if (r.source !== 'scan' || !r.ip_address) continue;
+          const want = siteForIp(r.ip_address, includeRanges);
+          if (!want || want === r.site) continue;
+          try {
+            await pool.request().input('os', r.site).input('ns', want).input('mac', r.mac_address)
+              .query(`
+                DELETE FROM dhcp_leases WHERE site = @ns AND mac_address = @mac;
+                UPDATE dhcp_leases SET site = @ns WHERE site = @os AND mac_address = @mac;`);
+            r.site = want; // keep the in-memory copy consistent for the refresh pass below
+          } catch { /* a single rename failure shouldn't abort the sweep */ }
+        }
+
         const targets: Array<{ site: string; ip: string }> = [];
         const targetIps = new Set<string>();
         for (const range of includeRanges) {

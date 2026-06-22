@@ -2,6 +2,34 @@
 
 Last updated: 2026-06-22 (LIVE `e3838a5`; **full doc sweep done — README, dashboard.html CS+EN, project-status.html, i18n all current**). This day's work (newest first): **shared/USB printers** (net view → Devices rows + Stav tiskáren section, located by host PC); **Devices tab UX** (editable note, row numbers, sortable headers, general search across ALL columns, "uncategorized only" filter, "Devices" dashboard tile = unidentified/total); **managerial report** (pie charts + summary incl. network-vs-USB printer counts + full list, A4, opened in a tab to dodge the HTTP insecure-download block); **device-scan reach** (nbtstat MAC fallback for remote subnets + Option B MAC-less-by-IP storage so live hosts always show; scan ranges 10.8.3/10.181.3/10.181.90 added); **per-category notebook eventlog noise suppression** (mig 051); **eventlog "PC v problémech" temporary per-PC snooze** with signature (mig 050). 102 tests. Draggable dashboard tiles were built then **reverted** per operator. See sessions below. Prior: 2026-06-17 (LIVE `e456fd0`; **full doc sweep done incl. G2** — README, ARCHITECTURE, dashboard.html CS+EN, project-status.html, i18n all current). **G2 — printer supplies + EWS proxy**: new "Stav tiskáren / Printer status" tab + 🖨 Náplně tile reading ink/toner/maintenance-box/drum/belt via **SNMP Printer-MIB primary + HTTP fallback** (Brother toner %, Epson maint box) with a self-contained `node:dgram` SNMP client; the device web-UI **cert-bypass proxy is now ON by default** and was reworked to actually render Epson/HP/Brother EWS (buffers body, `<base>`=doc dir, absolute-URL rewrite, relaxed CSP + MIME correction, client-side redirects); migrations 048–049; 74 tests. Earlier device-platform batch: MikroTik DHCP collection LIVE + fully DB-driven (no MIKROTIK_* env except MIKROTIK_SECRET); multi-source inventory merged by MAC = DHCP (dynamic+static reservations) + router ARP + active app-server subnet scan (configurable ranges CIDR/wildcard, `!` excludes a subnet, discovery cache, remote subnets via router ARP); NetBIOS (nbtstat) device names → printer auto-suggest (NPI/BRN/BRW/RNP/KMBT); Static/Dynamic Type column; operator-editable device name (mig 046); generic + configurable categories; per-device packet loss + latency (mig 045/047) as `ms/%` column with tunable problem thresholds, "Loss/latency" tile + "issues only" filter; printer-offline alert agenda (mig 043); 🖨 Printers tile; printer IP→web-UI with optional cert-bypass server proxy; new Database tab; deploy robocopy `/MIR` excludes `dist` (frontend-window fix). Migrations 043–047. — prior 2026-06-16: (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
 
+## Session 2026-06-22 (batch 4) — Scan site label reconciliation (Lokalita fix)
+
+**Operator finding:** Devices discovered by the active scan showed **Lokalita =
+`10.181.3`** (the bare IP netLabel) instead of the real site **`Zastavka`**, even
+though the scan range is now configured `Zastavka=10.181.3.*`. Root cause: those
+rows were created by an EARLIER scan when the range was entered bare (`10.181.3.*`,
+no `Site=`), so the site defaulted to the netLabel. The discovery cache never
+re-pings a known IP (`!knownIps.has(ip)`), so a later range rename **never
+propagated** — the rows were stuck under `10.181.3` forever.
+
+**Fix:** new `siteForIp(ip, ranges)` + a **reconciliation pass** at the start of the
+scan phase (`mikrotik-collector.ts`): for every stored `source='scan'` row whose IP
+now falls in an include range with a different label, adopt the configured label.
+PK is `(site, mac)`, so the rename is a key move — a colliding target row is dropped
+first; `device_categories` key by MAC and survive. Runs every cycle, cheap (scan
+rows only, integer mask math). It self-heals on the next collect — no migration.
+
+**Refactor:** the pure IP / scan-range helpers (`ScanRange`, `maskOf`, `ipToInt`,
+`intToIp`, `parseCidrOrWildcard`, `parseScanRanges`, `siteForIp`, `hostsOf`) were
+extracted from `mikrotik-collector.ts` (which can't load under Vitest — it pulls in
+the mssql pool + mailer) into a pure **`mikrotik-util.ts`**, with a new
+**`mikrotik-util.test.ts`** (+10 cases → **112 total**). Typecheck clean all
+workspaces.
+
+> Note: the rename only triggers once the scan actually runs a cycle with the
+> renamed range configured. The bare-netLabel rows clear themselves on the next
+> collect; no manual DB edit needed.
+
 ## Session 2026-06-22 (batch 3) — Shared/USB printers, Devices UX, managerial report
 
 A large feature batch on the **Devices** tab + **Stav tiskáren** + the dashboard.
