@@ -22,6 +22,14 @@ ago", and a **"🔌 Test now"** button that triggers a live pull (`/devices/run`
 `/unifi/run`) and refreshes the status. New `api.unifiRun` / `api.integrationsStatus`
 helpers; i18n CS+EN. Typecheck clean, 112 tests.
 
+**Fast per-router MikroTik test.** The MikroTik "Test now" first reused
+`/devices/run` — which runs the full collect incl. the ~5-min scan, useless as a
+connectivity check. New `POST /mikrotik/test` (`testRouters()`) hits the SAME REST
+endpoint the collector uses (`/rest/ip/dhcp-server/lease`) with a 5s timeout, per
+router, NO scan — returns ok + lease count or the error per router. `IntegrationStatus`
+gained an inline test-summary line (per-router for MikroTik, client count for
+UniFi). Verified live: **753 ms** total — Brno ✓ 102, Zastavka ✓ 46. `api.mikrotikTest`.
+
 ## Session 2026-06-22 (batch 8) — UniFi LIVE + dedup + stale-lease pruning (mig 054)
 
 **UniFi went live.** Operator configured it in Settings (the API write was blocked
