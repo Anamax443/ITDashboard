@@ -82,10 +82,14 @@ export function buildDeviceReportHtml(opts: DeviceReportOpts): string {
   const total = rows.length;
   const identified = rows.filter((d) => d.category).length;
   const inAd = rows.filter((d) => d.computer_id != null).length;
+  const usbPrinters = rows.filter((d) => d.source === 'share').length;
+  const netPrinters = rows.filter((d) => d.category === 'printer' && d.source !== 'share').length;
   const cards = [
     { k: 'Zařízení celkem', v: total },
     { k: 'Identifikováno', v: identified },
     { k: 'Neidentifikováno', v: total - identified },
+    { k: 'Tiskárny síťové', v: netPrinters },
+    { k: 'Tiskárny USB', v: usbPrinters },
     { k: 'Online', v: on },
     { k: 'Offline', v: off },
     { k: 'V AD', v: inAd },
