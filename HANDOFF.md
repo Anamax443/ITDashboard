@@ -49,6 +49,16 @@ the live host. Bonus: at read time a synthetic row whose IP matches an AD comput
 synthetic MAC (`isSyntheticMac()`, tooltip explains why); unit-tested (desktop 42 /
 **99 total**). The MAC backfills automatically if ARP/NetBIOS/SNMP ever resolves it.
 
+**Devices tab UX (same session).** Added per-row **editable note** (next to IP —
+`device_categories.note`, new `PATCH /devices/note`; the category PATCH no longer
+clobbers it — `COALESCE`), a **row-number `#` column** (numbers the current filtered
+selection; header shows `filtered / total`), and a full **Export (HTML / PDF / CSV /
+TXT)** button reusing `ExportMenu`. SNMP from `.213` is confirmed working (printer
+supplies read for Svitavy), so the next step is **SNMP enrichment** (sysName /
+sysDescr / ifPhysAddress → name + model + real MAC for the IP-only printer rows) —
+documented in `docs/nacitani-mac-hostname.html`. Also requested: **USB/shared
+printers per PC** via `net view` (verified working) — not built yet.
+
 > Open follow-ups: per-device "resolve MAC" button (SNMP `ifPhysAddress` — SNMP/161
 > reachability from `.213` not yet confirmed) or open UDP 137/161 on the firewall;
 > dedup a synthetic row when a real MAC later appears at the same IP (and re-attempt

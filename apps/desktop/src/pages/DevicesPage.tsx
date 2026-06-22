@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import type { DeviceItem, PrinterSuppliesResult } from '../api.js';
 import { api, timeAgo, deviceDegraded, deviceProblemThresholds, isSyntheticMac, API_BASE } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
+import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { useI18n } from '../i18n.js';
 
 // MikroTik DHCP device inventory. Each lease is paired with an AD computer (by
@@ -75,6 +76,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const [catFilter, setCatFilter] = useState('');
   const [onlyLossy, setOnlyLossy] = useState(false);
   const [editName, setEditName] = useState<{ mac: string; value: string } | null>(null);
+  const [editNote, setEditNote] = useState<{ mac: string; value: string } | null>(null);
   const [running, setRunning] = useState(false);
   const [rowBusy, setRowBusy] = useState<Record<string, boolean>>({});
   const [consoleOut, setConsoleOut] = useState<{ name: string; text: string | null; error?: boolean } | null>(null);
@@ -124,6 +126,15 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     if (v === (d.operator_name ?? '')) return; // unchanged
     setItems((arr) => arr.map((x) => x.mac_address === d.mac_address ? { ...x, operator_name: v || null } : x));
     try { await api.setDeviceName(d.mac_address, v); }
+    catch (e) { setError(String(e)); refresh(); }
+  };
+
+  const saveNote = async (d: DeviceItem) => {
+    const v = (editNote?.value ?? '').trim();
+    setEditNote(null);
+    if (v === (d.operator_note ?? '')) return; // unchanged
+    setItems((arr) => arr.map((x) => x.mac_address === d.mac_address ? { ...x, operator_note: v || null } : x));
+    try { await api.setDeviceNote(d.mac_address, v); }
     catch (e) { setError(String(e)); refresh(); }
   };
 
@@ -225,6 +236,33 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     );
   };
 
+  // --- Export (HTML / PDF / CSV / TXT) of the currently displayed (filtered) rows ---
+  type ExportRow = DeviceItem & { __num: number };
+  const exportRows: ExportRow[] = filtered.map((d, i) => ({ ...d, __num: i + 1 }));
+  const reachText = (d: DeviceItem) => { const r = effectiveReachable(d); return r == null ? '—' : r ? 'online' : 'offline'; };
+  const exportColumns: ExportColumn<ExportRow>[] = [
+    { key: 'num', label: '#', get: (d) => d.__num },
+    { key: 'site', label: t('devices.site'), get: (d) => d.site },
+    { key: 'ip', label: 'IP', get: (d) => d.ip_address ?? '' },
+    { key: 'hostname', label: t('devices.hostname'), get: (d) => d.operator_name ?? d.host_name ?? '' },
+    { key: 'note', label: t('devices.note'), get: (d) => d.operator_note ?? '' },
+    { key: 'mac', label: 'MAC', get: (d) => isSyntheticMac(d.mac_address) ? '' : d.mac_address },
+    { key: 'type', label: t('devices.type'), get: (d) => `${d.dynamic === false ? t('devices.static') : d.dynamic === true ? t('devices.dynamic') : '—'}${d.source && d.source !== 'dhcp' ? ' · ' + d.source : ''}` },
+    { key: 'category', label: t('devices.category'), get: (d) => d.category ? catLabel(d.category) : '' },
+    { key: 'status', label: t('devices.status'), get: (d) => reachText(d) },
+    { key: 'quality', label: t('devices.quality'), get: (d) => effectiveReachable(d) === true ? `${d.latency_ms == null ? '?' : d.latency_ms}ms / ${d.packet_loss ?? 0}%` : '' },
+    { key: 'ad', label: 'AD', get: (d) => d.computer_name ?? '' },
+    { key: 'lastSeen', label: t('devices.lastSeen'), get: (d) => d.last_seen ?? '' },
+  ];
+  const filterSummary = [
+    site && `${t('devices.site')}=${site}`,
+    onlyUnmanaged && t('devices.onlyUnmanaged'),
+    onlyPrinters && t('devices.onlyPrinters'),
+    onlyLossy && t('devices.onlyLossy'),
+    catFilter && `${t('devices.category')}=${catFilter === '__none' ? t('devices.noCat') : catLabel(catFilter)}`,
+    search && `"${search}"`,
+  ].filter(Boolean).join(' · ');
+
   return (
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1' }}>
       <div style={{ padding: 12 }}>
@@ -236,7 +274,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
         <h2>
           🖧 {t('devices.title')}{' '}
           <span style={{ color: 'var(--text-dim)', fontSize: 12, fontWeight: 400 }}>
-            ({total} {t('devices.count')} · {unmanaged} {t('devices.unmanaged')} · {printers} {t('devices.printers')})
+            ({filtered.length !== total ? `${filtered.length} / ` : ''}{total} {t('devices.count')} · {unmanaged} {t('devices.unmanaged')} · {printers} {t('devices.printers')})
           </span>
         </h2>
         <div className="panel-actions filters">
@@ -270,6 +308,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
             {running ? t('devices.running') : `🔄 ${t('devices.refreshNow')}`}
           </button>
           <button className="refresh-btn" onClick={refresh}>↻</button>
+          <ExportMenu rows={exportRows} columns={exportColumns} title={t('devices.title')} filterSummary={filterSummary} filenameBase="zarizeni" />
         </div>
       </div>
       <div className="panel-body">
@@ -281,8 +320,10 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
           <table>
             <thead>
               <tr>
+                <th style={{ width: 36, textAlign: 'right' }} title={t('devices.rowNum')}>#</th>
                 <th style={{ width: 80 }}>{t('devices.site')}</th>
                 <th style={{ width: 120 }}>IP</th>
+                <th style={{ width: 150 }}>{t('devices.note')}</th>
                 <th style={{ width: 190 }}>{t('devices.hostname')}</th>
                 <th style={{ width: 150 }}>MAC</th>
                 <th style={{ width: 95 }}>{t('devices.type')}</th>
@@ -295,8 +336,9 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
               </tr>
             </thead>
             <tbody>
-              {filtered.map((d) => (
+              {filtered.map((d, idx) => (
                 <tr key={`${d.site}-${d.mac_address}`}>
+                  <td style={{ color: 'var(--text-dim)', fontSize: 11, textAlign: 'right' }}>{idx + 1}</td>
                   <td style={{ color: 'var(--text-dim)', fontSize: 11 }}>{d.site}</td>
                   <td style={{ fontFamily: 'Consolas, monospace', fontSize: 11 }}>
                     {d.ip_address
@@ -304,6 +346,30 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                           ? <a href={deviceWebUrl(d.ip_address)} target="_blank" rel="noreferrer" title={t('devices.openWeb')} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{d.ip_address}</a>
                           : d.ip_address)
                       : '—'}
+                  </td>
+                  <td style={{ fontSize: 11 }}>
+                    {editNote?.mac === d.mac_address ? (
+                      <input
+                        autoFocus
+                        value={editNote.value}
+                        onChange={(e) => setEditNote({ mac: d.mac_address, value: e.target.value })}
+                        onKeyDown={(e) => { if (e.key === 'Enter') saveNote(d); else if (e.key === 'Escape') setEditNote(null); }}
+                        onBlur={() => saveNote(d)}
+                        placeholder={t('devices.notePlaceholder')}
+                        style={{ width: '100%', fontSize: 11, padding: '2px 4px' }}
+                      />
+                    ) : (
+                      <span
+                        onClick={() => setEditNote({ mac: d.mac_address, value: d.operator_note ?? '' })}
+                        title={t('devices.editNote')}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, width: '100%', cursor: 'text' }}
+                      >
+                        {d.operator_note
+                          ? <span>{d.operator_note}</span>
+                          : <span style={{ color: 'var(--text-dim)', fontWeight: 400, fontStyle: 'italic' }}>{t('devices.addNote')}</span>}
+                        <span style={{ opacity: 0.4, fontSize: 10 }}>✎</span>
+                      </span>
+                    )}
                   </td>
                   <td style={{ fontWeight: 600, fontSize: 12 }}>
                     {editName?.mac === d.mac_address ? (

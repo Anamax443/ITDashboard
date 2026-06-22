@@ -26,6 +26,7 @@ interface DeviceRow {
   reach_checked_at: string | null;
   category: string | null;
   operator_name: string | null;
+  operator_note: string | null;
   computer_id: number | null;
   computer_name: string | null;
   computer_reachable: boolean | null;
@@ -41,7 +42,7 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
       SELECT l.site, l.mac_address, l.ip_address, l.host_name, l.server, l.comment,
              l.status, l.dynamic, l.source, l.expires_after, l.router_last_seen, l.last_seen,
              l.reachable, l.packet_loss, l.latency_ms, l.reach_checked_at,
-             dc.category, dc.name AS operator_name,
+             dc.category, dc.name AS operator_name, dc.note AS operator_note,
              m.id AS computer_id, m.name AS computer_name, m.reachable AS computer_reachable,
              m.os_version AS computer_os
       FROM dhcp_leases l
@@ -86,10 +87,32 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
     }
     await pool.request().input('mac', mac).input('cat', body.category).input('note', body.note ?? null).query(`
       MERGE device_categories AS t USING (SELECT @mac AS mac) AS s ON t.mac_address = s.mac
-      WHEN MATCHED THEN UPDATE SET category = @cat, note = @note, updated_at = SYSUTCDATETIME()
+      WHEN MATCHED THEN UPDATE SET category = @cat, note = COALESCE(@note, t.note), updated_at = SYSUTCDATETIME()
       WHEN NOT MATCHED THEN INSERT (mac_address, category, note) VALUES (@mac, @cat, @note);
     `);
     return { mac, category: body.category };
+  });
+
+  // Set / clear an operator note for a MAC (free text, persists like the name /
+  // category; independent of them so a note survives a category change).
+  app.patch('/devices/note', async (req) => {
+    const body = z.object({ mac: z.string().min(1).max(32), note: z.string().max(255) }).parse(req.body);
+    const mac = body.mac.trim().toUpperCase();
+    const note = body.note.trim();
+    const pool = await getPool();
+    if (note === '') {
+      await pool.request().input('mac', mac).query(`
+        UPDATE device_categories SET note = NULL, updated_at = SYSUTCDATETIME() WHERE mac_address = @mac;
+        DELETE FROM device_categories WHERE mac_address = @mac AND note IS NULL AND name IS NULL AND (category IS NULL OR category = '');
+      `);
+      return { mac, note: '' };
+    }
+    await pool.request().input('mac', mac).input('note', note).query(`
+      MERGE device_categories AS t USING (SELECT @mac AS mac) AS s ON t.mac_address = s.mac
+      WHEN MATCHED THEN UPDATE SET note = @note, updated_at = SYSUTCDATETIME()
+      WHEN NOT MATCHED THEN INSERT (mac_address, note) VALUES (@mac, @note);
+    `);
+    return { mac, note };
   });
 
   // Set / clear an operator-edited device name for a MAC (persists across reloads
