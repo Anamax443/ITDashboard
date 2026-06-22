@@ -636,9 +636,29 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
       }
     }
 
+    // Prune stale "ghost" rows: an IP-reassigned lease whose old (site, mac) row
+    // none of the collectors has touched for N days (last_seen AND reach_checked_at
+    // AND last_reachable_at all older than the cutoff). Runs LAST, after this
+    // cycle's observations bumped those timestamps. Non-destructive: a returning
+    // device re-appears and its MAC-keyed category/note rejoins. 0 = disabled.
+    let pruned = 0;
+    const retDays = Number(settings['devices.lease_retention_days']);
+    if (Number.isFinite(retDays) && retDays >= 1) {
+      try {
+        const pool = await getPool();
+        const r = await pool.request().input('days', Math.floor(retDays)).query<{ n: number }>(`
+          DELETE FROM dhcp_leases OUTPUT 1 AS n
+          WHERE last_seen < DATEADD(DAY, -@days, SYSUTCDATETIME())
+            AND (reach_checked_at IS NULL OR reach_checked_at < DATEADD(DAY, -@days, SYSUTCDATETIME()))
+            AND (last_reachable_at IS NULL OR last_reachable_at < DATEADD(DAY, -@days, SYSUTCDATETIME()));
+        `);
+        pruned = r.recordset.length;
+      } catch { /* pruning is best-effort; never block a collect */ }
+    }
+
     const durationMs = Date.now() - t0;
     logActivity(errors.length ? 'warn' : 'info', 'mikrotik',
-      `Devices: ${leases} from ${routers.length} router(s)${scanned ? ` + ${scanned} scanned` : ''}; ${unmatchedPinged} unmatched pinged (${reachable} online)${errors.length ? ` · errors: ${errors.join('; ')}` : ''} (${(durationMs / 1000).toFixed(1)}s)`);
+      `Devices: ${leases} from ${routers.length} router(s)${scanned ? ` + ${scanned} scanned` : ''}; ${unmatchedPinged} unmatched pinged (${reachable} online)${pruned ? `; pruned ${pruned} stale` : ''}${errors.length ? ` · errors: ${errors.join('; ')}` : ''} (${(durationMs / 1000).toFixed(1)}s)`);
 
     // Printer-offline alert eval runs on the collector's own cadence (fresh
     // reachability is in the DB now). Self-contained; never throws.

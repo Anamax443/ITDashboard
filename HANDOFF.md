@@ -2,6 +2,36 @@
 
 Last updated: 2026-06-22 (LIVE `e3838a5`; **full doc sweep done — README, dashboard.html CS+EN, project-status.html, i18n all current**). This day's work (newest first): **shared/USB printers** (net view → Devices rows + Stav tiskáren section, located by host PC); **Devices tab UX** (editable note, row numbers, sortable headers, general search across ALL columns, "uncategorized only" filter, "Devices" dashboard tile = unidentified/total); **managerial report** (pie charts + summary incl. network-vs-USB printer counts + full list, A4, opened in a tab to dodge the HTTP insecure-download block); **device-scan reach** (nbtstat MAC fallback for remote subnets + Option B MAC-less-by-IP storage so live hosts always show; scan ranges 10.8.3/10.181.3/10.181.90 added); **per-category notebook eventlog noise suppression** (mig 051); **eventlog "PC v problémech" temporary per-PC snooze** with signature (mig 050). 102 tests. Draggable dashboard tiles were built then **reverted** per operator. See sessions below. Prior: 2026-06-17 (LIVE `e456fd0`; **full doc sweep done incl. G2** — README, ARCHITECTURE, dashboard.html CS+EN, project-status.html, i18n all current). **G2 — printer supplies + EWS proxy**: new "Stav tiskáren / Printer status" tab + 🖨 Náplně tile reading ink/toner/maintenance-box/drum/belt via **SNMP Printer-MIB primary + HTTP fallback** (Brother toner %, Epson maint box) with a self-contained `node:dgram` SNMP client; the device web-UI **cert-bypass proxy is now ON by default** and was reworked to actually render Epson/HP/Brother EWS (buffers body, `<base>`=doc dir, absolute-URL rewrite, relaxed CSP + MIME correction, client-side redirects); migrations 048–049; 74 tests. Earlier device-platform batch: MikroTik DHCP collection LIVE + fully DB-driven (no MIKROTIK_* env except MIKROTIK_SECRET); multi-source inventory merged by MAC = DHCP (dynamic+static reservations) + router ARP + active app-server subnet scan (configurable ranges CIDR/wildcard, `!` excludes a subnet, discovery cache, remote subnets via router ARP); NetBIOS (nbtstat) device names → printer auto-suggest (NPI/BRN/BRW/RNP/KMBT); Static/Dynamic Type column; operator-editable device name (mig 046); generic + configurable categories; per-device packet loss + latency (mig 045/047) as `ms/%` column with tunable problem thresholds, "Loss/latency" tile + "issues only" filter; printer-offline alert agenda (mig 043); 🖨 Printers tile; printer IP→web-UI with optional cert-bypass server proxy; new Database tab; deploy robocopy `/MIR` excludes `dist` (frontend-window fix). Migrations 043–047. — prior 2026-06-16: (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
 
+## Session 2026-06-22 (batch 8) — UniFi LIVE + dedup + stale-lease pruning (mig 054)
+
+**UniFi went live.** Operator configured it in Settings (the API write was blocked
+by the safety classifier, so the operator entered the creds in the UI — the
+intended secure path). First run: **101 clients, 90 upserted**, and it enriched
+exactly the IP-only/MAC-less rows — 11 of the `10.8.3.*` scan ghosts now carry a
+real MAC + hostname (parlw11n, Cidlo-Brno, kudapw11n…). Inventory 360 → 450.
+
+**Dedup synthetic rows (`704242d`).** UniFi resolved MACs the scan could only key
+as `IP-<ip>`, leaving two rows per device. `dedupSyntheticByIp()` (after each UniFi
+run) deletes an `IP-<ip>` row once a real-MAC row exists at the same IP. Removed
+~21; total 450 → 430. **NOT** touched: shared/USB printers that legitimately share
+their host PC's IP (source `share`, by design) — verified those remaining
+"duplicate IPs" are real (4 Zebra shares on a PC's IP, etc.), not ghosts.
+
+**Stale-lease pruning (migration 054).** The last real ghosts are IP-reassignment
+leftovers (e.g. `10.8.2.77` = bartkovajw11n now, but a frozen `sklad12w11` row from
+5 days ago). New setting **`devices.lease_retention_days`** (default **14**, 0 =
+off): each MikroTik collect prunes any `dhcp_leases` row whose `last_seen` AND
+`reach_checked_at` AND `last_reachable_at` are ALL older than N days — i.e. nothing
+has observed or pinged it. Runs LAST so this cycle's bumps count first.
+Non-destructive: a returning device re-appears and its MAC-keyed category/note
+rejoin; offline-but-monitored printers keep getting pinged (fresh
+`reach_checked_at`) so they're never pruned. Settings field + CS/EN help.
+Typecheck clean, 112 tests.
+
+> Note: default 14d means a 5-day ghost like .77 won't vanish immediately — lower
+> `devices.lease_retention_days` to prune sooner. Pruning is non-destructive (the
+> device re-appears if it returns), so a shorter window is safe.
+
 ## Session 2026-06-22 (batch 7) — UniFi controller as a device source (mig 053) + printer filters
 
 **UniFi integration.** Operator handed working C# proof that reads a (legacy,

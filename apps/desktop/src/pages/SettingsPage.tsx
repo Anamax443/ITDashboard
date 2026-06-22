@@ -505,6 +505,20 @@ export function SettingsPage() {
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
             {t('settings.field.scanHelp')}
           </p>
+
+          <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 10px' }} />
+          <Field label={t('settings.field.leaseRetention')}>
+            <input
+              type="number"
+              min={0}
+              value={value('devices.lease_retention_days', '14')}
+              onChange={(e) => set('devices.lease_retention_days', e.target.value)}
+              style={{ ...fieldStyle, width: 90 }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+            {t('settings.field.leaseRetentionHelp')}
+          </p>
         </Section>
 
         <Section title={t('settings.section.unifi')} description={t('settings.section.unifiDesc')}>
