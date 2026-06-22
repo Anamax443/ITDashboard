@@ -584,7 +584,14 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
             } else {
               host = await resolveName(a.ip, 2500);
             }
-            if (!mac) continue; // no ARP and no NetBIOS MAC — genuinely unidentifiable
+            // Option B: an alive host with no resolvable MAC (remote subnet — ARP is
+            // router-local, and NetBIOS/nbtstat is often firewalled from the app
+            // server) is still stored, keyed by a synthetic "IP-<ip>" id, so the
+            // operator SEES the live host (IP + online/offline) instead of it being
+            // silently dropped. A real MAC/name backfills later if ARP/NetBIOS/SNMP
+            // resolves it. At read time a synthetic row whose IP matches an AD
+            // computer still pairs by IP, so AD machines also show their name.
+            if (!mac) mac = `IP-${a.ip}`;
             try {
               const st = await pingStats(a.ip, 4, 1500);
               await upsertDevice({ site: a.site, mac, ip: a.ip, host, server: null, comment: null, status: 'scan', dynamic: false, exp: null, rls: null, source: 'scan' });

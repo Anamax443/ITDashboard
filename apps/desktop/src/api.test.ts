@@ -13,6 +13,7 @@ import {
   isStaleComputer,
   levelName,
   isSnoozeActive,
+  isSyntheticMac,
 } from './api.js';
 
 // Minimal builders — only the fields the pure functions actually read.
@@ -212,6 +213,20 @@ describe('isSnoozeActive', () => {
   });
   it('invalid date string → not snoozed', () => {
     expect(isSnoozeActive('not-a-date', now)).toBe(false);
+  });
+});
+
+describe('isSyntheticMac', () => {
+  it('"IP-<ip>" key → synthetic', () => {
+    expect(isSyntheticMac('IP-10.90.182.250')).toBe(true);
+  });
+  it('a real MAC → not synthetic', () => {
+    expect(isSyntheticMac('94:DD:F8:30:6E:B0')).toBe(false);
+  });
+  it('null / empty → not synthetic', () => {
+    expect(isSyntheticMac(null)).toBe(false);
+    expect(isSyntheticMac(undefined)).toBe(false);
+    expect(isSyntheticMac('')).toBe(false);
   });
 });
 

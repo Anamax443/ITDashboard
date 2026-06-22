@@ -102,6 +102,15 @@ export function isSnoozeActive(snoozedUntil: string | null | undefined, now: Dat
   return Number.isFinite(t) && t > now.getTime();
 }
 
+/**
+ * A device row whose MAC could not be resolved (alive on a remote subnet, but ARP
+ * is router-local and NetBIOS is often firewalled from the app server) is stored
+ * keyed by a synthetic "IP-<ip>" id. The UI shows "—" for the MAC of such rows.
+ */
+export function isSyntheticMac(mac: string | null | undefined): boolean {
+  return !!mac && mac.startsWith('IP-');
+}
+
 export interface ServiceProblem {
   id: number;
   computer_id: number;

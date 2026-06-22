@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { DeviceItem, PrinterSuppliesResult } from '../api.js';
-import { api, timeAgo, deviceDegraded, deviceProblemThresholds, API_BASE } from '../api.js';
+import { api, timeAgo, deviceDegraded, deviceProblemThresholds, isSyntheticMac, API_BASE } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { useI18n } from '../i18n.js';
 
@@ -325,7 +325,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                       </span>
                     )}
                   </td>
-                  <td style={{ color: 'var(--text-dim)', fontSize: 10, fontFamily: 'Consolas, monospace' }}>{d.mac_address}</td>
+                  <td style={{ color: 'var(--text-dim)', fontSize: 10, fontFamily: 'Consolas, monospace' }} title={isSyntheticMac(d.mac_address) ? t('devices.macUnknown') : undefined}>{isSyntheticMac(d.mac_address) ? '—' : d.mac_address}</td>
                   <td style={{ fontSize: 11 }}>
                     {d.dynamic === false
                       ? <span style={{ color: 'var(--warning, #d97706)', fontWeight: 600 }}>{t('devices.static')}</span>

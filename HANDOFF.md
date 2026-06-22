@@ -34,12 +34,28 @@ line away.
 - Also added scan ranges `Brno=10.8.3.*` + `10.181.3.*` (derived from AD computer
   IPs — `10.8.3` had 11 live PCs and wasn't scanned).
 
-> Expected after deploy: `+ N scanned` jumps and Svitavy/Jihlava/10.8.3 populate.
-> Open follow-ups (Stage 2/3): per-device "resolve MAC" button (nbtstat/SNMP on
-> demand); auto-derive scan ranges from `computers.ip_address` (filter to corporate
-> 10.x, merge with manual + DHCP); shared/USB printers per PC via `net view`
-> (verified: `net view \\10.90.183.12` returns the USB Brother HL-1110); non-NetBIOS
-> hosts still need a MAC-less fallback or SNMP.
+**Live finding after deploy — nbtstat is FIREWALLED from the app server.** Diagnostics
+run on `.213`: it **pings** the Svitavy/Jihlava printers fine (ICMP, routing/SD-WAN
+OK), but `nbtstat -A` returns nothing from `.213` (UDP 137 blocked there — it worked
+from the operator workstation `.181`). So Stage 1's nbtstat MAC path is defeated *from
+the app server's network position*, not by routing. Net: the scan still couldn't key
+those hosts.
+
+**Option B (MAC-less storage) — built on top.** Since `.213` reaches the hosts (ICMP),
+an alive host with no resolvable MAC is now stored keyed by a **synthetic `IP-<ip>`**
+id (`mac_address` is NVARCHAR(32), fits — no migration) so the operator at least SEES
+the live host. Bonus: at read time a synthetic row whose IP matches an AD computer
+**pairs by IP**, so AD machines still show their name/reachability. UI shows `—` for a
+synthetic MAC (`isSyntheticMac()`, tooltip explains why); unit-tested (desktop 42 /
+**99 total**). The MAC backfills automatically if ARP/NetBIOS/SNMP ever resolves it.
+
+> Open follow-ups: per-device "resolve MAC" button (SNMP `ifPhysAddress` — SNMP/161
+> reachability from `.213` not yet confirmed) or open UDP 137/161 on the firewall;
+> dedup a synthetic row when a real MAC later appears at the same IP (and re-attempt
+> resolution for synthetic rows — today knownIps skips them); auto-derive scan ranges
+> from `computers.ip_address` (filter to corporate 10.x, merge with manual + DHCP —
+> already added `10.8.3.*`/`10.181.3.*`); shared/USB printers per PC via `net view`
+> (verified: `net view \\10.90.183.12` returns the USB Brother HL-1110).
 
 ## Session 2026-06-22 — Eventlog "PC v problémech" dočasné uspání (snooze)
 
