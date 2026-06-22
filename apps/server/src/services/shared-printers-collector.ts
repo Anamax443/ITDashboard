@@ -16,7 +16,7 @@ import { parseNetViewPrinters, type SharedPrinter } from './netview-util.js';
 // PC is carried in `comment`, and the row's ip_address is the PC's IP so it pairs to
 // the AD computer by IP (the Devices "AD" column then shows the PC too).
 
-const SITE = 'USB';                 // logical "site" grouping for shared printers
+const SITE_FALLBACK = 'USB';        // used only when the host PC isn't in the network inventory
 const CONCURRENCY = 8;
 let inFlight = false;
 
@@ -54,11 +54,25 @@ function netViewPrinters(host: string, timeoutMs: number): Promise<{ ok: boolean
   });
 }
 
-async function upsertShare(pcName: string, ip: string | null, printer: SharedPrinter): Promise<string> {
+// The shared printer's "location" (Lokalita column) = the host PC's site, derived
+// from the host's IP via the existing network inventory (so a USB printer shows the
+// branch it physically sits in, not a generic label). Falls back to 'USB' when the
+// host PC isn't in the inventory.
+async function siteForHost(ip: string | null): Promise<string> {
+  if (!ip) return SITE_FALLBACK;
+  const pool = await getPool();
+  const r = await pool.request().input('ip', ip).query<{ site: string }>(`
+    SELECT TOP 1 site FROM dhcp_leases
+    WHERE ip_address = @ip AND source <> 'share'
+    ORDER BY CASE source WHEN 'dhcp' THEN 0 WHEN 'arp' THEN 1 ELSE 2 END`);
+  return r.recordset[0]?.site ?? SITE_FALLBACK;
+}
+
+async function upsertShare(site: string, pcName: string, ip: string | null, printer: SharedPrinter): Promise<string> {
   const mac = shareKey(ip ?? pcName, printer.name);
   const pool = await getPool();
   await pool.request()
-    .input('site', SITE).input('mac', mac).input('ip', ip).input('host', printer.name).input('pc', pcName)
+    .input('site', site).input('mac', mac).input('ip', ip).input('host', printer.name).input('pc', pcName)
     .query(`
       MERGE dhcp_leases AS t USING (SELECT @site AS site, @mac AS mac) AS s
         ON t.site = s.site AND t.mac_address = s.mac
@@ -76,13 +90,15 @@ async function upsertShare(pcName: string, ip: string | null, printer: SharedPri
 // last-known shares.
 async function pruneStaleShares(pcName: string, keepMacs: string[]): Promise<void> {
   const pool = await getPool();
-  const req = pool.request().input('site', SITE).input('pc', pcName);
+  // Prune across ALL sites for this PC (the derived site can change if the host's
+  // network classification changes), keyed by the host PC in `comment`.
+  const req = pool.request().input('pc', pcName);
   if (keepMacs.length === 0) {
-    await req.query(`DELETE FROM dhcp_leases WHERE site = @site AND comment = @pc AND source = 'share'`);
+    await req.query(`DELETE FROM dhcp_leases WHERE comment = @pc AND source = 'share'`);
     return;
   }
   const params = keepMacs.map((m, i) => { req.input(`k${i}`, m); return `@k${i}`; });
-  await req.query(`DELETE FROM dhcp_leases WHERE site = @site AND comment = @pc AND source = 'share' AND mac_address NOT IN (${params.join(',')})`);
+  await req.query(`DELETE FROM dhcp_leases WHERE comment = @pc AND source = 'share' AND mac_address NOT IN (${params.join(',')})`);
 }
 
 export interface SharedPrintersRunResult { pcs: number; probed: number; printers: number; durationMs: number; }
@@ -107,8 +123,9 @@ export async function runSharedPrintersOnce(): Promise<SharedPrintersRunResult |
           const { ok, printers: found } = await netViewPrinters(host, timeoutMs);
           if (!ok) continue; // offline / denied — keep last-known shares
           probed++;
+          const site = await siteForHost(pc.ip);
           const keep: string[] = [];
-          for (const p of found) keep.push(await upsertShare(pc.name, pc.ip, p));
+          for (const p of found) keep.push(await upsertShare(site, pc.name, pc.ip, p));
           await pruneStaleShares(pc.name, keep);
           printers += found.length;
         } catch { /* keep this PC's last-known shares on a transient error */ }
