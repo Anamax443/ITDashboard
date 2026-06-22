@@ -260,26 +260,68 @@ async function upsertDevice(d: NormDevice): Promise<{ mac: string; ip: string | 
   return { mac: d.mac, ip: d.ip, host: d.host };
 }
 
-async function persistReachable(site: string, mac: string, reachable: boolean, lossPct: number | null = null, host: string | null = null, latencyMs: number | null = null): Promise<void> {
+// Rolling window (hours) for the long-term loss/latency calc. Re-read from
+// `devices.loss_window_hours` at the start of each collect run (default 24).
+let lossWindowHours = 24;
+
+// Persist a device's reachability AND its LONG-TERM loss/latency. Instead of
+// storing the single 4-ping burst (which a momentary blip distorts), each ONLINE
+// cycle appends a sample (sent/recv/latency) and we recompute the windowed ratio
+// — dropped / sent over the last `lossWindowHours` — into dhcp_leases. A single
+// bad cycle then weighs only 1/N. OFFLINE cycles record NO sample (a powered-off
+// box must not accrue "100% loss") and clear loss/latency to NULL.
+async function persistReachable(site: string, mac: string, reachable: boolean, host: string | null = null, sent = 0, recv = 0, latencyMs: number | null = null): Promise<void> {
   const pool = await getPool();
-  await pool.request().input('site', site).input('mac', mac).input('r', reachable ? 1 : 0).input('loss', lossPct).input('host', host).input('lat', latencyMs).query(`
-    UPDATE dhcp_leases
-    SET reachable = @r,
-        -- loss + latency only matter while ONLINE; offline = 100% / no RTT is just
-        -- restating "offline", so store NULL there (nothing to show / count).
-        packet_loss = CASE WHEN @r = 1 THEN @loss ELSE NULL END,
-        latency_ms = CASE WHEN @r = 1 THEN @lat ELSE NULL END,
-        host_name = COALESCE(@host, host_name),
-        reach_checked_at = SYSUTCDATETIME(),
-        last_reachable_at = CASE WHEN @r = 1 THEN SYSUTCDATETIME() ELSE last_reachable_at END
-    WHERE site = @site AND mac_address = @mac;
-  `);
+  if (reachable) {
+    await pool.request()
+      .input('site', site).input('mac', mac).input('host', host)
+      .input('sent', sent).input('recv', recv).input('lat', latencyMs)
+      .input('win', lossWindowHours)
+      .query(`
+        INSERT INTO device_ping_samples (mac_address, sent, recv, latency_ms)
+        VALUES (@mac, @sent, @recv, @lat);
+
+        UPDATE dl
+        SET reachable = 1,
+            host_name = COALESCE(@host, dl.host_name),
+            reach_checked_at = SYSUTCDATETIME(),
+            last_reachable_at = SYSUTCDATETIME(),
+            packet_loss = w.loss,
+            latency_ms  = w.lat
+        FROM dhcp_leases dl
+        CROSS APPLY (
+          SELECT
+            CAST(ROUND(CASE WHEN SUM(s.sent) > 0
+                            THEN (SUM(s.sent) - SUM(s.recv)) * 100.0 / SUM(s.sent)
+                            ELSE 0 END, 0) AS INT) AS loss,
+            CASE WHEN COUNT(s.latency_ms) > 0
+                 THEN CAST(ROUND(AVG(CAST(s.latency_ms AS FLOAT)), 0) AS INT)
+                 ELSE NULL END AS lat
+          FROM device_ping_samples s
+          WHERE s.mac_address = @mac
+            AND s.sample_at >= DATEADD(HOUR, -@win, SYSUTCDATETIME())
+        ) w
+        WHERE dl.site = @site AND dl.mac_address = @mac;
+      `);
+  } else {
+    await pool.request().input('site', site).input('mac', mac).input('host', host).query(`
+      UPDATE dhcp_leases
+      SET reachable = 0,
+          packet_loss = NULL,
+          latency_ms = NULL,
+          host_name = COALESCE(@host, host_name),
+          reach_checked_at = SYSUTCDATETIME()
+      WHERE site = @site AND mac_address = @mac;
+    `);
+  }
 }
 
 // Parse a Windows ping transcript: reply count (via "TTL=") and the average RTT
 // from the per-reply "time<1ms"/"time=15ms" values. Locale-independent — the
 // "[<=]NNms" token appears on every reply line in CS ("čas") and EN ("time").
-function parsePing(output: string, count: number): { alive: boolean; lossPct: number; latencyMs: number | null } {
+interface PingStats { alive: boolean; lossPct: number; latencyMs: number | null; sent: number; received: number }
+
+function parsePing(output: string, count: number): PingStats {
   let received = 0;
   const times: number[] = [];
   for (const line of output.split(/\r?\n/)) {
@@ -290,11 +332,13 @@ function parsePing(output: string, count: number): { alive: boolean; lossPct: nu
   }
   const lossPct = Math.max(0, Math.min(100, Math.round(((count - received) / count) * 100)));
   const latencyMs = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : null;
-  return { alive: received > 0, lossPct, latencyMs };
+  // `sent`/`received` feed the long-term (windowed) loss rate; `lossPct` is just
+  // this single burst (kept for momentary logging, no longer stored directly).
+  return { alive: received > 0, lossPct, latencyMs, sent: count, received };
 }
 
 // Multi-ping reachability with packet loss + average latency.
-async function pingStats(ip: string, count: number, timeoutMs: number): Promise<{ alive: boolean; lossPct: number; latencyMs: number | null }> {
+async function pingStats(ip: string, count: number, timeoutMs: number): Promise<PingStats> {
   const { output } = await pingWithOutput(ip, count, timeoutMs);
   return parsePing(output, count);
 }
@@ -354,6 +398,16 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
     const { routers, user, pass, scanRanges } = cfg;
     const timeoutMs = 8000;
     const known = await loadKnownComputers();
+
+    // Long-term loss/latency window (hours) — re-read each run so a Settings change
+    // applies live. Prune ping samples older than the window (+1h margin) so the
+    // history table stays bounded; only ONLINE cycles ever insert a sample.
+    const winN = Number(settings['devices.loss_window_hours']);
+    lossWindowHours = Number.isFinite(winN) && winN >= 1 ? Math.floor(winN) : 24;
+    try {
+      await (await getPool()).request().input('win', lossWindowHours)
+        .query(`DELETE FROM device_ping_samples WHERE sample_at < DATEADD(HOUR, -(@win + 1), SYSUTCDATETIME())`);
+    } catch { /* pruning is best-effort; never block a collect */ }
 
     // EXCLUDE ranges ("!"/"<>") opt a whole subnet OUT of the inventory entirely
     // — not just out of the active scan. Parsed straight from settings so it
@@ -430,7 +484,7 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
         if (!d) continue;
         try {
           const st = await pingStats(d.ip, 4, 1500);
-          await persistReachable(d.site, d.mac, st.alive, st.lossPct, null, st.latencyMs);
+          await persistReachable(d.site, d.mac, st.alive, null, st.sent, st.received, st.latencyMs);
           unmatchedPinged++;
           if (st.alive) reachable++;
         } catch { /* skip on error, keep last state */ }
@@ -546,7 +600,7 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
                 await pool.request().input('site', a.site).input('mac', mac)
                   .query(`UPDATE dhcp_leases SET reachable = NULL, reach_checked_at = NULL WHERE site = @site AND mac_address = @mac`);
               } else {
-                await persistReachable(a.site, mac, st.alive, st.lossPct, null, st.latencyMs);
+                await persistReachable(a.site, mac, st.alive, null, st.sent, st.received, st.latencyMs);
               }
               scanned++;
             } catch { /* one host's DB/probe error shouldn't abort the sweep */ }
@@ -572,7 +626,7 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
               // more lookups.
               const st = await pingStats(r.ip_address, 4, 1500);
               const host = r.host_name ? null : await resolveName(r.ip_address, 2500);
-              await persistReachable(r.site, r.mac_address, st.alive, st.lossPct, host, st.latencyMs);
+              await persistReachable(r.site, r.mac_address, st.alive, host, st.sent, st.received, st.latencyMs);
             } catch { /* keep last */ }
           }
         };
@@ -604,7 +658,7 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
 export async function probeDeviceNow(site: string, mac: string, ip: string): Promise<{ alive: boolean; console: string }> {
   const res = await pingWithOutput(ip, 10, 2000);
   const st = parsePing(res.output, 10);
-  try { await persistReachable(site, mac, res.alive, st.lossPct, null, st.latencyMs); } catch { /* best effort */ }
+  try { await persistReachable(site, mac, res.alive, null, st.sent, st.received, st.latencyMs); } catch { /* best effort */ }
   const lines = [`> ping -n 10 ${ip}`, '', res.output.replace(/\r\n/g, '\n').trimEnd()];
   return { alive: res.alive, console: lines.join('\n') };
 }
