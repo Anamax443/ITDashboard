@@ -46,12 +46,14 @@ export function useSort<T>(initial?: SortState<T>) {
   return { sort, toggle, apply };
 }
 
-export function SortHeader<T>({ col, label, sort, toggle, width }: {
+export function SortHeader<T>({ col, label, sort, toggle, width, tip }: {
   col: keyof T;
   label: string;
   sort: SortState<T> | null;
   toggle: (col: keyof T) => void;
   width?: number;
+  // Optional short process hint shown on hover (a dimmed ⓘ marks its presence).
+  tip?: string;
 }) {
   const active = sort?.col === col;
   const arrow = active ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '';
@@ -59,9 +61,10 @@ export function SortHeader<T>({ col, label, sort, toggle, width }: {
     <th
       onClick={() => toggle(col)}
       style={{ width, cursor: 'pointer', userSelect: 'none' }}
-      title="Click to sort"
+      title={tip ?? 'Click to sort'}
     >
       {label}{arrow}
+      {tip && <span style={{ opacity: 0.45, marginLeft: 3, fontSize: '0.85em' }}>ⓘ</span>}
     </th>
   );
 }

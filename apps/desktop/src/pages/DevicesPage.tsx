@@ -370,17 +370,17 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
             <thead>
               <tr>
                 <th style={{ width: 36, textAlign: 'right' }} title={t('devices.rowNum')}>#</th>
-                <SortHeader<DeviceItem> col="site" label={t('devices.site')} sort={sort} toggle={toggle} width={80} />
-                <SortHeader<DeviceItem> col="ip_address" label="IP" sort={sort} toggle={toggle} width={120} />
-                <SortHeader<DeviceItem> col="operator_note" label={t('devices.note')} sort={sort} toggle={toggle} width={150} />
-                <SortHeader<DeviceItem> col="host_name" label={t('devices.hostname')} sort={sort} toggle={toggle} width={190} />
-                <SortHeader<DeviceItem> col="mac_address" label="MAC" sort={sort} toggle={toggle} width={150} />
-                <SortHeader<DeviceItem> col="source" label={t('devices.type')} sort={sort} toggle={toggle} width={95} />
-                <SortHeader<DeviceItem> col="category" label={t('devices.category')} sort={sort} toggle={toggle} width={170} />
-                <SortHeader<DeviceItem> col="reachable" label={t('devices.status')} sort={sort} toggle={toggle} width={90} />
+                <SortHeader<DeviceItem> col="site" label={t('devices.site')} sort={sort} toggle={toggle} width={80} tip={t('devices.siteTip')} />
+                <SortHeader<DeviceItem> col="ip_address" label="IP" sort={sort} toggle={toggle} width={120} tip={t('devices.ipTip')} />
+                <SortHeader<DeviceItem> col="operator_note" label={t('devices.note')} sort={sort} toggle={toggle} width={150} tip={t('devices.noteTip')} />
+                <SortHeader<DeviceItem> col="host_name" label={t('devices.hostname')} sort={sort} toggle={toggle} width={190} tip={t('devices.hostnameTip')} />
+                <SortHeader<DeviceItem> col="mac_address" label="MAC" sort={sort} toggle={toggle} width={150} tip={t('devices.macTip')} />
+                <SortHeader<DeviceItem> col="source" label={t('devices.type')} sort={sort} toggle={toggle} width={95} tip={t('devices.typeTip')} />
+                <SortHeader<DeviceItem> col="category" label={t('devices.category')} sort={sort} toggle={toggle} width={170} tip={t('devices.categoryTip')} />
+                <SortHeader<DeviceItem> col="reachable" label={t('devices.status')} sort={sort} toggle={toggle} width={90} tip={t('devices.statusTip')} />
                 <th style={{ width: 80 }} title={t('devices.qualityTip')}>{t('devices.quality')}</th>
-                <SortHeader<DeviceItem> col="computer_name" label="AD" sort={sort} toggle={toggle} width={130} />
-                <SortHeader<DeviceItem> col="last_seen" label={t('devices.lastSeen')} sort={sort} toggle={toggle} width={100} />
+                <SortHeader<DeviceItem> col="computer_name" label="AD" sort={sort} toggle={toggle} width={130} tip={t('devices.adTip')} />
+                <SortHeader<DeviceItem> col="last_seen" label={t('devices.lastSeen')} sort={sort} toggle={toggle} width={100} tip={t('devices.lastSeenTip')} />
                 <th style={{ width: 120 }} />
               </tr>
             </thead>

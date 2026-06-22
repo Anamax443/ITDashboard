@@ -2,6 +2,38 @@
 
 Last updated: 2026-06-22 (LIVE `e3838a5`; **full doc sweep done — README, dashboard.html CS+EN, project-status.html, i18n all current**). This day's work (newest first): **shared/USB printers** (net view → Devices rows + Stav tiskáren section, located by host PC); **Devices tab UX** (editable note, row numbers, sortable headers, general search across ALL columns, "uncategorized only" filter, "Devices" dashboard tile = unidentified/total); **managerial report** (pie charts + summary incl. network-vs-USB printer counts + full list, A4, opened in a tab to dodge the HTTP insecure-download block); **device-scan reach** (nbtstat MAC fallback for remote subnets + Option B MAC-less-by-IP storage so live hosts always show; scan ranges 10.8.3/10.181.3/10.181.90 added); **per-category notebook eventlog noise suppression** (mig 051); **eventlog "PC v problémech" temporary per-PC snooze** with signature (mig 050). 102 tests. Draggable dashboard tiles were built then **reverted** per operator. See sessions below. Prior: 2026-06-17 (LIVE `e456fd0`; **full doc sweep done incl. G2** — README, ARCHITECTURE, dashboard.html CS+EN, project-status.html, i18n all current). **G2 — printer supplies + EWS proxy**: new "Stav tiskáren / Printer status" tab + 🖨 Náplně tile reading ink/toner/maintenance-box/drum/belt via **SNMP Printer-MIB primary + HTTP fallback** (Brother toner %, Epson maint box) with a self-contained `node:dgram` SNMP client; the device web-UI **cert-bypass proxy is now ON by default** and was reworked to actually render Epson/HP/Brother EWS (buffers body, `<base>`=doc dir, absolute-URL rewrite, relaxed CSP + MIME correction, client-side redirects); migrations 048–049; 74 tests. Earlier device-platform batch: MikroTik DHCP collection LIVE + fully DB-driven (no MIKROTIK_* env except MIKROTIK_SECRET); multi-source inventory merged by MAC = DHCP (dynamic+static reservations) + router ARP + active app-server subnet scan (configurable ranges CIDR/wildcard, `!` excludes a subnet, discovery cache, remote subnets via router ARP); NetBIOS (nbtstat) device names → printer auto-suggest (NPI/BRN/BRW/RNP/KMBT); Static/Dynamic Type column; operator-editable device name (mig 046); generic + configurable categories; per-device packet loss + latency (mig 045/047) as `ms/%` column with tunable problem thresholds, "Loss/latency" tile + "issues only" filter; printer-offline alert agenda (mig 043); 🖨 Printers tile; printer IP→web-UI with optional cert-bypass server proxy; new Database tab; deploy robocopy `/MIR` excludes `dist` (frontend-window fix). Migrations 043–047. — prior 2026-06-16: (decision: MikroTik DHCP collection simplified to IN-APP on the application server — external .225 sync-script model retired; pending one router allowed-address change · docs/i18n deployment-model corrected) — prior 2026-06-15: Ports availability tab + per-port latency · per-PC refresh now probes ports too · cmd-like ping console · Per-PC Actions trimmed to refresh-only · dashboard Ports tile + tile-click filter pre-select · Devices tab = MikroTik DHCP inventory paired with AD by hostname/IP · device categories by MAC + vendor suggestion · MikroTik config in Settings with AES-encrypted password · migrations 041–042
 
+## Session 2026-06-22 (batch 5) — Column header hints + IP revision by name (DNS)
+
+Two operator asks off the Devices/Stav discussion.
+
+**1. Short process hint in every Devices column header.** `SortHeader` gained an
+optional `tip` prop — when set it shows the text on hover and renders a dimmed `ⓘ`
+marker so the operator knows there's an explanation. Wired tips (CS+EN, new
+`devices.*Tip` i18n) onto Lokalita / IP / Poznámka / Hostname / MAC / Typ /
+Kategorie / Stav / AD / Naposledy (the ms/% column already had `qualityTip`). The
+**Stav** tip spells out the two probe branches; the **IP** tip documents the DNS
+revision below. Change is additive — `SortHeader`'s other callers are unaffected.
+
+**2. IP always correct to the name (revize IP).** Operator: "klidně se ptá na
+hostname, ale musí se revidovat IP." The reachability probe already probes AD
+machines by **name** (`fqdn||name` → TCP 135/445 → ICMP), which is why a
+cable→wifi switch doesn't break Status (DNS follows the name). But the stored
+`computers.ip_address` could go stale — it was only written by the disk collector
+(CIM, monitored boxes only, `Access denied` on DCs). Now `reachability-collector`
+also does a best-effort **`dns.lookup(name, {family:4})`** each cycle and persists
+the resolved IP via `ip_address = COALESCE(@ip, ip_address)` (DNS miss → IP left
+untouched). Runs for **every** enabled/non-excluded PC, so the name→IP mapping
+stays current everywhere `ip_address` is used (Computers tab, AD-by-IP pairing,
+reports). An IP change is logged as its own `reachability` activity event
+(`X: IP revised a → b (DNS)`). Verified core first: `Resolve-DnsName` from the
+domain returns the live IP (VYVOJW11 → 10.8.2.152, the active NIC, not its offline
+.155 ARP NIC). No migration; no conflict with ad-sync (it never writes
+`ip_address`). 112 tests, typecheck clean.
+
+> Note: the Devices-tab **row** IP stays per-MAC (each NIC is its own lease/arp/scan
+> row — correct, a dual-NIC PC is genuinely two rows). The DNS revision corrects the
+> **AD computer's** canonical IP, not the per-NIC inventory rows.
+
 ## Session 2026-06-22 (batch 4) — Scan site label reconciliation (Lokalita fix)
 
 **Operator finding:** Devices discovered by the active scan showed **Lokalita =

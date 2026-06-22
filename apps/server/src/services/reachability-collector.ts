@@ -1,8 +1,26 @@
 import { Socket } from 'node:net';
 import { spawn } from 'node:child_process';
+import { lookup } from 'node:dns';
+import { promisify } from 'node:util';
 import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
 import { getAllSettings } from './settings.js';
+
+const dnsLookup = promisify(lookup);
+
+// Resolve a host NAME to its current IPv4 via the OS resolver (domain DNS). This
+// is what keeps a machine's stored IP correct to its name: a notebook that moves
+// cable→wifi changes IP but keeps its name, and AD dynamic DNS re-registers the
+// new address, so the lookup follows it. Best-effort — returns null on any
+// failure (no DNS record, IPv6-only, timeout) so the stored IP is left untouched.
+async function resolveIp(host: string): Promise<string | null> {
+  try {
+    const { address } = await dnsLookup(host, { family: 4 });
+    return address && address !== '0.0.0.0' ? address : null;
+  } catch {
+    return null;
+  }
+}
 
 // Plain TCP connect — same helper the other collectors use. Resolves true if the
 // port accepts a connection within the timeout, false on timeout/refused/error.
@@ -89,16 +107,18 @@ async function probeOne(t: Target, ports: number[], timeoutMs: number, pingFallb
   return false;
 }
 
-async function persist(id: number, reachable: boolean): Promise<void> {
+async function persist(id: number, reachable: boolean, resolvedIp: string | null): Promise<void> {
   const pool = await getPool();
   await pool.request()
     .input('id', id)
     .input('r', reachable ? 1 : 0)
+    .input('ip', resolvedIp)
     .query(`
       UPDATE computers
       SET reachable = @r,
           reach_checked_at = SYSUTCDATETIME(),
-          last_reachable_at = CASE WHEN @r = 1 THEN SYSUTCDATETIME() ELSE last_reachable_at END
+          last_reachable_at = CASE WHEN @r = 1 THEN SYSUTCDATETIME() ELSE last_reachable_at END,
+          ip_address = COALESCE(@ip, ip_address)
       WHERE id = @id;
     `);
 }
@@ -175,14 +195,22 @@ export async function runReachabilityProbeOnce(): Promise<ReachabilityRunResult 
         if (!t) continue;
         try {
           const ok = await probeOne(t, ports, timeoutMs, pingFallback);
+          // Revise the stored IP to whatever the NAME currently resolves to (DNS),
+          // so the IP always matches the machine regardless of cable/wifi/NIC.
+          const resolvedIp = await resolveIp(t.fqdn || t.name);
           const prev = t.reachable == null ? null : Boolean(t.reachable);
-          await persist(t.id, ok);
+          await persist(t.id, ok, resolvedIp);
           // Per-PC line only on a state CHANGE (name + IP + new state) — logging
           // every PC each cycle would flood the activity log. First-time
           // classification (prev === null) is silent.
           if (prev !== null && prev !== ok) {
             flips++;
-            logActivity(ok ? 'success' : 'warn', 'reachability', `${t.name} (${t.ip_address ?? 'no IP'}) → ${ok ? 'Active (on network)' : 'Offline'}`);
+            logActivity(ok ? 'success' : 'warn', 'reachability', `${t.name} (${resolvedIp ?? t.ip_address ?? 'no IP'}) → ${ok ? 'Active (on network)' : 'Offline'}`);
+          }
+          // IP revision is its own event (independent of a reachability flip) so the
+          // operator can see the name→IP mapping was corrected.
+          if (resolvedIp && t.ip_address && resolvedIp !== t.ip_address) {
+            logActivity('info', 'reachability', `${t.name}: IP revised ${t.ip_address} → ${resolvedIp} (DNS)`);
           }
           if (ok) reachable++; else unreachable++;
         } catch {
