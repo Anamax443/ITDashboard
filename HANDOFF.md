@@ -41,6 +41,38 @@ standardu" — snooze is **per-PC** (not per-signature).
 > eventlog scoring still sends no email, so the snooze's email scope is a prepared
 > hook (`isSnoozeActive`/`snoozed`), not a live suppression path.
 
+### Per-category eventlog noise suppression — notebooks (migration 051)
+
+Follow-up the same session. Snooze is a manual, temporary per-PC sign-off — wrong
+tool for **recurring structural noise** (a roaming notebook re-emits NETLOGON 5719
+/ GroupPolicy 1129 / Time-Service 131 / DCOM 10016 / Intel `Netwtw*` on every
+off-domain wake, so it re-inflates the score after each snooze expires). Operator
+decision: **monitor PCs the same as servers (full), suppress this noise ONLY for
+notebooks** — "i ntb má svoje skupiny … pc je lepší sledovat stejně jako servery".
+
+- **Classification by AD OU/DN** — AD computer group membership is **not** synced
+  (ad-sync pulls only OS + DistinguishedName → `ou_path`), but notebooks live in
+  their own OU, so a machine is a notebook when `ou_path`/`distinguished_name`/
+  `name` matches an operator pattern (`faulty.notebook_ou`, substring + `*`). Empty
+  → nothing classified → suppression inert.
+- **Suppression list** `faulty.suppress_notebook` (migration 051, seeded with the
+  five signatures above) — signatures excluded from the `pc-health` score **for
+  notebooks only**. Token forms: `provider/eventid`, `eventid` (any provider),
+  `provider` (any id, `*` wildcard). Applied to BOTH the weighted/breadth `sig` CTE
+  and the persistence `dys` CTE so days of pure-noise don't count either; a `sup`
+  CTE returns the suppressed-event **count per PC** for transparency (no silent cap).
+- **API/UI** — `GET /events/pc-health` items gain `isNotebook` + `suppressed`;
+  HealthCards shows a `💻 −N` marker (tooltip "N events suppressed…") on notebook
+  rows. Settings → "PC v problémech" gains two textareas (notebook OU pattern +
+  suppressed signatures) with CS/EN help.
+- Parsers extracted to `services/faulty-util.ts` (`parseNotebookPatterns`,
+  `parseSuppressionSignatures`) — pure, unit-tested (Vitest server +12 = **91 total**).
+  Note: `*/` in a JSDoc block closes the comment — the doc uses "STAR" deliberately.
+
+> Open follow-up: if some notebooks are distinguished by **security group** rather
+> than OU, ad-sync would need to also pull `memberOf` (not synced today); OU/DN
+> matching is the current signal.
+
 > The values in **Current Live State** are this deployment's actual endpoints,
 > kept here as the operator handoff record. They are **no longer hardcoded in
 > code** — the source tree carries no IPs/hostnames/domain. To stand the project

@@ -4,6 +4,7 @@ import { getPool } from '../db/pool.js';
 import { getSetting, getAllSettings } from '../services/settings.js';
 import { getSession } from '../auth/session-store.js';
 import { logActivity } from '../services/activity-log.js';
+import { parseNotebookPatterns, parseSuppressionSignatures } from '../services/faulty-util.js';
 
 // The "signature" on a snooze. Prefer the authenticated session user (the dashboard
 // auth gate, cookie itd-session) so it can't be spoofed; fall back to a name typed
@@ -149,21 +150,52 @@ export async function registerEventsRoutes(app: FastifyInstance) {
     const wb = num('faulty.weight_breadth', 5);
     const wp = num('faulty.weight_persistence', 3);
 
-    const r = await pool.request()
+    // Per-category noise suppression: notebooks roam off-domain and routinely emit
+    // logon/roaming noise (5719/1129/131/10016/Netwtw*) that is expected, not a
+    // fault. We classify a machine as a notebook by AD OU/DN/name (group membership
+    // isn't synced) and exclude the configured signatures from its score ONLY.
+    // PCs + servers are unaffected (monitored in full).
+    const nbPatterns = parseNotebookPatterns(s['faulty.notebook_ou']);
+    const supEntries = parseSuppressionSignatures(s['faulty.suppress_notebook']);
+    const suppressionActive = nbPatterns.length > 0 && supEntries.length > 0;
+
+    const nbPredicate = (alias: string): string =>
+      nbPatterns.length === 0 ? '1=0'
+        : '(' + nbPatterns.map((_, i) => `(${alias}.ou_path LIKE @nbp${i} OR ${alias}.distinguished_name LIKE @nbp${i} OR ${alias}.name LIKE @nbp${i})`).join(' OR ') + ')';
+    const supPredicate = supEntries.length === 0 ? '1=0'
+      : '(' + supEntries.map((e, i) => {
+          const parts: string[] = [];
+          if (e.eventId !== null) parts.push(`e.event_id = @sid${i}`);
+          if (e.provider !== null) parts.push(`e.provider_name LIKE @sprov${i}`);
+          return '(' + parts.join(' AND ') + ')';
+        }).join(' OR ') + ')';
+    const supFilter = suppressionActive ? `AND NOT ( ${nbPredicate('cc')} AND ${supPredicate} )` : '';
+    const supMatch = suppressionActive ? `( ${nbPredicate('cc')} AND ${supPredicate} )` : '1=0';
+
+    const req = pool.request()
       .input('days', windowDays)
       .input('cap', cap)
       .input('wc', wc)
       .input('we', we)
       .input('ww', ww)
       .input('wb', wb)
-      .input('wp', wp)
+      .input('wp', wp);
+    nbPatterns.forEach((p, i) => req.input(`nbp${i}`, p));
+    supEntries.forEach((e, i) => {
+      if (e.eventId !== null) req.input(`sid${i}`, e.eventId);
+      if (e.provider !== null) req.input(`sprov${i}`, e.provider);
+    });
+
+    const r = await req
       .query(`
         WITH sig AS (
-          SELECT computer_id, level, event_id, provider_name, COUNT(*) AS cnt
-          FROM events
-          WHERE time_created >= DATEADD(DAY, -@days, SYSUTCDATETIME())
-            AND level IN (1, 2, 3)
-          GROUP BY computer_id, level, event_id, provider_name
+          SELECT e.computer_id, e.level, e.event_id, e.provider_name, COUNT(*) AS cnt
+          FROM events e
+          JOIN computers cc ON cc.id = e.computer_id
+          WHERE e.time_created >= DATEADD(DAY, -@days, SYSUTCDATETIME())
+            AND e.level IN (1, 2, 3)
+            ${supFilter}
+          GROUP BY e.computer_id, e.level, e.event_id, e.provider_name
         ),
         agg AS (
           SELECT computer_id,
@@ -177,22 +209,36 @@ export async function registerEventsRoutes(app: FastifyInstance) {
           GROUP BY computer_id
         ),
         dys AS (
-          SELECT computer_id, COUNT(DISTINCT CAST(time_created AS DATE)) AS active_days
-          FROM events
-          WHERE time_created >= DATEADD(DAY, -@days, SYSUTCDATETIME())
-            AND level IN (1, 2)
-          GROUP BY computer_id
+          SELECT e.computer_id, COUNT(DISTINCT CAST(e.time_created AS DATE)) AS active_days
+          FROM events e
+          JOIN computers cc ON cc.id = e.computer_id
+          WHERE e.time_created >= DATEADD(DAY, -@days, SYSUTCDATETIME())
+            AND e.level IN (1, 2)
+            ${supFilter}
+          GROUP BY e.computer_id
+        ),
+        sup AS (
+          SELECT e.computer_id, COUNT(*) AS suppressed
+          FROM events e
+          JOIN computers cc ON cc.id = e.computer_id
+          WHERE e.time_created >= DATEADD(DAY, -@days, SYSUTCDATETIME())
+            AND e.level IN (1, 2, 3)
+            AND ${supMatch}
+          GROUP BY e.computer_id
         )
         SELECT c.id AS computer_id, c.name,
           a.critical, a.[error], a.warning, a.signatures,
           ISNULL(d.active_days, 0) AS active_days,
           CAST(a.weighted + a.signatures * @wb + ISNULL(d.active_days, 0) * @wp AS INT) AS score,
           sn.snoozed_until, sn.snoozed_by, sn.note AS snooze_note,
-          CASE WHEN sn.snoozed_until > SYSUTCDATETIME() THEN 1 ELSE 0 END AS snoozed
+          CASE WHEN sn.snoozed_until > SYSUTCDATETIME() THEN 1 ELSE 0 END AS snoozed,
+          CASE WHEN ${nbPredicate('c')} THEN 1 ELSE 0 END AS is_notebook,
+          ISNULL(sup.suppressed, 0) AS suppressed
         FROM agg a
         JOIN computers c ON c.id = a.computer_id
         LEFT JOIN dys d ON d.computer_id = a.computer_id
         LEFT JOIN eventlog_snooze sn ON sn.computer_id = c.id
+        LEFT JOIN sup ON sup.computer_id = c.id
         WHERE c.enabled = 1 AND c.excluded = 0
         ORDER BY score DESC
       `);
@@ -208,6 +254,8 @@ export async function registerEventsRoutes(app: FastifyInstance) {
         active_days: row.active_days,
         score: row.score,
         level: row.score >= risk ? 'risk' : row.score >= watch ? 'watch' : 'ok',
+        isNotebook: !!row.is_notebook,
+        suppressed: row.suppressed ?? 0,
         snoozed: !!row.snoozed,
         snoozedUntil: row.snoozed ? row.snoozed_until : null,
         snoozedBy: row.snoozed ? row.snoozed_by : null,

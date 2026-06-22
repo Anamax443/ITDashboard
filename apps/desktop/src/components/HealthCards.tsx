@@ -89,6 +89,16 @@ export function HealthCards({ data, onJumpToComputer, onOpenEvents, onChanged }:
     return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString();
   };
 
+  // Notebook marker: shows that logon/roaming noise is suppressed for this box and
+  // how many events were dropped from the score (transparency, not a silent cap).
+  const nbMark = (it: { isNotebook: boolean; suppressed: number }) =>
+    it.isNotebook ? (
+      <span
+        title={t('health.notebookSuppressed').replace('{n}', String(it.suppressed))}
+        style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-dim)', fontWeight: 400 }}
+      >💻{it.suppressed > 0 ? ` −${it.suppressed}` : ''}</span>
+    ) : null;
+
   // Clickable numeric cell → filtered Events tab.
   const cell = (value: number, color: string, name: string, level: EventLevel) => {
     const active = !!onOpenEvents && value > 0;
@@ -148,6 +158,7 @@ export function HealthCards({ data, onJumpToComputer, onOpenEvents, onChanged }:
                         {onJumpToComputer ? (
                           <a href="#" onClick={(e) => { e.preventDefault(); onJumpToComputer(i.name); }} style={{ color: 'var(--accent)', textDecoration: 'none' }} title={`${t('health.openIn')} ${i.name}`}>{i.name}</a>
                         ) : i.name}
+                        {nbMark(i)}
                       </td>
                       <td
                         onClick={onOpenEvents ? () => onOpenEvents(i.name, '') : undefined}
@@ -219,6 +230,7 @@ export function HealthCards({ data, onJumpToComputer, onOpenEvents, onChanged }:
                             {onJumpToComputer ? (
                               <a href="#" onClick={(e) => { e.preventDefault(); onJumpToComputer(i.name); }} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{i.name}</a>
                             ) : i.name}
+                            {nbMark(i)}
                           </td>
                           <td style={{ textAlign: 'right', color: 'var(--text-dim)' }}>{i.score}</td>
                           <td>{fmtDate(i.snoozedUntil)}</td>

@@ -592,6 +592,31 @@ export function SettingsPage() {
               <NumberInput v={value('faulty.threshold_risk', '600')} onChange={(v) => set('faulty.threshold_risk', v)} />
             </Field>
           </FieldGroup>
+          <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 10px' }} />
+          <Field label={t('settings.field.faultyNotebookOu')}>
+            <textarea
+              value={value('faulty.notebook_ou', '')}
+              onChange={(e) => set('faulty.notebook_ou', e.target.value)}
+              rows={2}
+              placeholder={"Notebooky\nOU=NTB"}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 12px 0', lineHeight: 1.5 }}>
+            {t('settings.field.faultyNotebookOuHelp')}
+          </p>
+          <Field label={t('settings.field.faultySuppress')}>
+            <textarea
+              value={value('faulty.suppress_notebook', '')}
+              onChange={(e) => set('faulty.suppress_notebook', e.target.value)}
+              rows={4}
+              placeholder={"NETLOGON/5719\nMicrosoft-Windows-GroupPolicy/1129\nNetwtw*/*"}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+            {t('settings.field.faultySuppressHelp')}
+          </p>
         </Section>
 
         <Section

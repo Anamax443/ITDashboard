@@ -59,6 +59,10 @@ export interface PcHealth {
   /** Damped-blend score; higher = more likely a reinstall candidate. */
   score: number;
   level: 'watch' | 'risk';
+  /** Classified as a notebook by AD OU/DN/name (gets logon/roaming noise suppression). */
+  isNotebook: boolean;
+  /** How many events were excluded from the score by notebook suppression (0 otherwise). */
+  suppressed: number;
   /** Temporarily snoozed by the operator (excluded from the risk tile count). */
   snoozed: boolean;
   /** ISO expiry of the snooze (null when not snoozed). After this it returns to standard. */
