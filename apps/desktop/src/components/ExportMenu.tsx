@@ -18,21 +18,25 @@ export interface ExportMenuProps<T> {
   richHtml?: () => string;
 }
 
+// Delimiter is a semicolon: on Czech/EU Windows the Excel list separator is `;`,
+// so a `;`-CSV splits into columns on double‑click — and unlike the `sep=,` hint,
+// it does NOT make Excel ignore the UTF-8 BOM (that hint forces ANSI/Win‑1250 →
+// mojibake on diacritics). `;` + BOM keeps BOTH columns and diacritics. A cell is
+// quoted only when it itself contains `;`, a quote, or a newline.
+const CSV_SEP = ';';
+
 function escapeCsvCell(value: unknown): string {
   if (value == null) return '';
   const s = String(value);
-  if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  if (/["\r\n]/.test(s) || s.includes(CSV_SEP)) return '"' + s.replace(/"/g, '""') + '"';
   return s;
 }
 
 function toCSV<T>(rows: T[], columns: ExportColumn<T>[]): string {
-  const header = columns.map((c) => escapeCsvCell(c.label)).join(',');
-  const lines = rows.map((r) => columns.map((c) => escapeCsvCell(c.get(r))).join(','));
-  // BOM (UTF-8 diacritics) + a `sep=,` hint line: on Czech/EU Windows Excel's list
-  // separator is `;`, so a comma‑CSV opens all in one column. The `sep=,` first
-  // line tells Excel to split on commas regardless of the OS locale — double‑click
-  // then keeps the columns. (Other CSV tools ignore or skip the single hint line.)
-  return '﻿' + 'sep=,\r\n' + [header, ...lines].join('\r\n');
+  const header = columns.map((c) => escapeCsvCell(c.label)).join(CSV_SEP);
+  const lines = rows.map((r) => columns.map((c) => escapeCsvCell(c.get(r))).join(CSV_SEP));
+  // UTF-8 BOM so Excel detects UTF-8 (correct diacritics).
+  return '﻿' + [header, ...lines].join('\r\n');
 }
 
 function toTSV<T>(rows: T[], columns: ExportColumn<T>[]): string {
