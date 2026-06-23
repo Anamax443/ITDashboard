@@ -100,7 +100,7 @@ export function PrinterSuppliesPage({ settings = {}, initialOnlyProblem, onOnlyP
   const matchesSearch = (p: PrinterDevice): boolean => {
     if (!q) return true;
     const hay = [
-      p.operator_name, p.model, p.host_name, p.ip_address, p.mac_address, p.site,
+      p.operator_name, p.operator_note, p.model, p.host_name, p.ip_address, p.mac_address, p.site,
       ...p.supplies.map((s) => s.part_code),
     ].filter(Boolean).join(' ').toLowerCase();
     return hay.includes(q);
@@ -180,8 +180,14 @@ export function PrinterSuppliesPage({ settings = {}, initialOnlyProblem, onOnlyP
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
                       <div style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 2 }}>
-                        {ip ?? '—'}{p.host_name && p.host_name !== name ? ` · ${p.host_name}` : ''}{p.site ? ` · ${p.site}` : ''}
+                        {ip ?? '—'}{p.site ? ` · ${p.site}` : ''}
                       </div>
+                      {p.host_name && p.host_name !== name && (
+                        <div style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.host_name}>🖥 {p.host_name}</div>
+                      )}
+                      {p.operator_note && (
+                        <div style={{ color: 'var(--text)', fontSize: 11, marginTop: 2, fontStyle: 'italic' }} title={p.operator_note}>📝 {p.operator_note}</div>
+                      )}
                       {ip && <div style={{ color: 'var(--accent)', fontSize: 11, marginTop: 2 }}>{t('supplies.openProxy')} ↗</div>}
                     </div>
                     {badge(st)}

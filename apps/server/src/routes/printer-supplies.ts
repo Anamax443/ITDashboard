@@ -22,6 +22,7 @@ interface SupplyRow {
   ip_address: string | null;
   host_name: string | null;
   operator_name: string | null;
+  operator_note: string | null;
   site: string | null;
 }
 
@@ -31,7 +32,7 @@ export async function registerPrinterSuppliesRoutes(app: FastifyInstance) {
     const r = await pool.request().query<SupplyRow>(`
       SELECT ps.mac_address, ps.supply_key, ps.supply_index, ps.description, ps.colorant,
              ps.supply_type, ps.level_pct, ps.part_code, ps.model, ps.source, ps.collected_at,
-             l.ip_address, l.host_name, dc.name AS operator_name, l.site
+             l.ip_address, l.host_name, dc.name AS operator_name, dc.note AS operator_note, l.site
       FROM printer_supplies ps
       LEFT JOIN dhcp_leases l ON l.mac_address = ps.mac_address
       LEFT JOIN device_categories dc ON dc.mac_address = ps.mac_address
@@ -40,7 +41,7 @@ export async function registerPrinterSuppliesRoutes(app: FastifyInstance) {
     // Group flat rows into one object per printer (keyed by MAC).
     const byMac = new Map<string, {
       mac_address: string; ip_address: string | null; host_name: string | null;
-      operator_name: string | null; site: string | null; model: string | null; collected_at: string;
+      operator_name: string | null; operator_note: string | null; site: string | null; model: string | null; collected_at: string;
       supplies: Array<{ key: string; description: string | null; colorant: string | null; type: string | null; level_pct: number | null; part_code: string | null; source: string | null }>;
     }>();
     for (const row of r.recordset) {
@@ -48,7 +49,7 @@ export async function registerPrinterSuppliesRoutes(app: FastifyInstance) {
       if (!p) {
         p = {
           mac_address: row.mac_address, ip_address: row.ip_address, host_name: row.host_name,
-          operator_name: row.operator_name, site: row.site, model: row.model, collected_at: row.collected_at,
+          operator_name: row.operator_name, operator_note: row.operator_note, site: row.site, model: row.model, collected_at: row.collected_at,
           supplies: [],
         };
         byMac.set(row.mac_address, p);

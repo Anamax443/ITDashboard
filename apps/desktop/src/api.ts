@@ -598,6 +598,7 @@ export interface PrinterDevice {
   ip_address: string | null;
   host_name: string | null;
   operator_name: string | null;
+  operator_note: string | null;
   site: string | null;
   model: string | null;
   collected_at: string;

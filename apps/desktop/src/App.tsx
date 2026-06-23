@@ -28,7 +28,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'printers' | 'database' | 'perf' | 'activity' | 'settings';
+type View = 'dashboard' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'deviceprinters' | 'printers' | 'database' | 'perf' | 'activity' | 'settings';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -233,6 +233,7 @@ export function App() {
             <button className={view === 'critsvc' ? 'active' : ''} onClick={() => setView('critsvc')}>{t('nav.critsvc')}</button>
             <button className={view === 'ports' ? 'active' : ''} onClick={() => setView('ports')}>{t('nav.ports')}</button>
             <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}>{t('nav.devices')}</button>
+            <button className={view === 'deviceprinters' ? 'active' : ''} onClick={() => setView('deviceprinters')}>{t('nav.devicePrinters')}</button>
             <button className={view === 'printers' ? 'active' : ''} onClick={() => setView('printers')}>{t('nav.printers')}</button>
             <button className={view === 'database' ? 'active' : ''} onClick={() => setView('database')}>{t('nav.database')}</button>
             <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>{t('nav.perf')}</button>
@@ -418,6 +419,14 @@ export function App() {
       {view === 'devices' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <DevicesPage onJumpToComputer={jumpToComputer} settings={settingsMap} initialOnlyPrinters={devicesInitialOnlyPrinters} onOnlyPrintersConsumed={() => setDevicesInitialOnlyPrinters(false)} initialOnlyLossy={devicesInitialOnlyLossy} onOnlyLossyConsumed={() => setDevicesInitialOnlyLossy(false)} initialOnlyUncategorized={devicesInitialOnlyUncat} onOnlyUncategorizedConsumed={() => setDevicesInitialOnlyUncat(false)} printerSupplies={printerSupplies} onJumpToPrinters={() => setView('printers')} />
+        </div>
+      )}
+
+      {view === 'deviceprinters' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          {/* Fixed "Tiskárny" nav entry = the Devices inventory pre-filtered to printers
+              (forced on each time this view mounts). */}
+          <DevicesPage onJumpToComputer={jumpToComputer} settings={settingsMap} initialOnlyPrinters={true} onOnlyPrintersConsumed={() => { /* dedicated tab — keep on */ }} printerSupplies={printerSupplies} onJumpToPrinters={() => setView('printers')} />
         </div>
       )}
 
