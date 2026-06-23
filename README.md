@@ -112,14 +112,24 @@ this repo into a different environment you only change access/config, not code:
    Routes: `GET /devices`, `PATCH /devices/category`,
    `PATCH /devices/name`, `POST /devices/run`, `POST /devices/probe`.
 
+5. **UniFi controller (Devices source)** — likewise **fully DB-driven** in Settings
+   → "UniFi kontrolér": enable toggle, interval, controller URL
+   (`https://IP:8443`), site (`default`), read-only user, encrypted password
+   (`unifi.password_enc`, same `secret-crypto` / `MIKROTIK_SECRET`). No `UNIFI_*`
+   env vars; migration 053 seeds the keys empty + disabled. The in-process
+   collector logs in over `node:https` (self-signed cert accepted), reads
+   `stat/sta`, and merges every connected client into `dhcp_leases` by MAC
+   (`source='unifi'`). Routes `POST /unifi/run`, `GET /integrations/status`,
+   `POST /mikrotik/test`.
+
 ## Layout
 
 ```
 ITDashboard/
   apps/
-    desktop/                       # Electron + React UI (Dashboard, Events, Computers, Services, Ports, Devices, Database, Activity, Settings)
-    server/                        # Fastify API + collectors + AD sync
-      migrations/                  # MSSQL migrations 001–051
+    desktop/                       # Electron + React UI (Dashboard, Events, Computers, Services, Critical services, Ports, Devices, Tiskárny, Stav tiskáren, Database, Perf, Activity, Settings)
+    server/                        # Fastify API + collectors (eventlog/disk/services/perf/reachability/ports/mikrotik/unifi/printer-supplies/shared-printers) + AD sync
+      migrations/                  # MSSQL migrations 001–054
   packages/
     ad-bridge/                     # AD wrapper (Get-ADComputer)
     eventlog-collector/            # standalone wrapper (currently inlined in server)
@@ -230,16 +240,27 @@ New `itd-ps://` launcher for remote PowerShell via `Enter-PSSession`. Registered
 
 **Shared/USB printers, Devices UX, managerial report (2026-06-22, no migration):** USB printers shared from a PC are discovered via `net view` and listed in Devices (Type "🖨 USB · *host PC*", located by the host PC's site) and on Stav tiskáren, persisting even offline. The Devices tab gained an editable note, row numbers, sortable headers, a general search over every column, an "uncategorized only" filter, and a dashboard "🖧 Devices" tile (unidentified/total). Export → HTML/PDF now produces a **managerial report** (pie charts by category/site/availability + summary incl. network-vs-USB printer counts + the full list, A4), opened in a browser tab to dodge the plain-HTTP insecure-download block. The active scan also reaches router-unserved subnets (nbtstat MAC fallback + synthetic `IP-<ip>` storage so every live host appears). 102 tests.
 
+**Device platform — UniFi, long-term loss, identity & maintenance (2026-06-22/23, migrations 052–054):** the device inventory gained a fourth live source and several correctness/identity fixes. **112 tests.**
+
+- **UniFi controller as a device source (migration 053)** — `unifi-collector.ts` logs in to a (legacy, :8443) UniFi controller over `node:https` (self-signed cert, cookie session), reads `/api/s/<site>/stat/sta` and **upserts every connected client into `dhcp_leases` keyed by MAC** as `source='unifi'` (merges, not duplicates). UniFi sees wired **and** Wi-Fi clients across all networks with the real MAC / IP / hostname, filling the MAC-less / remote-Wi-Fi gap the router ARP and the app-server scan can't reach (verified live: 110 clients incl. devices that were IP-only rows before). Non-destructive upsert: keeps a DHCP name/comment, never relabels a `dhcp` row; UniFi owns live reachability (`stat/sta` = connected → reachable) + a name when none exists; site derived from the client IP via the shared `siteForIp`. DB-driven config (Settings → "UniFi kontrolér": enable / interval / URL / site / user / encrypted password via the same `secret-crypto` / `MIKROTIK_SECRET`); migration 053 seeds `unifi.*` **empty + disabled** (no IPs/secrets in the repo). Routes `POST /unifi/run`. **Dedup**: `dedupSyntheticByIp()` removes a synthetic `IP-<ip>` row once a real-MAC row exists at the same IP (so UniFi resolving a MAC collapses the placeholder). UniFi rows do **not** assert static-vs-DHCP (`stat/sta`/`rest/user` carry no `use_fixedip` here) — `dynamic = NULL` (UI renders "—"), not a false "Statická".
+- **Long-term packet loss (24h rolling window, migration 052)** — the "ms / %" column stored only the last 4-ping burst, so a momentary blip (a PC re-joining, one dropped echo) read as 25–75 % loss and falsely tripped the "issues only" filter. New `device_ping_samples` table: each **online** cycle appends a sample (sent/recv/latency); `persistReachable` recomputes the windowed ratio `dropped/sent` (+ avg RTT) over `devices.loss_window_hours` (default 24) and writes it back to `dhcp_leases`, so the read path is unchanged. Offline cycles add no sample (offline ≠ 100 % loss). Old samples pruned each run.
+- **IP revision by name (DNS)** — the reachability probe already probes AD machines by **name** (`fqdn||name`), so a cable↔Wi-Fi switch doesn't break Status (DNS follows the name). It now also `dns.lookup()`s the name each cycle and persists the resolved IPv4 (`ip_address = COALESCE(@ip, ip_address)`) for every enabled PC, so the stored IP always matches the name even where the disk collector (CIM) can't reach the box.
+- **Scan site reconciliation** — a scan row whose IP now falls in a renamed range adopts the configured `Site=` label (the discovery cache never re-pings a known IP, so a rename otherwise never propagated). Pure IP/scan-range helpers extracted to `mikrotik-util.ts` (unit-tested).
+- **Stale-lease pruning (migration 054)** — `devices.lease_retention_days` (default 14, 0 = off) prunes "ghost" rows (an IP-reassignment leftover) that no collector or ping has touched for N days; non-destructive (a returning device re-appears, its MAC-keyed category/note rejoin) and never prunes offline-but-pinged printers.
+- **API connectivity panel** — Settings → MikroTik / UniFi show an "API connectivity" readout (`GET /integrations/status`: latest `activity_log` result per collector, green/red) + a "Test now" button. UniFi test = `POST /unifi/run`; MikroTik test = a fast per-router `POST /mikrotik/test` (hits the same REST endpoint with a 5 s timeout, **no scan**, returns ok + lease count per router).
+- **Devices UX** — short process-hint tooltips (ⓘ) on every Devices column header (what it means / how derived); a fixed **"Tiskárny"** nav entry next to "Zařízení" (= the Devices inventory pre-filtered to printers); Stav tiskáren cards now show the device hostname + operator note and the page search filters by the note. **Report on landscape A4** (no cell wrapping). **CSV export uses a semicolon delimiter + BOM** so Czech/EU Excel keeps both columns and diacritics on double-click.
+
 ## Testing
 
 ```powershell
-npm test          # runs every workspace's Vitest suite (desktop + server), 102 cases
+npm test          # runs every workspace's Vitest suite (desktop + server), 112 cases
 ```
 
 Covers the deterministic pure logic (service crash/exception classification, disk
 threshold + drive-scope evaluation, OS bucketing, alert subject markers,
 maintenance window, debounce/throttle, SNMP BER encode/decode, printer-supply
-classification + Brother/Epson web parsers). Runs in CI after typecheck — a failing
+classification + Brother/Epson web parsers, NetBIOS/net-view parsers, scan-range
+parsing + `siteForIp` reconciliation). Runs in CI after typecheck — a failing
 test stops the deploy before build/migrate.
 
 ## Setup
