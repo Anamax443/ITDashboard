@@ -21,9 +21,11 @@
 
 ITDashboard je monitorovací, inventarizační a diagnostický systém určený pro správu počítačů a serverů v doménovém prostředí Microsoft Active Directory. Hlavním přínosem řešení je **bezagentní (agentless) sběr dat** — systém nevyžaduje instalaci žádného klienta na cílových stanicích a veškerá telemetrie (události systémových protokolů, stav diskového prostoru, stav služeb, výkonové události startu/vypnutí, síťová dosažitelnost, přihlášení uživatelé) se získává standardními protokoly Windows (RPC/DCOM, SMB, ICMP) pod identitou doménového servisního účtu. 
 
-Práce popisuje motivaci vzniku systému jako odpovědi na potřebu přehledné, centralizované a auditovatelné správy heterogenního parku Windows stanic v kontextu požadavků na kybernetickou bezpečnost (NIS2, ISO/IEC 27001), analýzu funkčních i nefunkčních požadavků, návrh třívrstvé architektury, relační datový model (40 evolučních migrací schématu), implementaci backendu (Fastify + TypeScript) i klienta (Electron + React), bezpečnostní model s vícevrstvým řízením přístupu a model kontinuálního nasazení s ověřováním shody nasazené binárky s revizí zdrojového kódu.
+Práce popisuje motivaci vzniku systému jako odpovědi na potřebu přehledné, centralizované a auditovatelné správy heterogenního parku Windows stanic v kontextu požadavků na kybernetickou bezpečnost (NIS2, ISO/IEC 27001), analýzu funkčních i nefunkčních požadavků, návrh třívrstvé architektury, relační datový model (54 evolučních migrací schématu), implementaci backendu (Fastify + TypeScript) i klienta (Electron + React), bezpečnostní model s vícevrstvým řízením přístupu a model kontinuálního nasazení s ověřováním shody nasazené binárky s revizí zdrojového kódu.
 
 Systém zavádí několik vlastních konceptů: **tlumené skóre problémovosti stanic** (damped‑blend skóre pro identifikaci kandidátů na reinstalaci), dvouúrovňové monitorování služeb (široké vs. kritické) s per‑stanicovými výjimkami, **strukturované e‑mailové reporty se strojově čitelným označením stavu** pro automatizované třídění, a filozofii „pozorovatel, nikoli vykonavatel" (observer, not executor), kde systém zásadně neprovádí automatické zásahy do cílových systémů.
+
+Vývojová vlna 2026‑06 rozšířila záběr z doménových stanic na **celou síťovou vrstvu** (Část III‑B): vícezdrojový inventář zařízení (DHCP/ARP/aktivní sken/UniFi/sdílené tiskárny) klíčovaný na MAC adresu, čtení stavu náplní tiskáren přes SNMP Printer‑MIB s cíleným HTTP fallbackem, dlouhodobá metrika kvality linky (klouzavý poměr ztrátovosti za okno), revize identity jméno↔IP přes DNS a údržbové mechanismy (dedup, prořezávání „ghost" záznamů). Tato část je v dokumentu zakončena **explicitní formulací a obhajobou dvanácti návrhových principů (P1–P12)**, což je primární cíl oponentury — doložit, že principy nejsou jen deklarované, ale konzistentně realizované a ověřitelné na živých datech.
 
 **Klíčová slova:** monitoring, bezagentní sběr, Active Directory, Windows, event log, MSSQL, Fastify, React, Electron, kybernetická bezpečnost, NIS2, CI/CD.
 
@@ -31,7 +33,7 @@ Systém zavádí několik vlastních konceptů: **tlumené skóre problémovosti
 
 ITDashboard is a monitoring, inventory and diagnostic system for managing workstations and servers in a Microsoft Active Directory domain. Its principal contribution is **agentless data collection** — the system requires no client software on target machines; all telemetry (event logs, disk space, service state, boot/shutdown performance events, network reachability, logged‑on users) is obtained through standard Windows protocols (RPC/DCOM, SMB, ICMP) under a domain service account identity.
 
-The document covers the motivation, a requirements analysis, the design of a three‑tier architecture, the relational data model (40 evolutionary schema migrations), the implementation of the backend (Fastify + TypeScript) and the client (Electron + React), a layered security model, and a continuous‑deployment model that verifies the running binary matches the source revision. The system introduces a damped‑blend health score for identifying reinstallation candidates, a two‑level service‑monitoring model with per‑machine exceptions, structured e‑mail reports with machine‑readable status markers, and an "observer, not executor" philosophy.
+The document covers the motivation, a requirements analysis, the design of a three‑tier architecture, the relational data model (54 evolutionary schema migrations), the implementation of the backend (Fastify + TypeScript) and the client (Electron + React), a layered security model, and a continuous‑deployment model that verifies the running binary matches the source revision. The system introduces a damped‑blend health score for identifying reinstallation candidates, a two‑level service‑monitoring model with per‑machine exceptions, structured e‑mail reports with machine‑readable status markers, and an "observer, not executor" philosophy.
 
 **Keywords:** monitoring, agentless, Active Directory, Windows, event log, MSSQL, Fastify, React, Electron, cyber security, NIS2, CI/CD.
 
@@ -51,6 +53,15 @@ The document covers the motivation, a requirements analysis, the design of a thr
 5. Backend: API a sběrné služby
 6. Alerting a notifikace
 7. Detekce problémových stanic
+
+**Část III‑B — Zařízeníová a síťová platforma** (rozšíření 2026‑06)
+- 7A. Inventář zařízení a vícezdrojová discovery
+- 7B. MikroTik DHCP a aktivní sken
+- 7C. UniFi kontrolér jako zdroj
+- 7D. Tiskárny: náplně, EWS proxy, sdílené
+- 7E. Metriky kvality linky a revize identity
+- 7F. Eventlog: snooze a potlačení šumu
+- 7G. Konektivita API a **obhajoba principů (P1–P12)**
 
 **Část IV — Klientská část**
 8. Desktopová a webová aplikace
@@ -309,7 +320,7 @@ ITDashboard/
 ├── scripts/           … pomocné PowerShell skripty
 ├── docs/              … dokumentace (ARCHITECTURE.md, dashboard.html, …)
 ├── .github/workflows/ … CI/CD pipeline (deploy.yml)
-└── apps/server/migrations/  … SQL migrace 001–040
+└── apps/server/migrations/  … SQL migrace 001–054
 ```
 
 Volba monorepa je motivována tím, že server i klient sdílejí doménové pojmy (tvary dat, výčty, terminologii) a jejich společné verzování zjednodušuje nasazení — jeden commit reprezentuje konzistentní stav celého systému.
@@ -481,7 +492,7 @@ Návrh systému je sumou desítek vědomých rozhodnutí. Nejvýznamnější shr
 
 ## 4.1 Přehled schématu
 
-Datový model je relační, realizovaný v MSSQL, a vznikal **evolučně** prostřednictvím 40 očíslovaných migrací (`001_init.sql` až `040_service_exceptions.sql`). Schéma lze rozdělit do tematických skupin:
+Datový model je relační, realizovaný v MSSQL, a vznikal **evolučně** prostřednictvím 54 očíslovaných migrací (`001_init.sql` až `054_lease_retention.sql`). Schéma lze rozdělit do tematických skupin:
 
 - **Inventář a telemetrie:** `computers` (centrální registr strojů), `disks`, `pc_user_history`.
 - **Události:** `events` (surové záznamy), `event_daily_agg` (denní agregace), `perf_events` (výkonové).
@@ -922,6 +933,168 @@ Příklad ilustruje, proč jsou všechny tři tlumicí mechanismy nutné: **stro
 Prahy byly původně nastaveny konzervativně (watch 60 / risk 150), ale reálná data z parku ukázala, že při daných váhách produkují příliš mnoho strojů v kategorii „risk". Migrace 034 prahy rekalibrovala na 400 / 600 tak, aby kategorie odpovídaly užitečnému rozlišení (řádově desítky strojů ve „watch", jednotky v „risk"). Tato zkušenost ilustruje **iterativní povahu skórovacích heuristik** — model je nutné ladit proti realitě, a proto jsou všechny parametry vyvedeny do konfigurace, nikoli zadrátovány v kódu.
 
 ---
+
+# Část III‑B — Zařízeníová a síťová platforma
+
+> Tato část dokumentuje rozšíření systému (vývojová vlna 2026‑06), které posunulo ITDashboard od monitoringu **spravovaných doménových stanic** k **inventarizaci a diagnostice celé síťové vrstvy** — tiskáren, IoT, telefonů, přepínaných i bezdrátových zařízení, tedy i strojů, které v Active Directory vůbec nejsou. Navazuje na Část III (serverové kolektory) a sdílí s ní všechny návrhové principy (bezagentnost, konfigurace jako data, pozorovatel nikoli vykonavatel). Kapitola 7G na závěr **explicitně formuluje a obhajuje principy**, na nichž platforma stojí — to je primární cíl oponentury.
+
+## 7A. Inventář zařízení a vícezdrojová discovery
+
+### 7A.1 Motivace a rozšíření záběru
+
+Původní systém znal pouze stroje přítomné v Active Directory (kolektor `ad-sync`). V reálném provozu však síť obsahuje řadu zařízení, která v AD **nikdy nebudou** — síťové i sdílené tiskárny, teplotní čidla, telefony, UPS, terminály, mobilní zařízení na Wi‑Fi. Operátor potřebuje jejich přehled (IP, jméno, MAC, online stav, lokalita) pro inventarizaci, řešení incidentů a kapacitní plánování. Vznikla proto **záložka Zařízení** a pod ní vícezdrojová discovery, jejímž jádrem je tabulka `dhcp_leases` (navzdory názvu uchovává zařízení ze **všech** zdrojů, nejen DHCP) a operátorská kategorizace v `device_categories`.
+
+### 7A.2 Identita zařízení: MAC adresa jako primární klíč
+
+Klíčovým návrhovým rozhodnutím je volba **MAC adresy jako identity zařízení**. Tabulka `dhcp_leases` má složený primární klíč `(site, mac_address)`. Důvody:
+
+- **MAC je nejstabilnější identifikátor.** IP se mění (DHCP, přechod kabel↔Wi‑Fi), jméno nemusí existovat (IoT, tiskárny bez NetBIOS), ale fyzická adresa síťové karty je stálá a unikátní.
+- **Umožňuje slučování napříč zdroji.** Totéž zařízení může vidět DHCP server (lease), router (ARP), aktivní sken i UniFi kontrolér. Klíčování na MAC zajistí, že se údaje **slijí do jednoho řádku** (`MERGE`), nikoli zduplikují.
+- **Operátorská metadata přežijí.** Kategorie a poznámka jsou v `device_categories` klíčované **výhradně na MAC** (bez `site`). Když zařízení změní IP, lokalitu nebo se nakrátko ztratí a vrátí, jeho zařazení a poznámka se znovu připojí automaticky.
+
+Mezní případy, kdy MAC není k dispozici, řeší **syntetická identita** `IP-<ip>` (viz 7B.4) — zařízení je vedeno podle IP, dokud se reálná MAC nedoplní z jiného zdroje.
+
+### 7A.3 Zdroje a jejich precedence
+
+Sloupec `source` rozlišuje původ řádku: `dhcp` (DHCP lease z routeru), `arp` (ARP tabulka routeru), `scan` (aktivní sken z aplikačního serveru), `unifi` (UniFi kontrolér), `share` (sdílená/USB tiskárna přes `net view`). Precedence je řešena **nedestruktivním upsertem**: při `MERGE` se nikdy slepě nepřepíše bohatší údaj prázdným (`COALESCE(@host, t.host_name)`), a autoritativní příznaky se chrání podmíněně — např. UniFi nikdy nepřeznačí řádek pocházející z `dhcp` (DHCP je autoritativní pro rozlišení statická/dynamická), pouze doplní živý stav a jméno, když chybí. Tím se zabrání „přetahování" o tentýž řádek mezi kolektory.
+
+### 7A.4 Párování na AD a kategorizace
+
+`GET /devices` páruje každé zařízení na AD počítač podle **host_name (fallback IP)** přes `OUTER APPLY`. Spárované zařízení přebírá jméno a dosažitelnost z `computers`; nespárované se vyhodnocuje samostatně (ping uložené IP). Kategorie (`printer`, `pc`, `server`, `phone`, `iot`, `network`, …) je **operátorská pravda** — systém pouze nabízí návrh (`suggestCategory`) z OUI výrobce, jména hostitele nebo AD profilu; operátorův výběr vždy vítězí a perzistuje podle MAC.
+
+## 7B. MikroTik DHCP a aktivní sken
+
+### 7B.1 Sběr z RouterOS přes REST
+
+Kolektor `mikrotik-collector.ts` čte z každého nakonfigurovaného routeru RouterOS v7 přes **REST API** (`/rest/ip/dhcp-server/lease`, `/rest/ip/arp`, HTTP Basic). Konfigurace je plně **DB‑driven** (Settings: `mikrotik.routers`, `mikrotik.user`, `mikrotik.password_enc`, `mikrotik.enabled`, `mikrotik.interval_sec`); jedinou hodnotou v prostředí je šifrovací klíč `MIKROTIK_SECRET`. Heslo je v DB uloženo **reverzibilně šifrované** (AES‑256‑CBC, `secret-crypto.ts`), protože Basic auth vyžaduje plaintext zpět — jednosměrný hash by zde nešel. Kolektor má vlastní plánovač, který každý cyklus znovu načítá `enabled`+interval, takže se zapíná/vypíná za provozu bez restartu a v nenakonfigurovaném stavu jen „idluje" (nezahltí router 401).
+
+### 7B.2 Tři zdroje v jednom kolektoru
+
+Inventář se slévá ze tří zdrojů, aby pokryl i **staticky adresovaná** zařízení neviditelná v DHCP:
+
+1. **DHCP leasy** — bound i statické rezervace (`dynamic=false`), tedy i offline rezervace.
+2. **Router ARP** (`/rest/ip/arp`) — zařízení, která router „vidí" na L2, ale nemají lease (statická IP nastavená na zařízení).
+3. **Aktivní sken z aplikačního serveru** — ping‑sweep zadaných rozsahů, MAC z lokálního ARP (vlastní subnet) i z ARP routerů (vzdálené subnety — router cíl zARPuje při doručení pingu). Toto je **jediná** cesta, jak vidět same‑subnet statické zařízení, které router nesměruje (např. tiskárna se statickou IP).
+
+### 7B.3 Discovery cache a rozsahy
+
+Sken **discovery pinguje jen dosud neznámé IP** (`!knownIps.has(ip)`) — jakmile je dvojice IP↔MAC v DB, znovu se „neobjevuje", jen se lehce přepinguje pro aktuální stav. Klíčem cache je MAC: pokud se statické zařízení objeví na **nové** IP, jeho `(site, mac)` řádek se posune a stará IP spadne zpět do fondu discovery. Rozsahy (`mikrotik.scan_ranges`) podporují CIDR (`10.8.2.0/24`) i wildcard (`10.8.2.*` = /24, `10.8.*.*` = /16), volitelný prefix `Site=`, a prefix `!`/`<>` pro **vyloučení** celého subnetu z přehledu. Prefix je tvrdě omezen na /16–/30, aby překlep nespustil sken /8 (16 M hostů).
+
+### 7B.4 Syntetická identita (Option B) a poučení o firewallu
+
+Pro vzdálené subnety, kde router nemá ARP a NetBIOS je z aplikačního serveru blokovaný, vznikl mezikrok: živý host bez zjistitelné MAC se uloží pod **syntetickou identitou `IP-<ip>`** (`isSyntheticMac()`), takže operátor host alespoň **vidí** (IP + online/offline), místo aby byl tiše zahozen. Reálná MAC se doplní, jakmile ji vyřeší ARP/NetBIOS/SNMP/UniFi. Toto rozhodnutí padlo po **živém zjištění**: `nbtstat -A` (UDP 137) je z aplikačního serveru `.213` firewallovaný (funguje z operátorské stanice), zatímco ICMP a SNMP fungují. Princip „ověř jádro živě, než stavíš" zde zabránil postavení celé MAC‑resolution větve na metodě, která z dané síťové pozice nefunguje.
+
+### 7B.5 Odvození a srovnání lokality
+
+Lokalita (`site`) zařízení se u skenovaných řádků odvozuje z IP přes čistý helper `siteForIp(ip, ranges)` — první include‑rozsah, který IP obsahuje, dá svůj `Site=` štítek. Protože discovery cache už známou IP znovu neoskenuje, byl doplněn **reconciliation průchod**: existující `source='scan'` řádky, jejichž IP nyní spadá do rozsahu s jiným štítkem (typicky po přejmenování holého rozsahu `10.181.3.*` na `Zastavka=10.181.3.*`), přeberou aktuální štítek. Bez tohoto srovnání by zůstaly natrvalo pod odvozeným netLabel „10.181.3". Pomocné funkce (`maskOf`, `ipToInt`, `parseScanRanges`, `siteForIp`, `hostsOf`) jsou vyčleněny do čistého modulu `mikrotik-util.ts` a jednotkově testovány.
+
+### 7B.6 Rychlý test konektivity per router
+
+Pro Nastavení vznikl **lehký test** `POST /mikrotik/test` (`testRouters()`): ťukne na tentýž REST endpoint co kolektor s 5s timeoutem, **per router, bez skenu**, a vrátí OK + počet leasů, nebo chybu (401/nedostupný). Odlišuje se tak od plného sběru (který trvá minuty kvůli skenu) — test je sonda v řádu stovek ms, ověřená živě (Brno ✓ 102, Zastávka ✓ 46, ~750 ms celkem).
+
+## 7C. UniFi kontrolér jako zdroj
+
+### 7C.1 Motivace a zaplněná mezera
+
+Router ARP je lokální vůči routeru a aktivní sken neumí zaklíčovat MAC‑less vzdálené hosty. **UniFi kontrolér** ale zná každého **připojeného klienta** — drátového i bezdrátového, napříč všemi sítěmi — s reálnou MAC, IP, jménem a aliasem. Doplní tak přesně tu skupinu, kterou ostatní zdroje nepokryjí: Wi‑Fi zařízení, cizí subnety, IoT. Při živém ověření UniFi vrátil 110 klientů včetně zařízení, která byla dosud vedena jen podle IP bez MAC (čidlo „Cidlo‑Zastavka‑1" na 10.181.3.141).
+
+### 7C.2 Implementace
+
+`unifi-collector.ts` se přihlásí přes `node:https` (akceptace self‑signed certifikátu kontroléru, cookie session), přečte `/api/s/<site>/stat/sta` a každého klienta **upsertuje do `dhcp_leases`** klíčované na MAC jako `source='unifi'` — slévá, neduplikuje. Lokalita se odvozuje z IP klienta přes týž `siteForIp`, takže UniFi řádky nesou stejné štítky (Brno/Zastávka) jako zbytek inventáře. Konfigurace je DB‑driven, heslo šifrované (`unifi.password_enc`, tentýž `secret-crypto`); migrace 053 seeduje klíče **prázdné a vypnuté** (žádné IP/secrety v repozitáři). Kolektor má vlastní plánovač a idluje, dokud není nakonfigurován.
+
+### 7C.3 Dedup a zásada „netvrdit, co nevíme"
+
+Protože UniFi vyřeší MAC u hostů, které sken uměl zaklíčovat jen syntetickou `IP-<ip>` identitou, vznikaly **dvojice řádků** (MAC‑less placeholder + reálný UniFi řádek). `dedupSyntheticByIp()` po každém běhu smaže syntetický řádek, jakmile pro tutéž IP existuje řádek s reálnou MAC. Naopak řádky, které **legitimně** sdílejí IP (sdílené tiskárny na IP hostitelského PC), se nemažou — bylo živě ověřeno, že zbylé „duplicitní IP" jsou reálné (čtyři Zebra tiskárny na IP jednoho PC), nikoli duchové.
+
+Druhým rozhodnutím je **statická vs. dynamická adresa**: živým ověřením se zjistilo, že `stat/sta` ani `rest/user` na daném kontroléru pole `use_fixedip` nenesou (0 fixních IP). Systém proto u UniFi řádků **netvrdí** „Statická" — vkládá `dynamic = NULL` (UI vykreslí „—"), zatímco DHCP‑vlastněný řádek si svůj reálný příznak zachová. Toto je přímá aplikace principu „nezobrazovat jako fakt to, co je domněnka".
+
+## 7D. Tiskárny: náplně, EWS proxy, sdílené
+
+### 7D.1 Stav náplní: SNMP primárně, HTTP cíleně
+
+Záložka **Stav tiskáren** čte hladiny inkoustu/toneru/maintenance‑boxu/drum/belt **přímo z tiskáren**. Architektura byla zvolena až po živém proběhnutí celého parku: **SNMP Printer‑MIB jako primární** (`prtMarkerSupplies` je jednotné napříč HP/Epson/Brother/Kyocera) a **cílený HTTP fallback** jen tam, kde SNMP nestačí (Brother hlásí toner jen jako „some remaining" → % z `/general/status.html`; Epson neuvádí maintenance box → % z Web Configu). SNMP klient je **vlastní** (`node:dgram`, ruční BER kódování) — bez externí závislosti, v souladu s celkovým minimalistickým ethosem; jednotkově testovaný.
+
+### 7D.2 EWS cert‑bypass proxy
+
+Webová rozhraní tiskáren (EWS) běží často na self‑signed HTTPS a v prohlížeči přes plain‑HTTP origin dashboardu nefungují. Proxy `device-web-proxy.ts` je proto cíleně přepracovala: bufferuje tělo, vkládá `<base>` na adresář dokumentu, přepisuje absolutní URL, uvolňuje CSP jen pro `/devices/web/*`, opravuje MIME a vrací klientské přesměrování zpět prohlížeči (aby relativní cesty Brotheru fungovaly). Každá z těchto úprav řeší konkrétní, **živě pozorovanou** chybu vykreslení.
+
+### 7D.3 Sdílené/USB tiskárny přes net view
+
+USB tiskárna sdílená z PC nemá vlastní IP, takže ji sken nevidí. Bylo ověřeno, že WMI je z `.213` `Access denied`, ale `net view \\<pc>` funguje. Kolektor `shared-printers-collector.ts` proto prochází dosažitelné AD počítače, parsuje tiskové sdílení (`parseNetViewPrinters`, locale‑tolerantní) a ukládá je jako řádek zařízení (`source='share'`) s lokalitou hostitelského PC — nikdy nevymýšlí lokalitu „USB". To ilustruje princip „použij metodu, která z dané pozice funguje".
+
+## 7E. Metriky kvality linky a revize identity
+
+### 7E.1 Dlouhodobá ztrátovost: okno‑poměr, ne momentka
+
+Sloupec „ms / %" původně ukládal **jen poslední 4‑ping dávku**, takže přechodný výpadek (PC se připojuje, jeden zahozený echo) ukázal 25–75 % ztráty a falešně označil zařízení jako problémové. Operátorský požadavek zněl: **dlouhodobá ztrátovost**, ne snímek. Řešením je tabulka `device_ping_samples` (mig 052): každý **online** cyklus přidá vzorek (sent/recv/latency), a zobrazená ztráta se počítá jako **klouzavý poměr** zahozené/odeslané za posledních N hodin (default 24, laditelné `devices.loss_window_hours`). Jeden špatný cyklus tak váží jen 1/N a sám se „rozpustí". Zásadní detail: **offline cykly nevzorkují** — vypnutý stroj nesmí kumulovat „100 % ztrátu" (to je jen „offline", ne degradace linky). Staré vzorky se prořezávají každý běh. Volba okno‑poměru (proti EWMA či trim‑mean) byla operátorské rozhodnutí mezi nabídnutými variantami — pravý poměr nejlépe odpovídá pojmu „dlouhodobá ztrátovost".
+
+### 7E.2 Revize IP podle jména: jméno je identita, IP je atribut
+
+Dosažitelnost AD strojů se ověřuje **podle jména** (`fqdn||name` → TCP 135/445 → ICMP), nikoli podle IP — proto přechod kabel↔Wi‑Fi nerozbije stav: DNS jméno sleduje stroj, IP ne. Aby ale uložená IP zůstala korektní k jménu, doplnili jsme do `reachability-collector` **revizi IP**: každý cyklus se jméno přeloží přes `dns.lookup` a zjištěná IPv4 se uloží (`ip_address = COALESCE(@ip, ip_address)`) pro každý enabled stroj. Tak je mapování jméno→IP vždy aktuální, i tam, kde disk‑collector (CIM) na strojích selhává. Princip: **jméno je identita, IP je atribut**, který se reviduje, ne na němž stojí dosažitelnost.
+
+### 7E.3 Prořezávání zastaralých leasů
+
+Přeřazení DHCP IP (laptop A odejde, B dostane jeho adresu) zanechá zamrzlý starý `(site, mac)` řádek — „ducha". Setting `devices.lease_retention_days` (mig 054, default 14, 0 = vypnuto) prořezává každý sběr řádky, jejichž `last_seen` **i** `reach_checked_at` **i** `last_reachable_at` jsou starší než N dní (nikdo je nepozoroval ani nepingnul). Běží jako poslední v cyklu (po promítnutí aktuálních pozorování). Je **nedestruktivní**: vrácené zařízení znovu naskočí a jeho MAC‑vázaná kategorie/poznámka se připojí zpět; offline‑ale‑monitorované tiskárny se stále pingují (čerstvé `reach_checked_at`), takže se nikdy nepořežou.
+
+## 7F. Eventlog: dočasné uspání a potlačení šumu
+
+### 7F.1 Snooze: vždy časově omezené, s podpisem
+
+Dlaždice „PC v problémech" dostala možnost **dočasně uspat** stroj, jehož eventlog problémy byly vyřešeny — s podpisem (kdo/kdy/poznámka) a **tvrdým `snoozed_until`** (mig 050). Po vypršení se PC automaticky vrací do standardu (žádný timer — dotaz `pc-health` jen považuje `snoozed_until > now` za aktivní). Princip: pozastavení je **vždy dočasné do vyřešení**, nikoli trvalé umlčení — to udržuje varovný systém poctivý. Celá historie jde do `activity_log`.
+
+### 7F.2 Per‑kategorii potlačení šumu notebooků
+
+Snooze je manuální dočasný nástroj — nevhodný pro **strukturální opakovaný šum** (roamující notebook emituje NETLOGON 5719, GroupPolicy 1129 ap. při každém probuzení mimo doménu). Operátorské rozhodnutí: monitorovat PC stejně jako servery (plně), ale **tento šum potlačit jen pro notebooky** (mig 051). Klasifikace je podle AD OU/DN vzoru (členství ve skupinách se nesynchronizuje, ale notebooky mají vlastní OU). Potlačované signatury se aplikují na váhové i perzistenční CTE skóre; počet potlačených událostí se vrací transparentně (žádné tiché ořezání). Princip: **rozlišit „manuální dočasné" od „strukturálního trvalého"** a každé řešit vhodným nástrojem.
+
+## 7G. Konektivita API a obhajoba principů
+
+### 7G.1 Pozorovatelnost integrací
+
+Sekce **Konektivita API** v Nastavení (`GET /integrations/status`) ukazuje u každého API‑kolektoru (MikroTik, UniFi) poslední výsledek z `activity_log` (zelená/červená + zpráva + „před X") a tlačítko „Otestovat teď" pro živou sondu. To činí stav integrací pozorovatelným bez procházení logů.
+
+### 7G.2 Verifikace návrhových principů
+
+Následující přehled **explicitně formuluje principy** platformy a pro každý uvádí (a) tvrzení, (b) zdůvodnění, (c) realizaci v kódu/datech, (d) způsob ověření, (e) protiargumenty a rizika. Toto je jádro oponentury — cílem je doložit, že principy jsou nejen deklarované, ale konzistentně realizované a ověřitelné.
+
+**P1 — MAC jako identita zařízení.**
+*Tvrzení:* zařízení je identifikováno fyzickou adresou, ne IP ani jménem. *Zdůvodnění:* IP a jméno jsou proměnlivé/chybějící; MAC je stabilní a unikátní. *Realizace:* PK `(site, mac)` v `dhcp_leases`, kategorie/poznámka v `device_categories` klíčované jen na MAC. *Ověření:* změna IP zařízení posune jeho řádek, kategorie přežije; jednotkové testy `siteForIp`. *Rizika:* MAC randomizace u mobilů (mitigace: UniFi alias/jméno jako sekundární signál), MAC‑less zařízení (mitigace: syntetická identita `IP-<ip>`).
+
+**P2 — Slévat, neduplikovat (nedestruktivní upsert).**
+*Tvrzení:* tentýž fyzický stroj viděný více zdroji je jeden řádek. *Zdůvodnění:* duplicitní řádky matou inventář a alerty. *Realizace:* `MERGE` na `(site, mac)`, `COALESCE` chrání bohatší údaje, precedence zdrojů (DHCP autoritativní pro dynamic), `dedupSyntheticByIp` slučuje syntetické s reálnými. *Ověření:* živě — UniFi sběr snížil duplicitu, zbylé „duplicity" prokazatelně legitimní (sdílené tiskárny). *Rizika:* dva stroje s jednou IP v čase (stale lease) — řeší P10.
+
+**P3 — Pozorovatel, nikoli vykonavatel (rozšířeno na síť).**
+*Tvrzení:* systém síť pouze **čte a pinguje**, nikdy do ní aktivně nezasahuje. *Zdůvodnění:* monitoring nesmí být vektorem změny/škody. *Realizace:* RouterOS účet je read‑only (`dhcp-reader`), UniFi účet read‑only, sken je ICMP ping + pasivní ARP čtení, žádné zápisy do zařízení. *Ověření:* použité endpointy jsou čtecí (`/rest/ip/...`, `stat/sta`); účty nemají zápisová práva. *Rizika:* aktivní sken je „aktivní" (generuje ICMP) — mitigace: jen neznámé IP, omezené rozsahy, vyloučení citlivých subnetů (`!`).
+
+**P4 — Netvrdit, co nevíme.**
+*Tvrzení:* neznámý atribut se zobrazí jako neznámý, ne jako domnělý fakt. *Zdůvodnění:* falešná jistota vede k chybným rozhodnutím. *Realizace:* UniFi `dynamic = NULL` → UI „—" (ne „Statická"); syntetická MAC se zobrazí jako „—" s tooltipem proč. *Ověření:* živě — `unifi dynamic=false: 0`. *Rizika:* „—" je méně informativní než odhad — přijatá cena za poctivost.
+
+**P5 — Standard primárně, výjimky cíleně.**
+*Tvrzení:* preferuj jednotný standardní protokol, doplň jen tam, kde nestačí. *Zdůvodnění:* minimalizuje vendor‑specifický kód. *Realizace:* SNMP Printer‑MIB primárně, HTTP fallback jen pro Brother toner a Epson maintenance box. *Ověření:* živě napříč Epson/HP/Brother. *Rizika:* HTTP parsery jsou křehké vůči změně firmwaru — izolované, jednotkově testované, snadno rozšiřitelné.
+
+**P6 — Konfigurace, ne kód; žádné secrety v repozitáři.**
+*Tvrzení:* prostředí a tajemství nejsou ve zdrojovém stromu. *Zdůvodnění:* přenositelnost a bezpečnost. *Realizace:* všechny IP/účty v DB Settings; hesla šifrovaná (`*_enc`, AES, `MIKROTIK_SECRET`); migrace seedují prázdné hodnoty; settings route maskuje ciphertext. *Ověření:* `grep` po IP/heslech v repu je prázdný; UniFi/MikroTik se konfigurují v UI. *Rizika:* jediný klíč `MIKROTIK_SECRET` je sdílený — uložen jen na běhovém hostiteli, mimo repo.
+
+**P7 — Ověř jádro živě, než stavíš okolo.**
+*Tvrzení:* kritický předpoklad se ověří na reálných datech před implementací. *Zdůvodnění:* zabrání stavbě na neplatném předpokladu. *Realizace/ověření:* nbtstat (UDP 137) byl živě shledán firewallovaným z `.213` → větev se nepostavila na něm, ale na syntetické identitě + SNMP/UniFi; SNMP náplně, UniFi login i `stat/sta` byly ověřeny před integrací. *Rizika:* živé ověření zabere čas — vrací se úsporou za nepostavený slepý kód.
+
+**P8 — Dlouhodobá metrika, ne momentka.**
+*Tvrzení:* ukazatel kvality má odrážet trend, ne jeden vzorek. *Zdůvodnění:* odolnost vůči přechodným výkyvům. *Realizace:* klouzavý poměr ztráty za 24 h (`device_ping_samples`), online‑only vzorkování. *Ověření:* po nasazení falešné „25 %" z připojujícího se PC mizí. *Rizika:* okno potřebuje čas na naplnění — dokud není plné, počítá z dostupných vzorků (dokumentováno).
+
+**P9 — Jméno je identita, IP je atribut.**
+*Tvrzení:* dosažitelnost se ověřuje podle jména, IP se k jménu reviduje. *Zdůvodnění:* odolnost vůči změně IP (kabel↔Wi‑Fi). *Realizace:* probe `fqdn||name`; `dns.lookup` reviduje `ip_address`. *Ověření:* živě — VYVOJW11 → aktuální .152, ne offline .155. *Rizika:* zastaralý DNS A‑záznam by trefil starou IP — v doméně s dynamickým DNS přijatelné.
+
+**P10 — Idempotence a nedestruktivnost údržby.**
+*Tvrzení:* prořezávání, dedup i reconcile jsou bezpečně opakovatelné a vratné v důsledku. *Zdůvodnění:* údržba dat nesmí ničit pravdu. *Realizace:* pruning maže jen prokazatelně zamrzlé řádky (vrátí se, když zařízení obživne); dedup jen syntetické při existenci reálné MAC; reconcile jen přeznačuje lokalitu. *Ověření:* MAC‑vázaná metadata přežijí; offline tiskárny se nepořežou (čerstvý ping). *Rizika:* příliš krátké retenční okno by mazalo dlouho‑offline stroje — výchozí 14 dní + laditelné.
+
+**P11 — Dvouvrstvý model: veškerá operativa na aplikačním serveru.**
+*Tvrzení:* všechny kolektory běží in‑process na `.213`; DB `.225` je jen úložiště; žádné externí skripty na jiných serverech. *Zdůvodnění:* jednoduchost, jediné místo provozu a logování. *Realizace:* MikroTik/UniFi/sken/tiskárny — vše in‑app; dříve zvažovaný externí PowerShell sync na `.225` byl zavržen. *Ověření:* na ostatních serverech neběží žádný projektový skript. *Rizika:* jeden bod běhu — řešeno robustností kolektorů (nikdy nevyhodí výjimku, izolované chyby).
+
+**P12 — Bezpečnost čtecích integrací.**
+*Tvrzení:* integrace používají read‑only účty s minimem práv a šifrovaným tajemstvím. *Zdůvodnění:* omezení dopadu kompromitace. *Realizace:* `dhcp-reader` (source‑IP omezený na allowed‑address routeru), UniFi `api_reader`, hesla šifrovaná, self‑signed cert akceptován jen pro cílené proxy/integrace. *Ověření:* účty bez zápisu; source‑IP restrikce ověřena (401 z nepovolené adresy). *Rizika:* akceptace self‑signed certu vypíná validaci serveru — omezeno na interní VM v důvěryhodné síti.
+
+### 7G.3 Souhrn obhajoby
+
+Principy P1–P12 tvoří **koherentní celek**: identita (P1) umožňuje slévání (P2), poctivost zobrazení (P4) a metrik (P8) buduje důvěru, bezpečnostní zásady (P3, P6, P12) drží systém v roli pozorovatele, a provozní zásady (P7, P10, P11) zajišťují udržitelnost. Žádný princip neexistuje izolovaně — jejich vzájemná podpora je nejsilnějším argumentem pro správnost návrhu. Tam, kde principy nesou cenu (P4 méně informativní „—", P10 zpožděné mazání), je tato cena vědomá a dokumentovaná.
 
 # Část IV — Klientská část
 
@@ -1427,6 +1600,23 @@ Legenda: **A** = vyžaduje autentizaci/edit tier (kde relevantní). Cesty jsou u
 | GET | `/version`, `/version/sha` | Build info (pro smoke test) |
 | GET | `/docs` | Uživatelská dokumentace (HTML) |
 
+### Zařízení a síťové integrace
+| Metoda | Cesta | Účel |
+|--------|-------|------|
+| GET | `/devices` | Inventář zařízení (sloučené zdroje + AD párování) |
+| POST | `/devices/run` | Ruční MikroTik sběr (vč. skenu) |
+| POST | `/devices/probe` | Živý ping jednoho zařízení (konzole) |
+| PATCH | `/devices/category`, `/devices/note` | Kategorie / poznámka (klíč MAC) |
+| POST | `/mikrotik/test` | Rychlý per‑router test API (bez skenu) |
+| POST | `/unifi/run` | Ruční UniFi sběr |
+| GET | `/integrations/status` | Konektivita API kolektorů (poslední výsledek) |
+| GET | `/printer-supplies` | Hladiny náplní (per tiskárna) |
+| POST | `/printer-supplies/run` | Ruční sběr náplní |
+| POST | `/shared-printers/run` | Sběr sdílených/USB tiskáren (net view) |
+| ALL | `/devices/web/:ip/*` | Cert‑bypass proxy webových rozhraní zařízení |
+| GET | `/port-status`, `/database` | Snímek portů / přehled databáze |
+| POST | `/events/snooze`, `/events/snooze/clear` | Dočasné uspání PC v „PC v problémech" |
+
 ## Příloha B — Datový slovník
 
 ### computers (centrální registr strojů)
@@ -1589,6 +1779,56 @@ Indexy: `ix_events_time_level`, `ix_events_computer_time`, `ix_events_eventid_ti
 | credentials | Šifrovaná úschova přihlašovacích údajů (DPAPI) |
 | settings | Konfigurace klíč‑hodnota |
 | schema_migrations | Evidence aplikovaných migrací |
+| port_status | Snímek dostupnosti portů (PC × port) |
+| printer_alert_state | Per‑MAC debounce/throttle stav alertů tiskáren |
+
+### dhcp_leases (inventář zařízení — všechny zdroje)
+| Sloupec | Typ | Význam |
+|---------|-----|--------|
+| site | NVARCHAR | Lokalita (součást PK) |
+| mac_address | NVARCHAR(32) | MAC nebo syntetické `IP-<ip>` (součást PK) |
+| ip_address | NVARCHAR | Poslední pozorovaná IP |
+| host_name | NVARCHAR | Síťové jméno (DHCP/NetBIOS) |
+| comment / server | NVARCHAR | Komentář (např. hostitel USB tiskárny) / DHCP server |
+| status | NVARCHAR | arp/scan/share/unifi/… |
+| dynamic | BIT NULL | Statická(0)/dynamická(1)/neznámá(NULL) |
+| source | NVARCHAR | dhcp/arp/scan/unifi/share |
+| reachable / packet_loss / latency_ms | BIT / INT / INT | Živý stav + dlouhodobá ztráta/latence (24h okno) |
+| first_seen / last_seen | DATETIME2 | Životní cyklus |
+| reach_checked_at / last_reachable_at | DATETIME2 | Čas posledního pingu / posledního úspěchu |
+
+### device_categories (operátorská kategorizace, klíč = MAC)
+| Sloupec | Typ | Význam |
+|---------|-----|--------|
+| mac_address | NVARCHAR(32) | PK — přežívá změnu IP/lokality |
+| category | NVARCHAR | printer/pc/server/phone/iot/network/… |
+| note | NVARCHAR | Operátorská poznámka |
+| name | NVARCHAR | Ruční název zařízení |
+
+### printer_supplies (hladiny náplní)
+| Sloupec | Typ | Význam |
+|---------|-----|--------|
+| mac_address + supply_key | | PK (MERGE, prořezává zmizelé) |
+| level_pct / max / level | INT | % a surové hodnoty z SNMP/HTTP |
+| colorant / description / part_code | NVARCHAR | Barva, popis, kód kazety |
+| source | NVARCHAR | snmp/http |
+| collected_at | DATETIME2 | Čas sběru |
+
+### device_ping_samples (historie pro dlouhodobou ztrátovost, mig 052)
+| Sloupec | Typ | Význam |
+|---------|-----|--------|
+| id | BIGINT IDENTITY | PK |
+| mac_address | NVARCHAR(32) | Klíč (přežije přejmenování lokality) |
+| sample_at | DATETIME2 | Čas vzorku (jen online cykly) |
+| sent / recv | INT | Odeslané/přijaté pakety dávky |
+| latency_ms | INT NULL | RTT dávky |
+
+### eventlog_snooze (dočasné uspání PC, mig 050)
+| Sloupec | Typ | Význam |
+|---------|-----|--------|
+| computer_id | INT | PK, FK→computers (CASCADE) |
+| snoozed_at / snoozed_until | DATETIME2 | Vznik / tvrdé vypršení |
+| snoozed_by / note | NVARCHAR | Podpis / poznámka |
 
 ## Příloha C — Referenční přehled konfiguračních klíčů (settings)
 
@@ -1678,6 +1918,23 @@ Indexy: `ix_events_time_level`, `ix_events_computer_time`, `ix_events_eventid_ti
 | inactive.threshold_days | 90 | Práh neaktivity |
 | retention.run_at_hour | 2 | Hodina denní údržby |
 
+### Zařízení, sken a síťové integrace
+| Klíč | Výchozí | Význam |
+|------|---------|--------|
+| mikrotik.enabled / interval_sec | 1 / 300 | Zapnutí + cadence MikroTik sběru |
+| mikrotik.routers / user / password_enc | — | Routery (Site=IP), účet, šifrované heslo |
+| mikrotik.scan_enabled / scan_ranges | 0 / — | Aktivní sken + rozsahy (CIDR/wildcard, `!` vyloučení) |
+| unifi.enabled / interval_sec | 0 / 300 | Zapnutí + cadence UniFi sběru |
+| unifi.url / site / user / password_enc | — / default / — / — | Kontrolér, site, účet, šifrované heslo |
+| devices.web_proxy | 1 | EWS cert‑bypass proxy |
+| devices.loss_window_hours | 24 | Okno dlouhodobé ztrátovosti/latence |
+| devices.lease_retention_days | 14 | Prořezávání zastaralých leasů (0 = vypnuto) |
+| printer_supplies.enabled / interval_sec | 1 / 900 | Sběr náplní |
+| printer_supplies.snmp_community / low_pct / http_fallback | public / 15 / 1 | SNMP komunita, práh „dochází", HTTP fallback |
+| alerts.printers.* | OFF | Alerty offline tiskáren (debounce/okno/příjemci) |
+| faulty.snooze_default_days | 7 | Výchozí délka uspání PC |
+| faulty.notebook_ou / suppress_notebook | — / seed | Klasifikace notebooků + potlačované signatury |
+
 ## Příloha D — Seznam migrací schématu
 
 | # | Soubor | Hlavní obsah |
@@ -1722,6 +1979,20 @@ Indexy: `ix_events_time_level`, `ix_events_computer_time`, `ix_events_eventid_ti
 | 038 | per_agenda_recipients | Per‑agenda příjemci |
 | 039 | report_recipients | Příjemci reportu |
 | 040 | service_exceptions | Dvouúrovňové služby + per‑PC výjimky |
+| 041 | port_status | Tabulka port_status (snímek dostupnosti portů) |
+| 042 | mikrotik_devices | dhcp_leases + device_categories (inventář zařízení) |
+| 043 | mikrotik_driven + printer_alerts | DB‑driven MikroTik, generická kategorie „printer", alerty tiskáren, source |
+| 044 | device_scan | Aktivní sken, multi‑zdroj (dhcp/arp/scan) |
+| 045 | scan_packet_loss | Vyloučené rozsahy + packet_loss |
+| 046 | device_name | Operátorský název zařízení |
+| 047 | device_latency | Per‑device latence + prahy |
+| 048 | printer_supplies | Tabulka printer_supplies + SNMP/HTTP nastavení |
+| 049 | device_web_proxy | EWS cert‑bypass proxy (default ON) |
+| 050 | eventlog_snooze | Dočasné uspání PC + podpis |
+| 051 | faulty_notebook_suppress | Per‑kategorii potlačení šumu notebooků (OU/DN) |
+| 052 | device_ping_history | device_ping_samples + dlouhodobá ztrátovost (24h okno) |
+| 053 | unifi | UniFi kontrolér jako zdroj (settings, prázdné+vypnuté) |
+| 054 | lease_retention | Prořezávání zastaralých „ghost" leasů (default 14 dní) |
 
 ## Příloha E — Glosář pojmů
 
@@ -1822,7 +2093,7 @@ Body: { "checks.interval_sec": "600" }
 
 ## Příloha I — Evoluce návrhu a poučení
 
-Vývoj systému, čitelný z posloupnosti 40 migrací a provozního deníku, ukazuje několik obecnějších poučení:
+Vývoj systému, čitelný z posloupnosti 54 migrací a provozního deníku, ukazuje několik obecnějších poučení:
 
 - **Schéma roste s funkcemi, ne dopředu.** Tabulka `computers` začala se 7 sloupci a postupně narostla na 28 — každá nová funkce (dosažitelnost, dvouúrovňové služby, per‑PC výjimky) přidala právě to, co potřebovala. Dopředné modelování „pro všechny případy" by bylo plýtváním; evoluční migrace se ukázaly jako udržitelná cesta.
 - **Heuristiky se musí ladit proti realitě.** Prahy skóre problémovosti byly rekalibrovány až podle živých dat (migrace 034). Proto jsou všechny parametry v konfiguraci.
@@ -1911,6 +2182,18 @@ Správce na záložce Počítače vyfiltruje pouze servery (stavový čip / OS) 
 ### M.6 Forenzní dohledání incidentu
 
 Po hlášení o problému s přihlašováním v určitý čas správce na záložce Události zadá filtr poskytovatele a rozsah ID událostí Kerberos/Netlogon za příslušné okno a stroj. Detail události se surovým XML poskytne přesný kontext. Záložka Aktivita zároveň doloží, co v té době dělal samotný monitorovací systém.
+
+### M.7 Identifikace zařízení vedeného jen podle IP
+
+Operátor vidí v Zařízeních živý host bez MAC a jména (syntetická identita `IP-<ip>` na vzdáleném subnetu). Po zapnutí UniFi sběru se klient spáruje podle MAC, doplní se reálná MAC i jméno (alias z kontroléru), syntetický duplikát se automaticky zdeduplikuje a operátor zařízení zařadí do kategorie — zařazení přežije i budoucí změnu IP (klíč = MAC).
+
+### M.8 Falešný „problémový" stav z přechodného výpadku
+
+Notebook se připojuje k síti a jeden cyklus pingu chytí 25 % ztrátu; bez dlouhodobé metriky by se objevil ve filtru „jen problémové". Díky klouzavému poměru za 24h okno váží tento jediný cyklus jen 1/N a zařízení zůstává korektně mimo problémové — dlouhodobá ztrátovost odráží skutečnou kvalitu linky, ne momentku.
+
+### M.9 Ověření konektivity API integrace
+
+Po změně účtu na routeru operátor v Nastavení klikne „Otestovat teď" u MikroTiku; per‑router test (bez skenu, ~stovky ms) ihned ukáže `✓`/`✗` a počet leasů nebo chybu (401), takže problém s přihlášením odhalí během sekund, nikoli až výpadkem nočního sběru.
 
 ## Příloha N — Zvažované návrhové alternativy
 
