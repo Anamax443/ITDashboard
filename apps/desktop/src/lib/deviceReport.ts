@@ -51,7 +51,7 @@ function chartBlock(title: string, slices: Slice[]): string {
   return `<div class="chart"><h3>${esc(title)}</h3><div class="chart-row">${pieSvg(slices)}${legend(slices, total)}</div></div>`;
 }
 
-export interface ReportTableColumn { label: string; get: (r: DeviceItem) => string | number | boolean | null | undefined; }
+export interface ReportTableColumn { label: string; get: (r: DeviceItem) => string | number | boolean | null | undefined; wrap?: boolean; }
 
 export interface DeviceReportOpts {
   rows: DeviceItem[];
@@ -109,11 +109,14 @@ export function buildDeviceReportHtml(opts: DeviceReportOpts): string {
   table.legend{border-collapse:collapse;font-size:12px;} .legend td{padding:2px 6px;} .legend .num{text-align:right;} .legend .dim{color:#6b7280;}
   .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;}
   .list-h{font-size:15px;margin:26px 0 8px;}
-  table.list{width:100%;border-collapse:collapse;font-size:11px;}
-  table.list th{background:#f3f4f6;text-align:left;padding:5px 7px;border-bottom:2px solid #d1d5db;}
-  table.list td{padding:4px 7px;border-bottom:1px solid #e5e7eb;word-break:break-word;}
+  table.list{width:100%;border-collapse:collapse;font-size:11px;table-layout:auto;}
+  table.list th{background:#f3f4f6;text-align:left;padding:5px 7px;border-bottom:2px solid #d1d5db;white-space:nowrap;}
+  /* Landscape gives enough width to keep IP / MAC / stav on one line; only the
+     free-text columns (note, hostname) may wrap so a long note can't widen the row. */
+  table.list td{padding:4px 7px;border-bottom:1px solid #e5e7eb;white-space:nowrap;}
+  table.list td.wrap{white-space:normal;word-break:break-word;max-width:55mm;}
   table.list tr:nth-child(even) td{background:#fafafa;}
-  @page{size:A4;margin:10mm;}
+  @page{size:A4 landscape;margin:8mm;}
   @media print{body{margin:0;} .banner{background:#fff;} .charts{gap:14px;} .chart{break-inside:avoid;} .card{break-inside:avoid;}}
 </style></head><body>
 <h1>📊 Report zařízení v síti</h1>
@@ -128,7 +131,7 @@ ${filterSummary ? `<div class="banner">⚠ <strong>Filtrováno:</strong> ${esc(f
 <h2 class="list-h">${esc(listTitle)}</h2>
 <table class="list">
 <thead><tr><th>#</th>${tableColumns.map((c) => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>
-<tbody>${rows.map((r, i) => `<tr><td>${i + 1}</td>${tableColumns.map((c) => { const v = c.get(r); return `<td>${esc(v == null ? '' : String(v))}</td>`; }).join('')}</tr>`).join('')}</tbody>
+<tbody>${rows.map((r, i) => `<tr><td>${i + 1}</td>${tableColumns.map((c) => { const v = c.get(r); return `<td${c.wrap ? ' class="wrap"' : ''}>${esc(v == null ? '' : String(v))}</td>`; }).join('')}</tr>`).join('')}</tbody>
 </table>
 </body></html>`;
 

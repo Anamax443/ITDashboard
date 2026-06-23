@@ -274,8 +274,8 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const reportColumns: ReportTableColumn[] = [
     { label: t('devices.site'), get: (d) => d.site },
     { label: 'IP', get: (d) => d.ip_address ?? '' },
-    { label: t('devices.note'), get: (d) => d.operator_note ?? '' },
-    { label: t('devices.hostname'), get: (d) => d.operator_name ?? d.host_name ?? '' },
+    { label: t('devices.note'), get: (d) => d.operator_note ?? '', wrap: true },
+    { label: t('devices.hostname'), get: (d) => d.operator_name ?? d.host_name ?? '', wrap: true },
     { label: 'MAC', get: (d) => isSyntheticMac(d.mac_address) ? '' : d.mac_address },
     { label: t('devices.type'), get: (d) => d.source === 'share' ? `USB · ${d.comment ?? ''}` : `${d.dynamic === false ? t('devices.static') : d.dynamic === true ? t('devices.dynamic') : '—'}${d.source && d.source !== 'dhcp' ? ' · ' + d.source : ''}` },
     { label: t('devices.category'), get: (d) => d.category ? catLabel(d.category) : '' },
