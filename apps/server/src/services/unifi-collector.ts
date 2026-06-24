@@ -4,7 +4,7 @@ import { getAllSettings, type SettingsMap } from './settings.js';
 import { decryptSecret } from './secret-crypto.js';
 import { boolSetting } from './alerts-util.js';
 import { logActivity } from './activity-log.js';
-import { parseScanRanges, siteForIp } from './mikrotik-util.js';
+import { parseScanRanges, siteForIp, maskOf, ipToInt } from './mikrotik-util.js';
 
 // UniFi controller collector. Logs in to a (legacy, :8443) controller, reads the
 // connected-client list (/api/s/<site>/stat/sta), and upserts each client into
@@ -166,6 +166,15 @@ export async function runUnifiCollectOnce(): Promise<UnifiRunResult | null> {
     // Reuse the scan ranges to label each client's Lokalita by IP, so UniFi devices
     // carry the same site names (Brno/Zastavka/…) as the rest of the inventory.
     const ranges = parseScanRanges(settings['mikrotik.scan_ranges']);
+    // Honour the same `!`/`<>` EXCLUDE ranges as the scan: a subnet opted out of the
+    // inventory (e.g. a private-device VLAN) must not be re-added from UniFi either —
+    // otherwise it would flicker (the MikroTik purge deletes it, UniFi re-inserts it).
+    const excludes = ranges.filter((r) => r.exclude);
+    const inExcluded = (ip: string | null): boolean => {
+      if (!ip) return false;
+      const n = ipToInt(ip);
+      return n != null && excludes.some((r) => ((n & maskOf(r.prefix)) >>> 0) === r.base);
+    };
 
     const login = await httpsJson(`${cfg.baseUrl}/api/login`, { method: 'POST', json: { username: cfg.user, password: cfg.pass } });
     if (login.status !== 200 || login.cookies.length === 0) {
@@ -189,6 +198,7 @@ export async function runUnifiCollectOnce(): Promise<UnifiRunResult | null> {
       const mac = (c.mac ?? '').trim().toUpperCase();   // colon+upper = RouterOS form, so keys match
       if (!mac) continue;
       const ip = ((c.ip || c.last_ip) ?? '').trim() || null;
+      if (inExcluded(ip)) continue;                     // subnet opted out (e.g. private-device VLAN)
       const host = (c.name || c.hostname || '').trim() || null;
       const site = (ip ? siteForIp(ip, ranges) : null) || c.last_connection_network_name || c.network || 'UniFi';
       const via = c.last_uplink_name || c.ap_mac || '';
