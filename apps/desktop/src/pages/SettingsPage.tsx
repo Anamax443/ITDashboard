@@ -75,6 +75,47 @@ function IntegrationStatus({ source, onTest }: { source: 'mikrotik' | 'unifi'; o
   );
 }
 
+// Move-line on Ctrl+ArrowUp / Ctrl+ArrowDown inside a <textarea> (like SSMS /
+// VS Code). Moves the line(s) the selection touches up or down by one, preserves
+// the caret column, and writes the new value back through `setValue`. No-op (just
+// blocks the default caret move) at the top/bottom edge.
+function moveLinesOnKey(e: React.KeyboardEvent<HTMLTextAreaElement>, setValue: (v: string) => void) {
+  if (!e.ctrlKey || e.shiftKey || e.altKey) return;
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+  e.preventDefault();
+  const el = e.currentTarget;
+  const val = el.value;
+  const lines = val.split('\n');
+  const selStart = el.selectionStart;
+  const selEnd = el.selectionEnd;
+  const lineStartOffset = (arr: string[], idx: number) => arr.slice(0, idx).reduce((n, l) => n + l.length + 1, 0);
+  const lineAt = (off: number) => val.slice(0, off).split('\n').length - 1;
+  const a = lineAt(selStart);
+  const b = lineAt(selEnd);
+  const up = e.key === 'ArrowUp';
+  if ((up && a === 0) || (!up && b === lines.length - 1)) return; // at edge — nothing to swap
+  // caret columns within their lines (preserved across the move)
+  const colStart = selStart - lineStartOffset(lines, a);
+  const colEnd = selEnd - lineStartOffset(lines, b);
+  let na = a;
+  let nb = b;
+  if (up) {
+    const moved = lines.splice(a - 1, 1)[0]!;
+    lines.splice(b, 0, moved);
+    na = a - 1; nb = b - 1;
+  } else {
+    const moved = lines.splice(b + 1, 1)[0]!;
+    lines.splice(a, 0, moved);
+    na = a + 1; nb = b + 1;
+  }
+  const newVal = lines.join('\n');
+  const newSelStart = lineStartOffset(lines, na) + colStart;
+  const newSelEnd = lineStartOffset(lines, nb) + colEnd;
+  setValue(newVal);
+  // Restore the selection after React commits the new value to the same node.
+  requestAnimationFrame(() => { try { el.selectionStart = newSelStart; el.selectionEnd = newSelEnd; } catch { /* ignore */ } });
+}
+
 function NetworkAccessSection() {
   const { t } = useI18n();
   const [ips, setIps] = useState<string[]>([]);
@@ -549,10 +590,13 @@ export function SettingsPage() {
             <textarea
               value={value('mikrotik.scan_ranges', '')}
               onChange={(e) => set('mikrotik.scan_ranges', e.target.value)}
+              onKeyDown={(e) => moveLinesOnKey(e, (v) => set('mikrotik.scan_ranges', v))}
               rows={3}
               placeholder={"10.8.2.*\nZastavka=10.10.181.0/24"}
+              title={t('settings.field.scanRangesMove')}
               style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }}
             />
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>{t('settings.field.scanRangesMove')}</div>
           </Field>
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
             {t('settings.field.scanHelp')}
