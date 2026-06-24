@@ -318,6 +318,38 @@ async function persistReachable(site: string, mac: string, reachable: boolean, h
   }
 }
 
+// Auto-confirm the category of AD-matched devices. AD already identifies the
+// machine type (pc / server from os_version), so a device whose own hostname
+// matches an AD computer needn't sit in "uncategorized" waiting for a manual
+// click — we persist its type by MAC ("identify once, store, reuse"). Only fills
+// an EMPTY category; an operator's explicit choice is never overwritten. Matches
+// strictly on hostname (the unambiguous link); IP-only matches stay manual.
+// Shared/USB printers are excluded (their host name isn't the device's type).
+async function autoConfirmAdCategories(): Promise<number> {
+  try {
+    const pool = await getPool();
+    const r = await pool.request().query<{ n: number }>(`
+      MERGE device_categories AS t
+      USING (
+        SELECT l.mac_address AS mac,
+               MIN(CASE WHEN c.os_version LIKE '%server%' THEN 'server' ELSE 'pc' END) AS cat
+        FROM dhcp_leases l
+        JOIN computers c ON LOWER(c.name) = LOWER(l.host_name)
+        WHERE l.host_name IS NOT NULL AND l.host_name <> '' AND l.source <> 'share'
+        GROUP BY l.mac_address
+      ) AS s ON t.mac_address = s.mac
+      WHEN MATCHED AND (t.category IS NULL OR t.category = '') THEN
+        UPDATE SET category = s.cat, updated_at = SYSUTCDATETIME()
+      WHEN NOT MATCHED THEN
+        INSERT (mac_address, category) VALUES (s.mac, s.cat)
+      OUTPUT 1 AS n;
+    `);
+    return r.recordset.length;
+  } catch {
+    return 0;
+  }
+}
+
 // Parse a Windows ping transcript: reply count (via "TTL=") and the average RTT
 // from the per-reply "time<1ms"/"time=15ms" values. Locale-independent — the
 // "[<=]NNms" token appears on every reply line in CS ("čas") and EN ("time").
@@ -681,9 +713,13 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
       } catch { /* pruning is best-effort; never block a collect */ }
     }
 
+    // Auto-confirm the category of AD-matched devices (identify once via AD →
+    // stored by MAC → reused), so domain machines don't sit in "uncategorized".
+    const autoCat = await autoConfirmAdCategories();
+
     const durationMs = Date.now() - t0;
     logActivity(errors.length ? 'warn' : 'info', 'mikrotik',
-      `Devices: ${leases} from ${routers.length} router(s)${scanned ? ` + ${scanned} scanned` : ''}; ${unmatchedPinged} unmatched pinged (${reachable} online)${pruned ? `; pruned ${pruned} stale` : ''}${errors.length ? ` · errors: ${errors.join('; ')}` : ''} (${(durationMs / 1000).toFixed(1)}s)`);
+      `Devices: ${leases} from ${routers.length} router(s)${scanned ? ` + ${scanned} scanned` : ''}; ${unmatchedPinged} unmatched pinged (${reachable} online)${pruned ? `; pruned ${pruned} stale` : ''}${autoCat ? `; auto-categorized ${autoCat} AD` : ''}${errors.length ? ` · errors: ${errors.join('; ')}` : ''} (${(durationMs / 1000).toFixed(1)}s)`);
 
     // Printer-offline alert eval runs on the collector's own cadence (fresh
     // reachability is in the DB now). Self-contained; never throws.
