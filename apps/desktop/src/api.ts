@@ -579,6 +579,16 @@ export interface DeviceItem {
   computer_name: string | null;
   computer_reachable: boolean | null;   // matched computer's reachability
   suggested: string;                    // UI-only category hint ('' = none)
+  ip_history_count: number;             // # of distinct IPs this MAC has used (archive)
+}
+
+/** One entry of a device's IP-address archive (GET /devices/ip-history). */
+export interface DeviceIpHistory {
+  ip_address: string;
+  site: string | null;
+  source: string | null;
+  first_seen: string;
+  last_seen: string;
 }
 
 /** One ink/toner/maintenance supply of a printer (Stav tiskáren page). */
@@ -812,6 +822,7 @@ export const api = {
   database: () => jget<DatabaseOverview>('/database'),
   devicesRun: () => jpost<{ routers: number; leases: number; unmatchedPinged: number; reachable: number; scanned: number; errors: string[]; durationMs: number }>('/devices/run'),
   unifiRun: () => jpost<{ clients: number; upserted: number; errors: string[]; durationMs: number }>('/unifi/run'),
+  deviceIpHistory: (mac: string) => jget<{ items: DeviceIpHistory[] }>(`/devices/ip-history?mac=${encodeURIComponent(mac)}`),
   mikrotikTest: () => jpost<{ tested: number; results: { site: string; ip: string; ok: boolean; count: number | null; ms: number; error?: string }[] }>('/mikrotik/test'),
   integrationsStatus: () => jget<{ items: Record<string, { ts: string; level: string; message: string; lastOk: string | null }> }>('/integrations/status'),
   setDeviceCategory: async (mac: string, category: string) => {

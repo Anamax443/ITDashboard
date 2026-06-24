@@ -33,6 +33,7 @@ interface DeviceRow {
   computer_name: string | null;
   computer_reachable: boolean | null;
   computer_os: string | null;
+  ip_history_count: number;
 }
 
 export async function registerDevicesRoutes(app: FastifyInstance) {
@@ -46,7 +47,8 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
              l.reachable, l.packet_loss, l.latency_ms, l.reach_checked_at,
              dc.category, dc.name AS operator_name, dc.note AS operator_note,
              m.id AS computer_id, m.name AS computer_name, m.reachable AS computer_reachable,
-             m.os_version AS computer_os
+             m.os_version AS computer_os,
+             (SELECT COUNT(*) FROM device_ip_history h WHERE h.mac_address = l.mac_address) AS ip_history_count
       FROM dhcp_leases l
       LEFT JOIN device_categories dc ON dc.mac_address = l.mac_address
       OUTER APPLY (
@@ -164,6 +166,20 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
       reply.code(500);
       return { error: String(err) };
     }
+  });
+
+  // IP-address archive for one device (by MAC): every IP it has been seen at, with
+  // its first/last-seen window — "MAC = the permanent ID, IP = the connection log".
+  app.get('/devices/ip-history', async (req) => {
+    const q = z.object({ mac: z.string().min(1).max(32) }).parse(req.query);
+    const pool = await getPool();
+    const r = await pool.request().input('mac', q.mac.trim().toUpperCase()).query(`
+      SELECT ip_address, site, source, first_seen, last_seen
+      FROM device_ip_history
+      WHERE mac_address = @mac
+      ORDER BY last_seen DESC;
+    `);
+    return { items: r.recordset };
   });
 
   // Fast per-router MikroTik API connectivity test (no scan) for Settings.

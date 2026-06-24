@@ -85,6 +85,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const [running, setRunning] = useState(false);
   const [rowBusy, setRowBusy] = useState<Record<string, boolean>>({});
   const [consoleOut, setConsoleOut] = useState<{ name: string; text: string | null; error?: boolean } | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   const refresh = () => { api.devices().then((r) => setItems(r.items)).catch((e) => setError(String(e))); };
   useEffect(() => {
@@ -158,15 +159,30 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
   const pingOne = async (d: DeviceItem) => {
     if (!d.ip_address || rowBusy[d.mac_address]) return;
     setRowBusy((m) => ({ ...m, [d.mac_address]: true }));
-    setConsoleOut({ name: d.host_name || d.ip_address, text: null });
+    setConsoleOut({ name: `📡 ping — ${d.host_name || d.ip_address}`, text: null });
     try {
       const r = await api.probeDevice(d.site, d.mac_address, d.ip_address);
-      setConsoleOut({ name: d.host_name || d.ip_address!, text: r.console });
+      setConsoleOut({ name: `📡 ping — ${d.host_name || d.ip_address!}`, text: r.console });
       refresh();
     } catch (e) {
-      setConsoleOut({ name: d.host_name || d.ip_address!, text: String(e), error: true });
+      setConsoleOut({ name: `📡 ping — ${d.host_name || d.ip_address!}`, text: String(e), error: true });
     } finally {
       setRowBusy((m) => ({ ...m, [d.mac_address]: false }));
+    }
+  };
+
+  // Show the device's IP archive (every IP this MAC has used) in the console modal.
+  const showIpHistory = async (d: DeviceItem) => {
+    setConsoleOut({ name: `🕓 ${t('devices.ipHistory')} — ${d.operator_name ?? d.host_name ?? d.computer_name ?? d.mac_address}`, text: null });
+    try {
+      const r = await api.deviceIpHistory(d.mac_address);
+      const lines = r.items.map((h, i) => {
+        const cur = i === 0 ? '  ← ' + t('devices.ipCurrent') : '';
+        return `${h.ip_address.padEnd(16)} ${(h.site ?? '').padEnd(10)} ${(h.source ?? '').padEnd(6)}  ${new Date(h.first_seen).toLocaleString()} → ${new Date(h.last_seen).toLocaleString()}${cur}`;
+      });
+      setConsoleOut({ name: `🕓 ${t('devices.ipHistory')} — ${d.operator_name ?? d.host_name ?? d.computer_name ?? d.mac_address} (${d.mac_address})`, text: lines.length ? lines.join('\n') : t('devices.ipHistoryEmpty') });
+    } catch (e) {
+      setConsoleOut({ name: `🕓 ${t('devices.ipHistory')}`, text: String(e), error: true });
     }
   };
 
@@ -201,6 +217,19 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     }
     return true;
   });
+
+  // Bulk-confirm the suggested category for all currently-filtered rows that have a
+  // suggestion but no confirmed category — "identify once" applied to the whole
+  // visible set (each stored by MAC, so it persists like a single confirm).
+  const confirmable = filtered.filter((d) => d.suggested && !d.category);
+  const confirmAllSuggestions = async () => {
+    if (!confirmable.length || confirming) return;
+    setConfirming(true);
+    try {
+      for (const d of confirmable) { try { await api.setDeviceCategory(d.mac_address, d.suggested); } catch { /* skip one */ } }
+      refresh();
+    } finally { setConfirming(false); }
+  };
   const sorted = apply(filtered);
 
   const total = items.length;
@@ -337,6 +366,11 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
             <input type="checkbox" checked={onlyUncategorized} onChange={(e) => setOnlyUncategorized(e.target.checked)} />
             {t('devices.onlyUncategorized')}
           </label>
+          {confirmable.length > 0 && (
+            <button className="refresh-btn" onClick={confirmAllSuggestions} disabled={confirming} title={t('devices.confirmAllTip')} style={{ fontWeight: 600 }}>
+              {confirming ? '…' : `✓ ${t('devices.confirmAll')} (${confirmable.length})`}
+            </button>
+          )}
           <button className="refresh-btn" onClick={runAll} disabled={running} style={{ fontWeight: 600 }}>
             {running ? t('devices.running') : `🔄 ${t('devices.refreshNow')}`}
           </button>
@@ -395,6 +429,13 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                           ? <a href={deviceWebUrl(d.ip_address)} target="_blank" rel="noreferrer" title={t('devices.openWeb')} style={{ color: 'var(--accent)', textDecoration: 'none' }}>{d.ip_address}</a>
                           : d.ip_address)
                       : '—'}
+                    {d.ip_history_count > 1 && (
+                      <span
+                        onClick={() => showIpHistory(d)}
+                        title={t('devices.ipHistoryTip')}
+                        style={{ cursor: 'pointer', marginLeft: 6, fontSize: 10, color: 'var(--text-dim)', userSelect: 'none' }}
+                      >🕓{d.ip_history_count}</span>
+                    )}
                   </td>
                   <td style={{ fontSize: 11 }}>
                     {editNote?.mac === d.mac_address ? (
@@ -525,7 +566,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
         <div onClick={() => setConsoleOut(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#0c0c0c', border: '1px solid #333', borderRadius: 6, width: 760, maxWidth: '92vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #333', background: '#1a1a1a' }}>
-              <span style={{ color: '#ccc', fontFamily: 'Consolas, monospace', fontSize: 12 }}>📡 ping — {consoleOut.name}</span>
+              <span style={{ color: '#ccc', fontFamily: 'Consolas, monospace', fontSize: 12 }}>{consoleOut.name}</span>
               <button onClick={() => setConsoleOut(null)} style={{ background: 'transparent', border: 'none', color: '#ccc', fontSize: 16, cursor: 'pointer' }}>×</button>
             </div>
             <pre style={{ margin: 0, padding: 14, overflow: 'auto', color: consoleOut.error ? '#ff6b6b' : '#d4d4d4', fontFamily: 'Consolas, monospace', fontSize: 12, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>

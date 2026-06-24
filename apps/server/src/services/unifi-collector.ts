@@ -5,6 +5,7 @@ import { decryptSecret } from './secret-crypto.js';
 import { boolSetting } from './alerts-util.js';
 import { logActivity } from './activity-log.js';
 import { parseScanRanges, siteForIp, maskOf, ipToInt } from './mikrotik-util.js';
+import { recordIpHistory } from './mikrotik-collector.js';
 
 // UniFi controller collector. Logs in to a (legacy, :8443) controller, reads the
 // connected-client list (/api/s/<site>/stat/sta), and upserts each client into
@@ -203,7 +204,7 @@ export async function runUnifiCollectOnce(): Promise<UnifiRunResult | null> {
       const site = (ip ? siteForIp(ip, ranges) : null) || c.last_connection_network_name || c.network || 'UniFi';
       const via = c.last_uplink_name || c.ap_mac || '';
       const comment = `UniFi · ${c.is_wired ? 'wired' : 'wifi'}${via ? ` · ${via}` : ''}`;
-      try { await upsertUnifiClient(site, mac, ip, host, comment); upserted++; }
+      try { await upsertUnifiClient(site, mac, ip, host, comment); await recordIpHistory(mac, ip, site, 'unifi'); upserted++; }
       catch { /* one client's DB error shouldn't abort the whole sync */ }
     }
 

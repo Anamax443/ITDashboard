@@ -239,6 +239,24 @@ async function loadKnownComputers(): Promise<Known> {
   return { names, ips };
 }
 
+// Archive every (real-MAC, IP) pair a device is observed at — the connection
+// history behind "MAC = the permanent ID, IP = temporary". Synthetic IP-<ip> ids
+// carry no archive value (1:1 with their own IP), so they're skipped. Best-effort.
+export async function recordIpHistory(mac: string, ip: string | null, site: string | null, source: string | null): Promise<void> {
+  if (!mac || !ip || mac.startsWith('IP-')) return;
+  try {
+    const pool = await getPool();
+    await pool.request().input('mac', mac).input('ip', ip).input('site', site).input('src', source).query(`
+      MERGE device_ip_history AS t USING (SELECT @mac AS mac, @ip AS ip) AS s
+        ON t.mac_address = s.mac AND t.ip_address = s.ip
+      WHEN MATCHED THEN UPDATE SET last_seen = SYSUTCDATETIME(),
+        site = COALESCE(@site, t.site), source = COALESCE(@src, t.source)
+      WHEN NOT MATCHED THEN INSERT (mac_address, ip_address, site, source)
+        VALUES (@mac, @ip, @site, @src);
+    `);
+  } catch { /* best-effort archive */ }
+}
+
 async function upsertDevice(d: NormDevice): Promise<{ mac: string; ip: string | null; host: string | null } | null> {
   if (!d.mac) return null;
   const pool = await getPool();
@@ -259,6 +277,7 @@ async function upsertDevice(d: NormDevice): Promise<{ mac: string; ip: string | 
         (site, mac_address, ip_address, host_name, server, comment, status, dynamic, expires_after, router_last_seen, source)
         VALUES (@site, @mac, @ip, @host, @server, @comment, @status, @dyn, @exp, @rls, @src);
     `);
+  await recordIpHistory(d.mac, d.ip, d.site, d.source);
   return { mac: d.mac, ip: d.ip, host: d.host };
 }
 
