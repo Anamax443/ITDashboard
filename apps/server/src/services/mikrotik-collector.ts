@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import { reverse as dnsReverseCb } from 'node:dns';
+import { promisify } from 'node:util';
 import { getPool } from '../db/pool.js';
 import { getAllSettings, type SettingsMap } from './settings.js';
 import { decryptSecret } from './secret-crypto.js';
@@ -367,6 +369,25 @@ function resolveName(ip: string, timeoutMs: number): Promise<string | null> {
   return resolveNode(ip, timeoutMs).then((r) => r.name);
 }
 
+const dnsReverse = promisify(dnsReverseCb);
+
+// Reverse-DNS (PTR) name fallback for a scanned host that NetBIOS couldn't name.
+// nbtstat (UDP 137) is firewalled from the app server, but DNS works here, so a
+// domain host with a PTR record resolves to its name — which then pairs it to its
+// AD computer by hostname (instead of a nameless `IP-<ip>` row). Returns the SHORT
+// hostname uppercased (to match the AD / NetBIOS form). Best-effort; null on miss.
+async function resolveNameViaDns(ip: string): Promise<string | null> {
+  try {
+    const names = await dnsReverse(ip);
+    const fqdn = names?.[0];
+    if (!fqdn) return null;
+    const short = fqdn.split('.')[0]?.trim();
+    return short ? short.toUpperCase() : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface MikrotikRunResult {
   routers: number;
   leases: number;
@@ -585,6 +606,10 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
             } else {
               host = await resolveName(a.ip, 2500);
             }
+            // NetBIOS is firewalled from the app server, so most scan hosts come
+            // back nameless; fall back to reverse DNS (works here), which names a
+            // domain host and lets it pair to its AD computer by hostname.
+            if (!host) host = await resolveNameViaDns(a.ip);
             // Option B: an alive host with no resolvable MAC (remote subnet — ARP is
             // router-local, and NetBIOS/nbtstat is often firewalled from the app
             // server) is still stored, keyed by a synthetic "IP-<ip>" id, so the
@@ -625,7 +650,7 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
               // lookup (so suggestCategory can spot printers etc.) — once named, no
               // more lookups.
               const st = await pingStats(r.ip_address, 4, 1500);
-              const host = r.host_name ? null : await resolveName(r.ip_address, 2500);
+              const host = r.host_name ? null : (await resolveName(r.ip_address, 2500) ?? await resolveNameViaDns(r.ip_address));
               await persistReachable(r.site, r.mac_address, st.alive, host, st.sent, st.received, st.latencyMs);
             } catch { /* keep last */ }
           }

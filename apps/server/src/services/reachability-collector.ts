@@ -1,68 +1,71 @@
 import { Socket } from 'node:net';
 import { spawn } from 'node:child_process';
-import { lookup } from 'node:dns';
-import { promisify } from 'node:util';
 import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
 import { getAllSettings } from './settings.js';
 
-const dnsLookup = promisify(lookup);
+// A probe result carries whether the host answered AND the IPv4 it answered ON —
+// the address the connection / echo reply actually came from. We store THAT as the
+// machine's IP, never a blind forward-DNS A record (which can be stale/dead: a
+// notebook re-registered at a new address while an old A record lingers — probing
+// the name then succeeds via the live address, but the dead A record would be the
+// wrong IP to store).
+interface Reach { ok: boolean; ip: string | null }
 
-// Resolve a host NAME to its current IPv4 via the OS resolver (domain DNS). This
-// is what keeps a machine's stored IP correct to its name: a notebook that moves
-// cable→wifi changes IP but keeps its name, and AD dynamic DNS re-registers the
-// new address, so the lookup follows it. Best-effort — returns null on any
-// failure (no DNS record, IPv6-only, timeout) so the stored IP is left untouched.
-async function resolveIp(host: string): Promise<string | null> {
-  try {
-    const { address } = await dnsLookup(host, { family: 4 });
-    return address && address !== '0.0.0.0' ? address : null;
-  } catch {
-    return null;
-  }
-}
-
-// Plain TCP connect — same helper the other collectors use. Resolves true if the
-// port accepts a connection within the timeout, false on timeout/refused/error.
-function tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolean> {
+// Plain TCP connect. On success captures the peer IPv4 (`remoteAddress`), so the
+// stored IP is exactly the one we reached. Resolves ok=false on timeout/refused.
+function tcpProbe(host: string, port: number, timeoutMs: number): Promise<Reach> {
   return new Promise((resolve) => {
     const socket = new Socket();
     let settled = false;
-    const done = (ok: boolean) => {
+    const done = (r: Reach) => {
       if (settled) return;
       settled = true;
       socket.destroy();
-      resolve(ok);
+      resolve(r);
     };
-    const t = setTimeout(() => done(false), timeoutMs);
-    socket.once('connect', () => { clearTimeout(t); done(true); });
-    socket.once('error', () => { clearTimeout(t); done(false); });
+    const t = setTimeout(() => done({ ok: false, ip: null }), timeoutMs);
+    socket.once('connect', () => {
+      clearTimeout(t);
+      const ra = (socket.remoteAddress || '').replace(/^::ffff:/, '');
+      done({ ok: true, ip: /^\d{1,3}(\.\d{1,3}){3}$/.test(ra) ? ra : null });
+    });
+    socket.once('error', () => { clearTimeout(t); done({ ok: false, ip: null }); });
     socket.connect(port, host);
   });
 }
 
-// ICMP fallback via the Windows `ping.exe` (Node has no built-in ICMP; raw
-// sockets need privileges the service account lacks). Catches hosts that block
-// TCP 135/445 (hardened firewall) but still answer ping. We require `TTL=` in
-// the output — it appears only on a genuine echo reply and is NOT localized, so
-// this works on a Czech/any-locale Windows and rejects router-sourced
-// "Destination host unreachable" replies (which can still exit 0).
-export function icmpPing(host: string, timeoutMs: number): Promise<boolean> {
+// ICMP via the Windows `ping.exe` (Node has no built-in ICMP; raw sockets need
+// privileges the service account lacks). A genuine echo reply is a line with
+// `TTL=` (NOT localized; rejects router-sourced "Destination host unreachable",
+// which also says "Reply from <gateway>" but has no TTL). The IPv4 on that TTL=
+// line is the host that actually answered — captured as the reachable IP.
+function pingReach(host: string, timeoutMs: number): Promise<Reach> {
   return new Promise((resolve) => {
     let out = '';
     let settled = false;
-    const done = (ok: boolean) => { if (!settled) { settled = true; resolve(ok); } };
+    const done = (r: Reach) => { if (!settled) { settled = true; resolve(r); } };
     try {
       const proc = spawn('ping.exe', ['-n', '1', '-w', String(timeoutMs), host], { windowsHide: true });
       proc.stdout?.on('data', (b) => (out += b.toString()));
-      proc.on('error', () => done(false));
-      proc.on('close', () => done(/TTL=/i.test(out)));
+      proc.on('error', () => done({ ok: false, ip: null }));
+      proc.on('close', () => {
+        const reply = out.split(/\r?\n/).find((l) => /TTL=/i.test(l));
+        if (!reply) return done({ ok: false, ip: null });
+        const m = reply.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+        done({ ok: true, ip: m ? m[1]! : null });
+      });
       // Hard guard in case the process hangs.
-      setTimeout(() => { try { proc.kill(); } catch { /* ignore */ } done(false); }, timeoutMs + 1500);
+      setTimeout(() => { try { proc.kill(); } catch { /* ignore */ } done({ ok: false, ip: null }); }, timeoutMs + 1500);
     } catch {
-      done(false);
+      done({ ok: false, ip: null });
     }
   });
+}
+
+// Boolean ICMP check kept for external callers (the device scan).
+export function icmpPing(host: string, timeoutMs: number): Promise<boolean> {
+  return pingReach(host, timeoutMs).then((r) => r.ok);
 }
 
 interface Target { id: number; name: string; fqdn: string | null; ip_address: string | null; reachable: boolean | null; }
@@ -96,15 +99,19 @@ async function listTargets(): Promise<Target[]> {
   return r.recordset;
 }
 
-async function probeOne(t: Target, ports: number[], timeoutMs: number, pingFallback: boolean): Promise<boolean> {
+async function probeOne(t: Target, ports: number[], timeoutMs: number, pingFallback: boolean): Promise<Reach> {
   const host = t.fqdn || t.name;
   // Cheap TCP connects first; ICMP ping (spawns a process) only as a fallback
-  // for hosts that answer nothing on the TCP ports.
+  // for hosts that answer nothing on the TCP ports. Returns the IPv4 we reached.
   for (const port of ports) {
-    if (await tcpProbe(host, port, timeoutMs)) return true;
+    const r = await tcpProbe(host, port, timeoutMs);
+    if (r.ok) return r;
   }
-  if (pingFallback && await icmpPing(host, timeoutMs)) return true;
-  return false;
+  if (pingFallback) {
+    const r = await pingReach(host, timeoutMs);
+    if (r.ok) return r;
+  }
+  return { ok: false, ip: null };
 }
 
 async function persist(id: number, reachable: boolean, resolvedIp: string | null): Promise<void> {
@@ -194,23 +201,25 @@ export async function runReachabilityProbeOnce(): Promise<ReachabilityRunResult 
         const t = targets[idx++];
         if (!t) continue;
         try {
-          const ok = await probeOne(t, ports, timeoutMs, pingFallback);
-          // Revise the stored IP to whatever the NAME currently resolves to (DNS),
-          // so the IP always matches the machine regardless of cable/wifi/NIC.
-          const resolvedIp = await resolveIp(t.fqdn || t.name);
+          const probe = await probeOne(t, ports, timeoutMs, pingFallback);
+          const ok = probe.ok;
+          // Store the IP the machine ACTUALLY answered on (TCP peer / ICMP reply),
+          // never a blind forward-DNS A record that may be stale/dead. Unreachable
+          // → keep the existing IP (persist COALESCEs a null).
+          const reachedIp = probe.ip;
           const prev = t.reachable == null ? null : Boolean(t.reachable);
-          await persist(t.id, ok, resolvedIp);
+          await persist(t.id, ok, reachedIp);
           // Per-PC line only on a state CHANGE (name + IP + new state) — logging
           // every PC each cycle would flood the activity log. First-time
           // classification (prev === null) is silent.
           if (prev !== null && prev !== ok) {
             flips++;
-            logActivity(ok ? 'success' : 'warn', 'reachability', `${t.name} (${resolvedIp ?? t.ip_address ?? 'no IP'}) → ${ok ? 'Active (on network)' : 'Offline'}`);
+            logActivity(ok ? 'success' : 'warn', 'reachability', `${t.name} (${reachedIp ?? t.ip_address ?? 'no IP'}) → ${ok ? 'Active (on network)' : 'Offline'}`);
           }
-          // IP revision is its own event (independent of a reachability flip) so the
-          // operator can see the name→IP mapping was corrected.
-          if (resolvedIp && t.ip_address && resolvedIp !== t.ip_address) {
-            logActivity('info', 'reachability', `${t.name}: IP revised ${t.ip_address} → ${resolvedIp} (DNS)`);
+          // IP correction is its own event (independent of a reachability flip) so the
+          // operator can see the stored IP was moved to the live address.
+          if (reachedIp && t.ip_address && reachedIp !== t.ip_address) {
+            logActivity('info', 'reachability', `${t.name}: IP corrected ${t.ip_address} → ${reachedIp} (live reply)`);
           }
           if (ok) reachable++; else unreachable++;
         } catch {

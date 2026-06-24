@@ -52,9 +52,20 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
       OUTER APPLY (
         SELECT TOP 1 c.id, c.name, c.reachable, c.os_version
         FROM computers c
+        -- Pair a device to its AD computer. Strong links first:
+        --   1) device hostname == computer name
+        --   2) shared/USB printer: the host PC name carried in the comment
+        -- Weak link (IP) ONLY for NON-dynamic addresses: a dynamic IP is not a
+        -- stable identity, so matching by it could attach the device to whatever
+        -- previously held that lease (or to an offline AD box still claiming the
+        -- IP). Static/reservation addresses keep the IP fallback.
         WHERE (l.host_name IS NOT NULL AND LOWER(c.name) = LOWER(l.host_name))
-           OR (l.ip_address IS NOT NULL AND c.ip_address = l.ip_address)
-        ORDER BY CASE WHEN l.host_name IS NOT NULL AND LOWER(c.name) = LOWER(l.host_name) THEN 0 ELSE 1 END, c.name
+           OR (l.source = 'share' AND l.comment IS NOT NULL AND LOWER(c.name) = LOWER(l.comment))
+           OR (l.dynamic = 0 AND l.ip_address IS NOT NULL AND c.ip_address = l.ip_address)
+        ORDER BY CASE
+                   WHEN l.host_name IS NOT NULL AND LOWER(c.name) = LOWER(l.host_name) THEN 0
+                   WHEN l.source = 'share' AND LOWER(c.name) = LOWER(l.comment) THEN 0
+                   ELSE 1 END, c.name
       ) m
       ORDER BY l.site, l.ip_address
     `);
