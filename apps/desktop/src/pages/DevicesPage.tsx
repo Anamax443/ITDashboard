@@ -260,7 +260,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     { key: 'num', label: '#', get: (d) => d.__num },
     { key: 'site', label: t('devices.site'), get: (d) => d.site },
     { key: 'ip', label: 'IP', get: (d) => d.ip_address ?? '' },
-    { key: 'hostname', label: t('devices.hostname'), get: (d) => d.operator_name ?? d.host_name ?? '' },
+    { key: 'hostname', label: t('devices.hostname'), get: (d) => d.operator_name ?? d.host_name ?? d.computer_name ?? '' },
     { key: 'note', label: t('devices.note'), get: (d) => d.operator_note ?? '' },
     { key: 'mac', label: 'MAC', get: (d) => isSyntheticMac(d.mac_address) ? '' : d.mac_address },
     { key: 'type', label: t('devices.type'), get: (d) => `${d.dynamic === false ? t('devices.static') : d.dynamic === true ? t('devices.dynamic') : '—'}${d.source && d.source !== 'dhcp' ? ' · ' + d.source : ''}` },
@@ -275,7 +275,7 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
     { label: t('devices.site'), get: (d) => d.site },
     { label: 'IP', get: (d) => d.ip_address ?? '' },
     { label: t('devices.note'), get: (d) => d.operator_note ?? '', wrap: true },
-    { label: t('devices.hostname'), get: (d) => d.operator_name ?? d.host_name ?? '', wrap: true },
+    { label: t('devices.hostname'), get: (d) => d.operator_name ?? d.host_name ?? d.computer_name ?? '', wrap: true },
     { label: 'MAC', get: (d) => isSyntheticMac(d.mac_address) ? '' : d.mac_address },
     { label: t('devices.type'), get: (d) => d.source === 'share' ? `USB · ${d.comment ?? ''}` : `${d.dynamic === false ? t('devices.static') : d.dynamic === true ? t('devices.dynamic') : '—'}${d.source && d.source !== 'dhcp' ? ' · ' + d.source : ''}` },
     { label: t('devices.category'), get: (d) => d.category ? catLabel(d.category) : '' },
@@ -435,7 +435,9 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         {(d.operator_name ?? d.host_name)
                           ? <span style={{ color: d.operator_name ? 'var(--accent)' : undefined }} title={d.operator_name ? `${t('devices.editName')} · ${d.host_name ?? ''}`.trim() : undefined}>{d.operator_name ?? d.host_name}</span>
-                          : <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>—</span>}
+                          : d.computer_name
+                            ? <span style={{ color: 'var(--text-dim)', fontStyle: 'italic' }} title={t('devices.hostnameFromAd')}>{d.computer_name}</span>
+                            : <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>—</span>}
                         <span onClick={() => setEditName({ mac: d.mac_address, value: d.operator_name ?? '' })} title={t('devices.editName')} style={{ cursor: 'pointer', opacity: 0.4, fontSize: 10, fontWeight: 400 }}>✎</span>
                       </span>
                     )}
