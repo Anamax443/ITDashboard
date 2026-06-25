@@ -169,6 +169,16 @@ async function dedupeLegacyShareKeys(): Promise<void> {
                     OR (dc.name IS NOT NULL AND dc.name <> '')
                     OR (dc.note IS NOT NULL AND dc.note <> '')))
       )`);
+  // 3) Drop ORPHANED legacy identities: a device_categories row keyed by an old
+  //    IP-based SHR mac with no surviving lease (the printer was re-keyed by host
+  //    name and its old identity already migrated, or it was junk). Without this the
+  //    DB-identity UNION keeps surfacing the dead key as a phantom offline printer.
+  //    A kept legacy lease (identified, host present, no sibling yet) still has its
+  //    row, so its identity is preserved.
+  await pool.request().query(`
+    DELETE dc FROM device_categories dc
+    WHERE dc.mac_address LIKE 'SHR-%.%'
+      AND NOT EXISTS (SELECT 1 FROM dhcp_leases l WHERE l.mac_address = dc.mac_address)`);
 }
 
 export interface SharedPrintersRunResult { pcs: number; probed: number; printers: number; durationMs: number; }
