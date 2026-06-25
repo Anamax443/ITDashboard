@@ -97,6 +97,11 @@
       <td><span class="badge b-ok">FUNGUJE</span> Na routeru. Zachytí i statická zařízení mimo DHCP na daném subnetu.</td>
     </tr>
     <tr>
+      <td><b>FTP soubory</b> (<code>IP_scan.txt</code> + <code>ARP_scan.txt</code>)</td>
+      <td>leasy (jméno/IP/status/class-id) + ARP (statická zařízení), MAC</td>
+      <td><span class="badge b-ok">Brno</span> / <span class="badge b-warn">pobočky</span> Router si soubory píše sám (plánovač <code>ipscan-export</code> à 15 min, <code>print detail</code>), aplikace je tahá přes <b>FTP</b> (účet <code>dhcp-reader</code> má policy <code>ftp</code>) a slučuje podle MAC. <b>Hlavní zdroj leasů + ARP</b>; navíc <b>signál aktuálnosti</b> (alert „stará data / nedostupná lokalita"). Pobočky až dostanou na router stejný export (pak je odtlumit). Migrace 056–057.</td>
+    </tr>
+    <tr>
       <td><b>ip-scan → NETBIOS</b> (<code>/rest/tool/ip-scan</code>)</td>
       <td>hostname (+ nepřímo MAC)</td>
       <td><span class="badge b-ok">Brno</span> / <span class="badge b-warn">pobočky</span> Běží <b>na routeru</b> zevnitř podsítě (z <code>.213</code> je NetBIOS blokovaný). Brno ~256 jmen; pobočky <b>0</b> — PC mají vypnutý NetBIOS přes TCP/IP.</td>

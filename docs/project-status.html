@@ -102,6 +102,21 @@
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
 
+  <h2>Poslední změny (2026-06-25) — MikroTik FTP zdroj + alert aktuálnosti dat</h2>
+  <p class="sub" style="margin:0 0 .75rem">Router si sám píše <strong>soubory</strong> s leasy a ARP; aplikace je tahá přes <strong>FTP</strong> a slučuje podle MAC — soubor je nově <strong>hlavní zdroj</strong>, REST zůstává jako doplněk. Nový <strong>per-lokalita alert „stará data / nedostupná lokalita"</strong>. Živý commit <span class="pill">0cb377d</span>.</p>
+
+  <p style="margin:0 0 4px"><strong>FTP souborový zdroj</strong> <span class="pill">0cb377d</span> <span class="pill">migrace 056</span></p>
+  <ul>
+    <li>Plánovač na routeru (<code>ipscan-export</code>, à 15 min) píše dva soubory — <code>IP_scan.txt</code> (<code>/ip dhcp-server lease print detail</code>) a <code>ARP_scan.txt</code> (<code>/ip arp print detail</code>), starý vždy nejdřív smaže. Aplikace je stahuje přes <strong>FTP</strong> (read-only účet <code>dhcp-reader</code> dostal policy <code>ftp</code>) bezzávislostním klientem (<code>node:net</code>), parsuje obojí (slučování zalomených řádků; z ARP bere jen <strong>complete</strong> záznamy s MAC) a slévá do inventáře <strong>podle <code>(lokalita, MAC)</code></strong>.</li>
+    <li>Soubor tak nese leasy <strong>i</strong> staticky adresovaná zařízení, která DHCP nikdy neukáže (např. ručně nastavená IP viditelná jen v ARP). <strong>Žádné duplicity</strong> (slučování podle MAC + primární klíč + COALESCE upsert). Soubor je <strong>primární zdroj leasů</strong>; REST zůstává jako doplněk pro NETBIOS jména z ip-scanu (ta do souboru dumpnout nejdou). Lokality se souborem: <code>mikrotik.ftp_sites</code> (zatím jen Brno).</li>
+  </ul>
+
+  <p style="margin:8px 0 4px"><strong>Alert aktuálnosti dat / dostupnosti lokalit</strong> <span class="pill">0cb377d</span> <span class="pill">migrace 057</span></p>
+  <ul>
+    <li>Hlavička souboru (čas) slouží jako <strong>signál aktuálnosti</strong>. Tabulka <code>site_data_status</code> (<code>GET /devices/site-status</code>) drží časy souborů, počty a <code>file_changed_at</code> (reálné UTC). Sledovaná lokalita je „stará", když se soubory přestanou aktualizovat nad práh, nejdou stáhnout, nebo nikdy nedodaly data.</li>
+    <li><strong>Časově bezpečné:</strong> router tiskne lokální čas, takže místo porovnávání s UTC se sleduje, <strong>kdy se nejnovější čas naposledy pohnul</strong>. Stejný model jako ostatní agendy (debounce/throttle/okno údržby/příjemci). <strong>Pobočky jsou ve výchozím stavu ztlumené</strong> (<code>alerts.freshness.muted_sites</code>), ať „nekřičí", dokud nemají na routeru export. Nová sekce Nastavení <strong>„Notifikace — aktuálnost dat / dostupnost lokalit"</strong> (CS/EN) + tlačítko test.</li>
+  </ul>
+
   <h2>Poslední změny (2026-06-25) — záložka Souhrn, ip-scan na routeru, host-name klíč tiskáren</h2>
   <p class="sub" style="margin:0 0 .75rem">Manažerská <strong>záložka Souhrn</strong> („na poradu"), <strong>třetí REST zdroj identity</strong> na router (ip-scan běžící na routeru) a oprava duplicit sdílených tiskáren. Živý commit <span class="pill">b370537</span>.</p>
 
