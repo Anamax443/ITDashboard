@@ -20,8 +20,10 @@ const SITE_FALLBACK = 'USB';        // used only when the host PC isn't in the n
 const CONCURRENCY = 8;
 let inFlight = false;
 
-// Stable synthetic MAC-key per (host, share name) — fits dhcp_leases.mac_address
-// NVARCHAR(32), e.g. "SHR-10.90.183.12-74213".
+// Stable synthetic MAC-key per (host NAME, share name) — fits dhcp_leases.mac_address
+// NVARCHAR(32), e.g. "SHR-JIHLAVA5W11-74213". Keyed by the host NAME, never its IP:
+// a USB printer is the same device no matter what (dynamic) IP its host currently
+// has, so an IP-based key would spawn a duplicate printer on every host IP change.
 function shareKey(hostId: string, name: string): string {
   let h = 5381;
   for (let i = 0; i < name.length; i++) h = (((h << 5) + h) + name.charCodeAt(i)) | 0;
@@ -83,7 +85,7 @@ async function siteForHost(ip: string | null, pcName: string): Promise<string | 
 }
 
 async function upsertShare(site: string, pcName: string, ip: string | null, printer: SharedPrinter): Promise<string> {
-  const mac = shareKey(ip ?? pcName, printer.name);
+  const mac = shareKey(pcName, printer.name);   // host NAME = stable key (not IP)
   const pool = await getPool();
   await pool.request()
     .input('site', site).input('mac', mac).input('ip', ip).input('host', printer.name).input('pc', pcName)

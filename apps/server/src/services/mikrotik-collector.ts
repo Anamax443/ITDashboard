@@ -524,12 +524,17 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
 
     // Phase 1 — routers: DHCP leases (dynamic AND static reservations, even when
     // not currently bound) merged with the ARP table, keyed by MAC (lease wins).
+    // The ARP table is cached per router so the active scan (Phase 2) can REUSE it
+    // instead of re-querying — halving the router REST round-trips per cycle (each
+    // RouterOS REST request is a Basic-auth login/logout, so fewer = quieter).
+    const arpByRouter = new Map<string, RawArp[]>();
     for (const router of routers) {
       try {
         const [rawLeases, rawArp] = await Promise.all([
           fetchLeases(router, user, pass, timeoutMs),
           fetchArp(router, user, pass, timeoutMs).catch(() => [] as RawArp[]),
         ]);
+        arpByRouter.set(router.ip, rawArp);
         const byMac = new Map<string, NormDevice>();
         for (const l of rawLeases) {
           const isBound = (l.status ?? '').toLowerCase() === 'bound';
@@ -630,13 +635,12 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
         // delivering our ping). Local takes precedence.
         const arpMap = await readLocalArp();
         for (const router of routers) {
-          try {
-            for (const a of await fetchArp(router, user, pass, timeoutMs)) {
-              const aip = (a['address'] ?? '').trim();
-              const amac = normMac(a['mac-address']);
-              if (aip && amac && !arpMap.has(aip)) arpMap.set(aip, amac);
-            }
-          } catch { /* skip a router that fails ARP */ }
+          // Reuse the ARP already fetched in Phase 1 — no extra router REST call.
+          for (const a of arpByRouter.get(router.ip) ?? []) {
+            const aip = (a['address'] ?? '').trim();
+            const amac = normMac(a['mac-address']);
+            if (aip && amac && !arpMap.has(aip)) arpMap.set(aip, amac);
+          }
         }
         // Resolve + store each alive host (parallelized — was sequential). ARP (L2)
         // only covers router-attached subnets; for the rest, fall back to nbtstat
