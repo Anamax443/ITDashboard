@@ -11,6 +11,7 @@ import { icmpPing } from './reachability-collector.js';
 import { pingWithOutput } from './port-status-collector.js';
 import { parseNbtstat } from './netbios-util.js';
 import { type ScanRange, maskOf, ipToInt, parseScanRanges, siteForIp, hostsOf } from './mikrotik-util.js';
+import { fetchFtpSite, type FtpSiteResult, type FtpLease, type FtpArp } from './mikrotik-ftp.js';
 
 // MikroTik DHCP lease collector. Pulls active leases from each configured
 // RouterOS v7 router via the REST API and upserts them into dhcp_leases.
@@ -44,7 +45,12 @@ function parseRouters(raw: string | undefined): Router[] {
 // Resolve the live collector config from Settings. Returns null when the
 // collector should NOT run (disabled or no routers configured). The password is
 // decrypted here so callers never see the ciphertext.
-interface MtConfig { routers: Router[]; user: string; pass: string; intervalSec: number; scanEnabled: boolean; scanRanges: ScanRange[]; ipscan: boolean; ipscanSec: number; }
+interface MtConfig { routers: Router[]; user: string; pass: string; intervalSec: number; scanEnabled: boolean; scanRanges: ScanRange[]; ipscan: boolean; ipscanSec: number; ftpEnabled: boolean; ftpSites: Set<string>; }
+
+// Sites (router names) whose router writes the export files we pull over FTP.
+function parseFtpSites(raw: string | undefined): Set<string> {
+  return new Set((raw ?? '').split(/[,;\r\n]+/).map((s) => s.trim()).filter(Boolean));
+}
 
 function resolveConfig(settings: SettingsMap): MtConfig | null {
   if (!boolSetting(settings['mikrotik.enabled'])) return null;
@@ -63,7 +69,11 @@ function resolveConfig(settings: SettingsMap): MtConfig | null {
   const ipscan = boolSetting(settings['mikrotik.ipscan'] ?? '1');
   const ds = Number(settings['mikrotik.ipscan_duration_sec']);
   const ipscanSec = Number.isFinite(ds) && ds >= 3 && ds <= 60 ? Math.floor(ds) : 10;
-  return { routers, user, pass, intervalSec, scanEnabled, scanRanges, ipscan, ipscanSec };
+  // FTP file source (IP_scan.txt + ARP_scan.txt) — ON by default, but only for
+  // the sites whose router actually produces the files (mikrotik.ftp_sites).
+  const ftpEnabled = boolSetting(settings['mikrotik.ftp_enabled'] ?? '1');
+  const ftpSites = parseFtpSites(settings['mikrotik.ftp_sites']);
+  return { routers, user, pass, intervalSec, scanEnabled, scanRanges, ipscan, ipscanSec, ftpEnabled, ftpSites };
 }
 
 // RouterOS REST lease object (only the fields we use; keys are dash-cased).
@@ -210,6 +220,43 @@ function arpToNorm(site: string, a: RawArp): NormDevice | null {
   const ip = (a['address'] ?? '').trim() || null;
   if (!ip) return null;
   return { site, mac, ip, host: null, server: null, comment: null, status: 'arp', dynamic: false, exp: null, rls: null, source: 'arp' };
+}
+
+// FTP file rows → NormDevice. The lease file is DHCP data (source 'dhcp'); ARP
+// rows are statically-addressed devices not in DHCP (source 'arp', dynamic=false).
+// The transport (FTP vs REST) isn't recorded in `source` — it's tracked per site
+// in site_data_status; both transports dedupe into the same (site, mac) row.
+function ftpLeaseToNorm(site: string, l: FtpLease): NormDevice {
+  return {
+    site, mac: normMac(l.mac), ip: l.ip, host: l.host, server: l.server, comment: null,
+    status: l.status, dynamic: l.dynamic, exp: l.exp, rls: l.lastSeen, source: 'dhcp',
+  };
+}
+function ftpArpToNorm(site: string, a: FtpArp): NormDevice {
+  return { site, mac: normMac(a.mac), ip: a.ip, host: null, server: null, comment: null, status: 'arp', dynamic: false, exp: null, rls: null, source: 'arp' };
+}
+
+// Persist a site's FTP pull outcome (file header timestamps, parsed counts, last
+// error) for the Phase-2 data-freshness / availability alert. Best-effort.
+async function recordSiteStatus(site: string, r: FtpSiteResult): Promise<void> {
+  try {
+    const pool = await getPool();
+    await pool.request()
+      .input('site', site).input('lt', r.leaseTime).input('at', r.arpTime)
+      .input('lc', r.leases.length).input('ac', r.arp.length)
+      .input('got', r.leaseTime || r.arpTime ? 1 : 0).input('err', r.error)
+      .query(`
+        MERGE site_data_status AS t USING (SELECT @site AS site) AS s ON t.site = s.site
+        WHEN MATCHED THEN UPDATE SET
+          lease_file_time = COALESCE(@lt, t.lease_file_time),
+          arp_file_time = COALESCE(@at, t.arp_file_time),
+          lease_count = @lc, arp_count = @ac,
+          fetched_at = CASE WHEN @got = 1 THEN SYSUTCDATETIME() ELSE t.fetched_at END,
+          last_error = @err, updated_at = SYSUTCDATETIME()
+        WHEN NOT MATCHED THEN INSERT (site, lease_file_time, arp_file_time, lease_count, arp_count, fetched_at, last_error)
+          VALUES (@site, @lt, @at, @lc, @ac, CASE WHEN @got = 1 THEN SYSUTCDATETIME() ELSE NULL END, @err);
+      `);
+  } catch { /* best-effort status; never block a collect */ }
 }
 
 // Clean a usable host name from an ip-scan row: NETBIOS short name (before the
@@ -627,6 +674,23 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
             const ip = (s['address'] ?? '').trim() || null;
             if (ip) byMac.set(mac, { site: router.site, mac, ip, host: scanName.get(mac) ?? null, server: null, comment: null, status: 'scan', dynamic: false, exp: null, rls: null, source: 'scan' });
           }
+        }
+        // FTP file source — pull IP_scan.txt + ARP_scan.txt for sites that produce
+        // them, merge by MAC (fill a still-missing name, add net-new statics the
+        // REST pull didn't have) and record the per-site freshness status. Never
+        // throws: a dead router / missing file becomes a recorded error.
+        if (cfg.ftpEnabled && cfg.ftpSites.has(router.site)) {
+          const ftp = await fetchFtpSite({ host: router.ip, user, pass }, { lease: 'IP_scan.txt', arp: 'ARP_scan.txt' });
+          for (const l of ftp.leases) {
+            const ex = byMac.get(normMac(l.mac));
+            if (ex) { if (!ex.host && l.host) ex.host = l.host; }
+            else byMac.set(normMac(l.mac), ftpLeaseToNorm(router.site, l));
+          }
+          for (const a of ftp.arp) {
+            if (!byMac.has(normMac(a.mac))) byMac.set(normMac(a.mac), ftpArpToNorm(router.site, a));
+          }
+          await recordSiteStatus(router.site, ftp);
+          if (ftp.error) errors.push(`${router.site} ftp: ${ftp.error}`);
         }
         for (const d of byMac.values()) await handleDevice(d);
       } catch (err) {
