@@ -90,27 +90,36 @@ jobs:
         # after the service starts. Fails the job if the running /version/sha
         # does not match the deployed commit short SHA or the browser UI root
         # is not serving HTML. This catches both stale binaries and missing
-        # frontend dist artefacts. Written in PowerShell — the old cmd batch
-        # false-failed on the quoted JSON SHA (`if "%ACTUAL%"=="..."` broke when a
-        # stray quote survived), marking healthy deploys as failed.
-        shell: powershell
+        # frontend dist artefacts. Kept as cmd (the runner enforces an AllSigned
+        # PowerShell policy, so an unsigned pwsh step can't run). The SHA match uses
+        # `findstr` to look for the expected SHA *inside* the /version/sha response,
+        # which avoids the cmd string-equality quote bug that false-failed before
+        # (`if "%ACTUAL%"=="..."` broke on the quoted JSON SHA).
         run: |
-          $expected = "${{ github.sha }}".Substring(0,7)
-          Write-Host "Expected SHA: $expected"
-          for ($i = 1; $i -le 15; $i++) {
-            $actual = ''
-            try { $actual = "$(Invoke-RestMethod -Uri 'http://127.0.0.1:4000/version/sha' -TimeoutSec 3)".Trim().Trim('"') } catch { }
-            Write-Host "Attempt $i: actual=$actual"
-            if ($actual -eq $expected) {
-              $root = ''
-              try { $root = (Invoke-WebRequest -Uri 'http://127.0.0.1:4000/' -TimeoutSec 3 -UseBasicParsing).Content } catch { }
-              if ($root -match 'root' -and $root -match '/assets/') {
-                Write-Host "SMOKE TEST OK - /version/sha matches $expected and / serves browser UI"
-                exit 0
-              }
-              Write-Host "SHA matched but / did not serve browser UI yet"
-            }
-            Start-Sleep -Seconds 2
-          }
-          Write-Host "SMOKE TEST FAILED: expected $expected, last actual=$actual"
-          exit 1
+          set EXPECTED=%GITHUB_SHA:~0,7%
+          echo Expected SHA: %EXPECTED%
+          set /a tries=0
+          :smokeretry
+          set /a tries+=1
+          curl -s --max-time 3 http://127.0.0.1:4000/version/sha 2^>nul | findstr /C:"%EXPECTED%" >nul
+          if not errorlevel 1 (
+            echo Attempt %tries%: SHA matched
+            curl -s --max-time 3 http://127.0.0.1:4000/ > "%RUNNER_TEMP%\itd-root.html"
+            findstr /C:"root" "%RUNNER_TEMP%\itd-root.html" >nul
+            if not errorlevel 1 (
+              findstr /C:"/assets/" "%RUNNER_TEMP%\itd-root.html" >nul
+              if not errorlevel 1 (
+                echo SMOKE TEST OK — /version/sha matches %EXPECTED% and / serves browser UI
+                exit /b 0
+              )
+            )
+            echo SHA matched but / did not serve browser UI yet
+          ) else (
+            echo Attempt %tries%: SHA not matching yet
+          )
+          if %tries% GEQ 15 (
+            echo SMOKE TEST FAILED after %tries% attempts: expected %EXPECTED%
+            exit /b 1
+          )
+          ping 127.0.0.1 -n 3 >nul
+          goto smokeretry
