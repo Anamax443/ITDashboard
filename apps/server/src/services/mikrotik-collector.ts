@@ -44,7 +44,7 @@ function parseRouters(raw: string | undefined): Router[] {
 // Resolve the live collector config from Settings. Returns null when the
 // collector should NOT run (disabled or no routers configured). The password is
 // decrypted here so callers never see the ciphertext.
-interface MtConfig { routers: Router[]; user: string; pass: string; intervalSec: number; scanEnabled: boolean; scanRanges: ScanRange[]; }
+interface MtConfig { routers: Router[]; user: string; pass: string; intervalSec: number; scanEnabled: boolean; scanRanges: ScanRange[]; ipscan: boolean; ipscanSec: number; }
 
 function resolveConfig(settings: SettingsMap): MtConfig | null {
   if (!boolSetting(settings['mikrotik.enabled'])) return null;
@@ -59,7 +59,11 @@ function resolveConfig(settings: SettingsMap): MtConfig | null {
   try { pass = enc ? decryptSecret(enc) : ''; } catch { pass = ''; }
   const n = Number(settings['mikrotik.interval_sec']);
   const intervalSec = Number.isFinite(n) && n >= 30 ? Math.floor(n) : 300;
-  return { routers, user, pass, intervalSec, scanEnabled, scanRanges };
+  // Router-side ip-scan (NETBIOS/DNS names) — ON by default; per-router /24 scan.
+  const ipscan = boolSetting(settings['mikrotik.ipscan'] ?? '1');
+  const ds = Number(settings['mikrotik.ipscan_duration_sec']);
+  const ipscanSec = Number.isFinite(ds) && ds >= 3 && ds <= 60 ? Math.floor(ds) : 10;
+  return { routers, user, pass, intervalSec, scanEnabled, scanRanges, ipscan, ipscanSec };
 }
 
 // RouterOS REST lease object (only the fields we use; keys are dash-cased).
@@ -97,6 +101,19 @@ interface RawArp {
   'disabled'?: string | boolean;
 }
 
+// RouterOS REST ip-scan result row (POST /rest/tool/ip-scan). Carries NETBIOS +
+// reverse-DNS names that lease/arp don't — and crucially the ROUTER runs the scan
+// from inside the subnet, so NetBIOS resolves (it's firewalled from the app
+// server), naming static printers/servers the lease/arp tables can't.
+interface RawIpScan {
+  '.section'?: string;
+  'address'?: string;
+  'mac-address'?: string;
+  'dns'?: string;
+  'netbios'?: string;
+  'snmp'?: string;
+}
+
 async function routerGet<T>(routerIp: string, path: string, user: string, pass: string, timeoutMs: number): Promise<T[]> {
   const auth = Buffer.from(`${user}:${pass}`).toString('base64');
   const ctrl = new AbortController();
@@ -121,6 +138,35 @@ function fetchLeases(router: Router, user: string, pass: string, timeoutMs: numb
 
 function fetchArp(router: Router, user: string, pass: string, timeoutMs: number): Promise<RawArp[]> {
   return routerGet<RawArp>(router.ip, '/rest/ip/arp', user, pass, timeoutMs);
+}
+
+async function routerPost<T>(routerIp: string, path: string, body: unknown, user: string, pass: string, timeoutMs: number): Promise<T[]> {
+  const auth = Buffer.from(`${user}:${pass}`).toString('base64');
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`http://${routerIp}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return Array.isArray(data) ? (data as T[]) : [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Active ip-scan ON the router for `durationSec`, scanning the /24 of the router's
+// own IP. The POST blocks for the duration, so its timeout is duration + a margin.
+function fetchIpScan(router: Router, user: string, pass: string, durationSec: number): Promise<RawIpScan[]> {
+  const oct = router.ip.split('.');
+  if (oct.length !== 4) return Promise.resolve([]);
+  const range = `${oct[0]}.${oct[1]}.${oct[2]}.0/24`;
+  return routerPost<RawIpScan>(router.ip, '/rest/tool/ip-scan',
+    { 'address-range': range, duration: String(durationSec) }, user, pass, durationSec * 1000 + 15000);
 }
 
 // Normalized device shape merged from all sources (DHCP lease / router ARP /
@@ -164,6 +210,17 @@ function arpToNorm(site: string, a: RawArp): NormDevice | null {
   const ip = (a['address'] ?? '').trim() || null;
   if (!ip) return null;
   return { site, mac, ip, host: null, server: null, comment: null, status: 'arp', dynamic: false, exp: null, rls: null, source: 'arp' };
+}
+
+// Clean a usable host name from an ip-scan row: NETBIOS short name (before the
+// "/WORKGROUP" domain part) first, else the reverse-DNS short host, else SNMP.
+function ipScanName(s: RawIpScan): string | null {
+  const nb = (s.netbios ?? '').trim();
+  if (nb) { const n = nb.split('/')[0]!.trim(); if (n) return n; }
+  const dns = (s.dns ?? '').trim().replace(/\.+$/, '');
+  if (dns) { const short = dns.split('.')[0]!.trim(); if (short) return short; }
+  const snmp = (s.snmp ?? '').trim();
+  return snmp || null;
 }
 
 // --- Device category suggestion (operator can override) ----------------------
@@ -530,11 +587,21 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
     const arpByRouter = new Map<string, RawArp[]>();
     for (const router of routers) {
       try {
-        const [rawLeases, rawArp] = await Promise.all([
+        const [rawLeases, rawArp, rawScan] = await Promise.all([
           fetchLeases(router, user, pass, timeoutMs),
           fetchArp(router, user, pass, timeoutMs).catch(() => [] as RawArp[]),
+          cfg.ipscan ? fetchIpScan(router, user, pass, cfg.ipscanSec).catch(() => [] as RawIpScan[]) : Promise.resolve([] as RawIpScan[]),
         ]);
         arpByRouter.set(router.ip, rawArp);
+        // Names the router-side ip-scan resolved (NETBIOS/DNS), keyed by MAC. The
+        // scan does several passes, so keep the first non-empty name per MAC.
+        const scanName = new Map<string, string>();
+        for (const s of rawScan) {
+          const mac = normMac(s['mac-address']);
+          if (!mac || scanName.has(mac)) continue;
+          const nm = ipScanName(s);
+          if (nm) scanName.set(mac, nm);
+        }
         const byMac = new Map<string, NormDevice>();
         for (const l of rawLeases) {
           const isBound = (l.status ?? '').toLowerCase() === 'bound';
@@ -546,6 +613,20 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
         for (const a of rawArp) {
           const d = arpToNorm(router.site, a);
           if (d && !byMac.has(d.mac)) byMac.set(d.mac, d);     // ARP-only = static, not in DHCP
+        }
+        // ip-scan: NAME any still-nameless device (static printers/servers the
+        // router can't name from lease/arp), and add net-new devices the scan saw
+        // but lease/arp missed. host_name COALESCE in upsert keeps a real DHCP name.
+        for (const s of rawScan) {
+          const mac = normMac(s['mac-address']);
+          if (!mac) continue;
+          const existing = byMac.get(mac);
+          if (existing) {
+            if (!existing.host) existing.host = scanName.get(mac) ?? null;
+          } else {
+            const ip = (s['address'] ?? '').trim() || null;
+            if (ip) byMac.set(mac, { site: router.site, mac, ip, host: scanName.get(mac) ?? null, server: null, comment: null, status: 'scan', dynamic: false, exp: null, rls: null, source: 'scan' });
+          }
         }
         for (const d of byMac.values()) await handleDevice(d);
       } catch (err) {
