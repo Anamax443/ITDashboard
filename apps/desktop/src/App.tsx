@@ -146,6 +146,19 @@ export function App() {
   // machine that is currently reachable (offline machines hold a stale state),
   // excluding services in that PC's per-PC exception list (deliberately ignored).
   const critTotal = criticalServices.length;
+  // ESET agent coverage: distinct machines with the ESET service RUNNING, split
+  // PC vs server (by os_version), each over its monitored total. Service is `ekrn`
+  // (also match efsw / ESET Management Agent / any "eset" display name).
+  const esetRe = /eset|ekrn|efsw|eraagent/i;
+  const esetPcSet = new Set<number>();
+  const esetSrvSet = new Set<number>();
+  for (const c of criticalServices) {
+    if (c.state !== 'Running' || !esetRe.test(`${c.service_name} ${c.display_name ?? ''}`)) continue;
+    if (/server/i.test(c.os_version ?? '')) esetSrvSet.add(c.computer_id); else esetPcSet.add(c.computer_id);
+  }
+  const esetManaged = computers.filter((c) => c.enabled && !c.excluded);
+  const esetSrvTotal = esetManaged.filter((c) => /server/i.test(c.os_version ?? '')).length;
+  const esetPcTotal = esetManaged.length - esetSrvTotal;
   const critDown = criticalServices.filter((c) =>
     c.state !== 'Running' && c.reachable !== false
     && !serviceMatchesExceptions(c.service_name, c.display_name, c.exceptions)).length;
@@ -320,6 +333,11 @@ export function App() {
             settings={settingsMap}
             criticalServicesDown={critDown}
             criticalServicesTotal={critTotal}
+            esetPcRunning={esetPcSet.size}
+            esetPcTotal={esetPcTotal}
+            esetSrvRunning={esetSrvSet.size}
+            esetSrvTotal={esetSrvTotal}
+            onClickEset={() => setView('critsvc')}
             onClickCriticalServices={() => { setCritInitialOnlyDown(true); setView('critsvc'); }}
             portsWithIssues={portsWithIssues}
             portsTotal={portsTotal}

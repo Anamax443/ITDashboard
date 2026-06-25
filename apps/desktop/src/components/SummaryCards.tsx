@@ -16,6 +16,11 @@ interface Props {
   criticalServicesDown?: number;
   criticalServicesTotal?: number;
   onClickCriticalServices?: () => void;
+  esetPcRunning?: number;
+  esetPcTotal?: number;
+  esetSrvRunning?: number;
+  esetSrvTotal?: number;
+  onClickEset?: () => void;
   portsWithIssues?: number;
   portsTotal?: number;
   onClickPorts?: () => void;
@@ -47,7 +52,7 @@ interface Props {
 }
 
 export function SummaryCards({
-  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, portsWithIssues = 0, portsTotal = 0, onClickPorts, printersOffline = 0, printersTotal = 0, onClickPrinters, degradedDevices = 0, devicesTotal = 0, onClickDegraded, devicesUnidentified = 0, onClickDevices, suppliesLow = 0, suppliesTotal = 0, onClickSupplies, perfSummary, inactiveStats,
+  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, esetPcRunning = 0, esetPcTotal = 0, esetSrvRunning = 0, esetSrvTotal = 0, onClickEset, portsWithIssues = 0, portsTotal = 0, onClickPorts, printersOffline = 0, printersTotal = 0, onClickPrinters, degradedDevices = 0, devicesTotal = 0, onClickDegraded, devicesUnidentified = 0, onClickDevices, suppliesLow = 0, suppliesTotal = 0, onClickSupplies, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
   onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
 }: Props) {
@@ -89,6 +94,11 @@ export function SummaryCards({
     : mss.downServices > 0
       ? `${mss.downServices} ${t('cards.svcMonitorDown')}${serviceAlertsEnabled ? '' : ` · ${t('cards.diskMonitorOff')}`}`
       : `${mss.monitoredPcs} ${t('cards.diskMonitorWatched')}${serviceAlertsEnabled ? '' : ` · ${t('cards.diskMonitorOff')}`}`;
+  // ESET coverage: how many machines have the ESET service RUNNING, split PC vs
+  // server, each over its monitored total (a gap = machines with no running ESET).
+  const esetTot = esetPcTotal + esetSrvTotal;
+  const esetRun = esetPcRunning + esetSrvRunning;
+  const esetGap = (esetPcTotal > 0 && esetPcRunning < esetPcTotal) || (esetSrvTotal > 0 && esetSrvRunning < esetSrvTotal);
   const tiles: { id: string; el: React.ReactElement }[] = [
     { id: 'critical', el: <Card label={`${t('cards.critical')} (${windowLabel})`} value={summary?.critical_24h ?? '—'} kind={!summary ? 'info' : summary.critical_24h > 0 ? 'critical' : 'ok'} onClick={summary && summary.critical_24h > 0 ? onClickCritical : undefined} /> },
     { id: 'errors', el: <Card label={`${t('cards.errors')} (${windowLabel})`} value={summary?.error_24h ?? '—'} kind={!summary ? 'info' : summary.error_24h > 0 ? 'error' : 'ok'} onClick={summary && summary.error_24h > 0 ? onClickError : undefined} /> },
@@ -107,6 +117,7 @@ export function SummaryCards({
     { id: 'supplies', el: <Card label={`🖨 ${t('cards.supplies')}`} value={suppliesTotal === 0 ? '—' : `${suppliesLow}/${suppliesTotal}`} sub={suppliesTotal === 0 ? t('cards.suppliesNone') : suppliesLow > 0 ? `${suppliesLow} ${t('cards.suppliesLow')}` : t('cards.suppliesOk')} kind={suppliesTotal === 0 ? 'info' : suppliesLow > 0 ? 'warning' : 'ok'} onClick={suppliesTotal > 0 ? onClickSupplies : undefined} /> },
     { id: 'slowBoot', el: <Card label={t('cards.slowBootShutdown')} value={perfSummary ? perfSummary.affected_pcs : '—'} sub={perfSummary ? `${perfSummary.total_events} event${perfSummary.total_events === 1 ? '' : 's'}` : undefined} kind={!perfSummary ? 'info' : perfSummary.affected_pcs > 0 ? 'warning' : 'ok'} onClick={perfSummary && perfSummary.affected_pcs > 0 ? onClickPerf : undefined} /> },
     { id: 'inactive', el: <Card label={inactiveStats ? `${t('cards.inactive')} (${inactiveStats.thresholdDays}d+)` : t('cards.inactive')} value={inactiveStats ? inactiveStats.enabledInactive + inactiveStats.disabledInactive : '—'} sub={inactiveStats ? t('cards.inactiveSub').replace('{enabled}', String(inactiveStats.enabledInactive)).replace('{disabled}', String(inactiveStats.disabledInactive)) : undefined} kind={!inactiveStats ? 'info' : (inactiveStats.enabledInactive + inactiveStats.disabledInactive) > 0 ? 'warning' : 'ok'} onClick={inactiveStats && (inactiveStats.enabledInactive + inactiveStats.disabledInactive) > 0 ? onClickInactive : undefined} /> },
+    { id: 'eset', el: <Card label={t('cards.eset')} value={`${esetRun}/${esetTot}`} sub={`PC ${esetPcRunning}/${esetPcTotal} · ${t('cards.esetSrv')} ${esetSrvRunning}/${esetSrvTotal}`} kind={esetTot === 0 ? 'info' : esetGap ? 'warning' : 'ok'} onClick={onClickEset} /> },
     { id: 'computers', el: <Card label={t('cards.computers')} value={`${enabledCount}/${total}`} kind="info" onClick={onClickComputers} /> },
   ];
 

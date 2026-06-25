@@ -94,19 +94,28 @@ export function ManagerSummaryPage({ settings = {} }: { settings?: Record<string
   const catRows = [...byCat.entries()].sort((a, b) => b[1] - a[1]);
   const catMax = Math.max(1, ...catRows.map(([, v]) => v));
 
-  // By branch (site): total + per key category + online/offline.
-  const sites = [...new Set(devices.map((d) => d.site).filter(Boolean))].sort() as string[];
-  const siteStat = sites.map((s) => {
-    const ds = devices.filter((d) => d.site === s);
-    return {
-      site: s,
-      total: ds.length,
-      pc: ds.filter((d) => d.category === 'pc').length,
-      printer: ds.filter((d) => d.category === 'printer').length,
-      online: ds.filter((d) => reachOf(d) === true).length,
-      offline: ds.filter((d) => reachOf(d) === false).length,
-    };
+  // By branch (site): we have only these four real branches. Everything else
+  // (UniFi / unresolved "?" / VLAN labels) is rolled into "Ostatní" so the table
+  // still reconciles with the totals instead of hiding devices.
+  const BRANCHES: { key: string; label: string }[] = [
+    { key: 'brno', label: 'Brno' }, { key: 'zastavka', label: 'Zastávka' },
+    { key: 'svitavy', label: 'Svitavy' }, { key: 'jihlava', label: 'Jihlava' },
+  ];
+  const branchKey = (s: string | null) => (s ?? '').trim().toLowerCase();
+  const mkStat = (label: string, ds: DeviceItem[]) => ({
+    site: label,
+    total: ds.length,
+    pc: ds.filter((d) => d.category === 'pc').length,
+    printer: ds.filter((d) => d.category === 'printer').length,
+    online: ds.filter((d) => reachOf(d) === true).length,
+    offline: ds.filter((d) => reachOf(d) === false).length,
   });
+  const siteStat = BRANCHES
+    .map((b) => mkStat(b.label, devices.filter((d) => branchKey(d.site) === b.key)))
+    .filter((s) => s.total > 0);
+  const branchCount = siteStat.length;
+  const otherDevs = devices.filter((d) => !BRANCHES.some((b) => b.key === branchKey(d.site)));
+  if (otherDevs.length > 0) siteStat.push(mkStat('Ostatní', otherDevs));
 
   // Printers + supplies.
   const printerDevices = devices.filter((d) => d.category === 'printer');
@@ -128,6 +137,12 @@ export function ManagerSummaryPage({ settings = {} }: { settings?: Record<string
   const diskSum = summarizeDisks(disks, parseDiskThresholds(settings));
   const diskCrit = diskSum.criticalPcs;
   const diskWarn = diskSum.warningPcs;
+
+  // OS breakdown over the managed fleet (W11 / W10 / Server / other).
+  const osCount = (re: RegExp) => managed.filter((c) => re.test(c.os_version ?? '')).length;
+  const osW11 = osCount(/windows 11/i);
+  const osW10 = osCount(/windows 10/i);
+  const osOther = managed.length - osW11 - osW10 - servers;
 
   const totalEquip = equip.length;
   const now = new Date().toLocaleString('cs-CZ');
@@ -185,7 +200,7 @@ export function ManagerSummaryPage({ settings = {} }: { settings?: Record<string
           <Kpi label={t('summary.equipCount')} value={totalEquip} />
           <Kpi label="PC / notebook" value={pcs} />
           <Kpi label="Tiskárny" value={printerDevices.length} />
-          <Kpi label={t('summary.sites')} value={sites.length} />
+          <Kpi label={t('summary.sites')} value={branchCount} />
         </div>
         <div className="mr-strip">
           <span className="mr-pill"><b>Server</b> {servers}</span>
@@ -194,6 +209,14 @@ export function ManagerSummaryPage({ settings = {} }: { settings?: Record<string
         </div>
         <div style={{ marginTop: 10 }}>
           {catRows.map(([k, v]) => <BarRow key={k} label={catLabel(k)} value={v} max={catMax} />)}
+        </div>
+
+        <h2>{t('summary.os')}</h2>
+        <div className="mr-kpis">
+          <Kpi label="Windows 11" value={osW11} />
+          <Kpi label="Windows 10" value={osW10} tone={osW10 ? 'warn' : undefined} />
+          <Kpi label="Server" value={servers} />
+          <Kpi label={t('summary.osOther')} value={osOther} tone={osOther ? 'warn' : undefined} />
         </div>
 
         <h2>{t('summary.bySite')}</h2>
