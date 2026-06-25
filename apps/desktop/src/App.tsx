@@ -18,6 +18,7 @@ import { ServicesPage } from './pages/ServicesPage.js';
 import { CriticalServicesPage } from './pages/CriticalServicesPage.js';
 import { PortsPage } from './pages/PortsPage.js';
 import { DevicesPage } from './pages/DevicesPage.js';
+import { ManagerSummaryPage } from './pages/ManagerSummaryPage.js';
 import { PrinterSuppliesPage } from './pages/PrinterSuppliesPage.js';
 import { DatabasePage } from './pages/DatabasePage.js';
 import { PerfPage } from './pages/PerfPage.js';
@@ -28,7 +29,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'deviceprinters' | 'printers' | 'database' | 'perf' | 'activity' | 'settings';
+type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'deviceprinters' | 'printers' | 'database' | 'perf' | 'activity' | 'settings';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -227,6 +228,7 @@ export function App() {
           >ITDashboard</h1>
           <div className="nav">
             <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>{t('nav.dashboard')}</button>
+            <button className={view === 'summary' ? 'active' : ''} onClick={() => setView('summary')}>{t('nav.summary')}</button>
             <button className={view === 'events' ? 'active' : ''} onClick={() => setView('events')}>{t('nav.events')}</button>
             <button className={view === 'computers' ? 'active' : ''} onClick={() => setView('computers')}>{t('nav.computers')}</button>
             <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>{t('nav.services')}</button>
@@ -407,6 +409,12 @@ export function App() {
       {view === 'critsvc' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <CriticalServicesPage onJumpToComputer={jumpToComputer} initialOnlyDown={critInitialOnlyDown} onOnlyDownConsumed={() => setCritInitialOnlyDown(false)} />
+        </div>
+      )}
+
+      {view === 'summary' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <ManagerSummaryPage settings={settingsMap} />
         </div>
       )}
 
