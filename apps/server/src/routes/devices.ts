@@ -69,7 +69,30 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
                    WHEN l.source = 'share' AND LOWER(c.name) = LOWER(l.comment) THEN 0
                    ELSE 1 END, c.name
       ) m
-      ORDER BY l.site, l.ip_address
+
+      UNION ALL
+
+      -- DB IDENTITIES not currently observed: a device the operator identified
+      -- (confirmed category) whose live lease/scan/share row is gone. "The info is
+      -- in the DB" — so we still SHOW it (offline, last-known IP/site from the IP
+      -- archive) and it stays counted, instead of vanishing. pc/server are excluded
+      -- (those AD machines live in the Computers tab); printers / IoT / phones /
+      -- network gear — the real equipment — are what we surface here.
+      SELECT COALESCE(h.site, N'?') AS site, dc.mac_address, h.ip_address,
+             NULL, NULL, NULL, N'identity', NULL, N'db', NULL, NULL, h.last_seen,
+             CAST(0 AS BIT), NULL, NULL, NULL,
+             dc.category, dc.name, dc.note,
+             NULL, NULL, NULL, NULL,
+             (SELECT COUNT(*) FROM device_ip_history h2 WHERE h2.mac_address = dc.mac_address)
+      FROM device_categories dc
+      OUTER APPLY (
+        SELECT TOP 1 ip_address, site, last_seen
+        FROM device_ip_history WHERE mac_address = dc.mac_address ORDER BY last_seen DESC
+      ) h
+      WHERE dc.category IS NOT NULL AND dc.category NOT IN (N'', N'pc', N'server')
+        AND NOT EXISTS (SELECT 1 FROM dhcp_leases l2 WHERE l2.mac_address = dc.mac_address)
+
+      ORDER BY site, ip_address
     `);
     // `suggested` is a UI pre-select hint: a device matched to an AD computer is
     // pre-selected pc/server from its AD os_version (we already know the type);
