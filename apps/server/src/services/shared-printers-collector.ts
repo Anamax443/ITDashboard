@@ -99,21 +99,32 @@ async function upsertShare(site: string, pcName: string, ip: string | null, prin
   return mac;
 }
 
+// A share row is NEVER auto-deleted once the operator has IDENTIFIED it (confirmed
+// a category / name / note) — "identify once, keep it, just show state". So a
+// printer the operator marked stays in the inventory (and the printer count) even
+// when net view momentarily returns nothing (printer off / unshared / host busy);
+// only anonymous, never-confirmed share rows are pruned as genuine removals.
+const KEEP_IF_IDENTIFIED = `AND NOT EXISTS (
+  SELECT 1 FROM device_categories dc WHERE dc.mac_address = dhcp_leases.mac_address
+    AND ((dc.category IS NOT NULL AND dc.category <> '')
+      OR (dc.name IS NOT NULL AND dc.name <> '')
+      OR (dc.note IS NOT NULL AND dc.note <> '')))`;
+
 // After a SUCCESSFUL net view, drop this PC's share rows that are no longer shared
-// (genuine removal). Never called when net view failed, so an offline PC keeps its
-// last-known shares.
+// AND were never operator-identified. Never called when net view failed, so an
+// offline PC keeps its last-known shares regardless.
 async function pruneStaleShares(pcName: string, site: string, keepMacs: string[]): Promise<void> {
   const pool = await getPool();
   // Drop every share row for this PC EXCEPT the ones just upserted at the current
   // site — so a row left at an old/changed site (e.g. the legacy 'USB' label) is
-  // removed instead of duplicating the printer.
+  // removed instead of duplicating the printer. Identified rows are always kept.
   const req = pool.request().input('pc', pcName).input('site', site);
   if (keepMacs.length === 0) {
-    await req.query(`DELETE FROM dhcp_leases WHERE comment = @pc AND source = 'share'`);
+    await req.query(`DELETE FROM dhcp_leases WHERE comment = @pc AND source = 'share' ${KEEP_IF_IDENTIFIED}`);
     return;
   }
   const params = keepMacs.map((m, i) => { req.input(`k${i}`, m); return `@k${i}`; });
-  await req.query(`DELETE FROM dhcp_leases WHERE comment = @pc AND source = 'share' AND NOT (site = @site AND mac_address IN (${params.join(',')}))`);
+  await req.query(`DELETE FROM dhcp_leases WHERE comment = @pc AND source = 'share' AND NOT (site = @site AND mac_address IN (${params.join(',')})) ${KEEP_IF_IDENTIFIED}`);
 }
 
 export interface SharedPrintersRunResult { pcs: number; probed: number; printers: number; durationMs: number; }

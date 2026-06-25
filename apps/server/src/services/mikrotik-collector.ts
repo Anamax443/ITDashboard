@@ -726,7 +726,14 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
           DELETE FROM dhcp_leases OUTPUT 1 AS n
           WHERE last_seen < DATEADD(DAY, -@days, SYSUTCDATETIME())
             AND (reach_checked_at IS NULL OR reach_checked_at < DATEADD(DAY, -@days, SYSUTCDATETIME()))
-            AND (last_reachable_at IS NULL OR last_reachable_at < DATEADD(DAY, -@days, SYSUTCDATETIME()));
+            AND (last_reachable_at IS NULL OR last_reachable_at < DATEADD(DAY, -@days, SYSUTCDATETIME()))
+            -- Never prune a device the operator has IDENTIFIED (category / name /
+            -- note): once identified it stays in the inventory, shown offline.
+            AND NOT EXISTS (
+              SELECT 1 FROM device_categories dc WHERE dc.mac_address = dhcp_leases.mac_address
+                AND ((dc.category IS NOT NULL AND dc.category <> '')
+                  OR (dc.name IS NOT NULL AND dc.name <> '')
+                  OR (dc.note IS NOT NULL AND dc.note <> '')));
         `);
         pruned = r.recordset.length;
       } catch { /* pruning is best-effort; never block a collect */ }
