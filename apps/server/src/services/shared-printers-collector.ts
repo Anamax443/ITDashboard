@@ -129,6 +129,45 @@ async function pruneStaleShares(pcName: string, site: string, keepMacs: string[]
   await req.query(`DELETE FROM dhcp_leases WHERE comment = @pc AND source = 'share' AND NOT (site = @site AND mac_address IN (${params.join(',')})) ${KEEP_IF_IDENTIFIED}`);
 }
 
+// Self-healing cleanup of LEGACY IP-keyed share rows. Before host-name keying
+// (commit 6da9910) a shared printer was keyed by its host's IP, so every host IP
+// change spawned a duplicate printer. Those old `SHR-<ip>-<hash>` rows never refresh
+// again (the collector now only writes `SHR-<hostname>-<hash>`, no dot in the key),
+// so they linger as ghosts that inflate the printer count. A legacy row is identified
+// purely by a dot in its key segment. Remove one once its modern sibling (same site +
+// printer name) exists — migrating any operator identity to that sibling first — or
+// whenever the legacy row was never operator-identified anyway. An identified legacy
+// row with no modern sibling yet (its printer is currently offline) is KEPT until the
+// host reappears, so we never drop the sole record of a real printer.
+async function dedupeLegacyShareKeys(): Promise<void> {
+  const pool = await getPool();
+  // 1) Move operator identity (category/name/note) from a legacy row onto its modern
+  //    host-name sibling when that sibling carries no identity of its own.
+  await pool.request().query(`
+    UPDATE dc SET mac_address = m.mac_address
+    FROM device_categories dc
+    JOIN dhcp_leases legacy ON legacy.mac_address = dc.mac_address
+      AND legacy.source = 'share' AND legacy.mac_address LIKE 'SHR-%.%'
+    JOIN dhcp_leases m ON m.source = 'share'
+      AND m.mac_address LIKE 'SHR-%' AND m.mac_address NOT LIKE 'SHR-%.%'
+      AND m.site = legacy.site AND m.host_name = legacy.host_name
+    WHERE NOT EXISTS (SELECT 1 FROM device_categories d2 WHERE d2.mac_address = m.mac_address)`);
+  // 2) Drop legacy IP-keyed share rows that now have a modern sibling, or that were
+  //    never operator-identified. Keep identified-but-orphaned ones (printer offline).
+  await pool.request().query(`
+    DELETE legacy FROM dhcp_leases legacy
+    WHERE legacy.source = 'share' AND legacy.mac_address LIKE 'SHR-%.%'
+      AND (
+        EXISTS (SELECT 1 FROM dhcp_leases m WHERE m.source = 'share'
+                  AND m.mac_address LIKE 'SHR-%' AND m.mac_address NOT LIKE 'SHR-%.%'
+                  AND m.site = legacy.site AND m.host_name = legacy.host_name)
+        OR NOT EXISTS (SELECT 1 FROM device_categories dc WHERE dc.mac_address = legacy.mac_address
+                  AND ((dc.category IS NOT NULL AND dc.category <> '')
+                    OR (dc.name IS NOT NULL AND dc.name <> '')
+                    OR (dc.note IS NOT NULL AND dc.note <> '')))
+      )`);
+}
+
 export interface SharedPrintersRunResult { pcs: number; probed: number; printers: number; durationMs: number; }
 
 export async function runSharedPrintersOnce(): Promise<SharedPrintersRunResult | null> {
@@ -164,6 +203,7 @@ export async function runSharedPrintersOnce(): Promise<SharedPrintersRunResult |
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targets.length || 1) }, worker));
+    await dedupeLegacyShareKeys(); // retire pre-6da9910 IP-keyed duplicate printers
     const durationMs = Date.now() - t0;
     logActivity('info', 'shared-printers',
       `Shared printers: ${printers} on ${probed}/${targets.length} reachable PC(s) (${(durationMs / 1000).toFixed(1)}s)`);
