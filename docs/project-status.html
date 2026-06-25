@@ -42,7 +42,7 @@
 <body>
 <main>
   <h1>ITDashboard <span class="badge live">LIVE</span></h1>
-  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-22</span> <span class="pill">commit e3838a5</span></p>
+  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-25</span> <span class="pill">commit b370537</span></p>
 
   <h2>Stav nasazení</h2>
   <div class="grid">
@@ -74,7 +74,7 @@
     <li><strong>Klasifikace dostupnosti</strong> — každý běh: online / offline / rpc_unavailable / access_denied.</li>
     <li><strong>Activity log</strong> — terminálový live view (filtr, pauza, copy) + perzistentní historie.</li>
     <li><strong>Porty</strong> — záložka s živou mřížkou dostupnosti nakonfigurovaných TCP portů per stroj (otevřeno/zavřeno + latence); sonda na pozadí, ruční obnova a per-řádek živý ping (konzolové okno).</li>
-    <li><strong>Zařízení (Devices)</strong> — víceztrojový inventář slučovaný podle MAC ze tří zdrojů (sloupec <code>source</code> = dhcp/arp/scan): MikroTik DHCP (dynamické leasy + statické rezervace), ARP tabulka routerů a aktivní sken podsítí z aplikačního serveru. Konfigurovatelné rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť); discovery cache; vzdálené podsítě přes router ARP. Párováno s AD počítači podle hostname/IP; per-zařízení kategorie s auto-návrhem a operátorem editovatelný název (dle MAC).</li>
+    <li><strong>Zařízení (Devices)</strong> — víceztrojový inventář slučovaný podle MAC (sloupec <code>source</code> = dhcp/arp/scan/unifi/share): MikroTik DHCP (dynamické leasy + statické rezervace), ARP tabulka routerů, aktivní sken podsítí z aplikačního serveru, UniFi kontrolér a sdílené/USB tiskárny. Identita na každý router tahá <strong>tři REST zdroje</strong>: <code>GET /rest/ip/dhcp-server/lease</code>, <code>GET /rest/ip/arp</code> a nově <code>POST /rest/tool/ip-scan</code> (aktivní sken běžící <em>na routeru</em> → NETBIOS + reverzní DNS + SNMP jména zevnitř podsítě). Konfigurovatelné rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť); discovery cache; vzdálené podsítě přes router ARP. Párováno s AD počítači podle hostname/IP; per-zařízení kategorie s auto-návrhem a operátorem editovatelný název (dle MAC).</li>
     <li><strong>Rozlišení názvů + auto-návrh tiskáren</strong> — NetBIOS (<code>nbtstat</code>) rozlišení názvu zařízení → auto-návrh tiskáren podle prefixů (NPI/BRN/BRW/RNP/KMBT); operátorem editovatelný název zařízení dle MAC. Sloupec „Type" (statický/dynamický), AD-odvozený předvýběr pc/server, generická kategorie „Printer", operátorem konfigurovatelné kategorie.</li>
     <li><strong>Packet loss + latence per zařízení</strong> — kompaktní sloupec <code>ms / %</code> (např. <code>&lt;5/0</code>) se ztrátovostí a průměrnou latencí; laditelné prahy „problému"; dlaždice „Loss / latence" na homepage + filtr „jen problémy".</li>
     <li><strong>Email alerty tiskáren</strong> — agenda upozornění na offline tiskárny; dlaždice „Tiskárny" na homepage; proklik z IP tiskárny na webové UI se serverovým proxy obcházejícím certifikát (nově zapnuto defaultně).</li>
@@ -101,6 +101,28 @@
     <tr><td>Sken podsítí (Devices)</td><td>Settings → rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť). Aktivní sken běží z aplikačního serveru; vzdálené podsítě přes ARP routerů. Nic v <code>.env</code>.</td></tr>
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
+
+  <h2>Poslední změny (2026-06-25) — záložka Souhrn, ip-scan na routeru, host-name klíč tiskáren</h2>
+  <p class="sub" style="margin:0 0 .75rem">Manažerská <strong>záložka Souhrn</strong> („na poradu"), <strong>třetí REST zdroj identity</strong> na router (ip-scan běžící na routeru) a oprava duplicit sdílených tiskáren. Živý commit <span class="pill">b370537</span>.</p>
+
+  <p style="margin:0 0 4px"><strong>Záložka „Souhrn" — manažerský report na poradu</strong> <span class="pill">b370537</span></p>
+  <ul>
+    <li>Nová záložka v menu <strong>hned za Dashboardem</strong>, vykreslená jako <strong>samostatný bílý dokument</strong> (firemní styl: modrý akcent <code>#1d4ed8</code>, Segoe UI, KPI dlaždice + vodorovné pruhy), <strong>nezávislý na tmavém motivu aplikace</strong> — Tisk/PDF i uložené HTML vyjdou vždy čistě.</li>
+    <li>Dvě tlačítka — <strong>„Tisk / PDF"</strong> a <strong>„Uložit HTML"</strong> — serializují <strong>tentýž dokument</strong>; Uložit HTML stáhne samostatný UTF-8 <code>.html</code> snapshot pro e-mail / archivaci.</li>
+    <li>Čtyři bloky: (1) <strong>vybavení celkem + podle kategorií</strong> (telefony vyloučené — náhodná MAC), (2) <strong>podle poboček</strong> (počet, PC, tiskárny, online, offline), (3) <strong>tiskárny</strong> (stav + náplně: celkem/offline/dochází/prázdné), (4) <strong>zdraví PC flotily</strong> (spravované, online, offline, PC v problémech, disky kritické+varování, neaktivní, vypnuté).</li>
+    <li>Zařízení s potvrzenou kategorií, která zrovna nejsou vidět, se stále zobrazují (offline, poslední známá IP), takže součty odrážejí identitu parku; telefony vyloučené.</li>
+  </ul>
+
+  <p style="margin:8px 0 4px"><strong>Třetí REST zdroj identity na router — <code>tool/ip-scan</code></strong> <span class="pill">b370537</span></p>
+  <ul>
+    <li>Sběr identity zařízení tahá na každý MikroTik <strong>tři REST zdroje</strong> (dříve dva): <code>GET /rest/ip/dhcp-server/lease</code> (DHCP leasy), <code>GET /rest/ip/arp</code> (IP+MAC vč. statických mimo DHCP) a nově <code>POST /rest/tool/ip-scan</code> — <strong>aktivní sken běžící na routeru</strong> přes jeho vlastní /24, vracející <strong>NETBIOS + reverzní DNS + SNMP</strong> jména. Protože ho spouští router zevnitř podsítě, NetBIOS se vyřeší (z aplikačního serveru <code>.213</code> je blokovaný), takže statické tiskárny/servery konečně dostanou reálná jména. Bezejmenná zařízení se pojmenují podle MAC (reálné DHCP jméno vždy vyhrává). Řízeno přes <code>mikrotik.ipscan</code> (výchozí ZAP) a <code>mikrotik.ipscan_duration_sec</code> (výchozí 10 s); read-only účet <code>dhcp-reader</code> má povoleno POST ip-scan.</li>
+    <li><strong>Poctivá výhrada:</strong> ip-scan dá jména jen tam, kde je síť publikuje. Brněnský router (CHR) vrací ~256 NETBIOS + ~53 DNS jmen; pobočkové routery (Zastávka/Svitavy/Jihlava, hEX) vrací IP+MAC, ale <strong>0 NETBIOS / 0 DNS</strong> — pobočková PC mají vypnutý NetBIOS přes TCP/IP a interní DNS nemá reverzní (PTR) zóny pro podsítě <code>10.10.18x.x</code>. Pojmenování by vyžadovalo PTR zóny na DC, zapnutí SNMP na tiskárnách, nebo ruční/AD pojmenování. Plný rozbor v <code>docs/nacitani-mac-hostname.html</code>.</li>
+  </ul>
+
+  <p style="margin:8px 0 4px"><strong>Sdílené / USB tiskárny klíčované podle jména hostitele</strong> <span class="pill">b370537</span></p>
+  <ul>
+    <li>Sdílené/USB tiskárny se nově klíčují podle <strong>jména hostitele</strong> (ne podle jeho IP), takže změna DHCP IP hostitele už tiskárnu nezduplikuje; staré IP-klíčované duplicitní řádky se <strong>automaticky uklidí</strong> (identita se přenese na klíč podle jména). Reálný počet tiskáren je teď přesný.</li>
+  </ul>
 
   <h2>Poslední změny (2026-06-22/23) — UniFi zdroj, dlouhodobá ztrátovost, identita, údržba</h2>
   <p class="sub" style="margin:0 0 .75rem">Zařízeníová platforma dostala <strong>čtvrtý živý zdroj (UniFi)</strong> a sadu oprav správnosti/identity. Migrace <strong>052–054</strong>. <strong>112 testů.</strong> Konvence: vše in-process na aplikačním serveru, žádné IP/secrety v repu, push do main bez autorizace.</p>
@@ -399,7 +421,7 @@
     <a href="SETUP-SERVER.md">SETUP-SERVER.md</a> ·
     <a href="../HANDOFF.md">HANDOFF.md</a> ·
     <a href="../README.md">README.md</a><br>
-    Generováno jako statický status snapshot — 2026-06-17 (commit e456fd0).<br>
+    Generováno jako statický status snapshot — 2026-06-25 (commit b370537).<br>
     © 2026 Milan Trnka, IT
   </footer>
 </main>

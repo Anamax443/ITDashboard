@@ -43,124 +43,150 @@
 <div class="wrap">
 
   <h1>Načítání MAC a hostname u skenovaných zařízení</h1>
-  <p class="sub">ITDashboard · Devices (síťový inventář) · stav k 22. 6. 2026 · živé ověřeno na nasazení <code>17f1bb0</code></p>
+  <p class="sub">ITDashboard · Devices (síťový inventář) · stav k 25. 6. 2026 · živé ověřeno na nasazení <code>b370537</code></p>
 
   <div class="panel">
-    <b>Shrnutí jednou větou:</b> aktivní sken teď <span class="ok">vidí všechny živé stroje</span>
-    (i vzdálené lokality — Svitavy, Jihlava, 10.8.3, 10.181.3), ale u zařízení mimo AD a mimo
-    routery se zatím <b>nenačítá MAC ani hostname</b>. Jediný funkční kanál identity přes subnety
-    z aplikačního serveru <code>10.8.2.213</code> je <b>SNMP</b> — a ten je
-    <span class="ok">prokazatelně otevřený</span> (čtou se přes něj náplně tiskáren). Proto se
-    MAC i hostname dají doplnit <b>bez zásahu do firewallu</b>, jen vývojem (SNMP enrichment).
+    <b>Shrnutí jednou větou:</b> identita zařízení teď tahá <b>tři REST zdroje na každý router</b> —
+    DHCP leasy, ARP a nově <b>aktivní <code>tool/ip-scan</code> běžící <span class="ok">přímo na routeru</span></b>,
+    který zevnitř podsítě vyřeší NETBIOS + reverzní DNS + SNMP jména. Tím <span class="ok">statické tiskárny
+    a servery konečně dostávají reálná jména</span> — ale jen tam, <b>kde je síť publikuje</b>. Na brněnském
+    routeru to funguje skvěle (~256 NETBIOS + ~53 DNS jmen); na pobočkových routerech (Svitavy, Jihlava,
+    Zastávka) ip-scan vrací IP+MAC, ale <span class="warn">0 NETBIOS a 0 DNS</span> — pobočková PC mají
+    vypnutý NetBIOS přes TCP/IP a interní DNS nemá reverzní (PTR) zóny pro <code>10.10.18x.x</code>. Pobočková
+    statická zařízení tak přes síť <b>zůstávají bezejmenná</b>; doplnit je lze jen PTR zónami na DC,
+    zapnutím SNMP na tiskárnách, nebo ručním / AD pojmenováním.
   </div>
 
   <h2>1) Současný stav</h2>
   <ul>
-    <li>Aktivní sken pingne celé nakonfigurované rozsahy a živé hosty ukládá do inventáře.
-      Po zapnutí ukládání „bez MAC" stoupl počet z <b>251 → 329</b> zařízení a <code>scanned</code>
-      z <code>1</code> na <code>79</code> za cyklus.</li>
-    <li>Počítače v doméně se <span class="ok">párují podle IP na AD</span> → ukazují jméno a stav
+    <li>Identita se na každý router tahá ze <b>tří REST zdrojů</b>:
+      <span class="mono">GET /rest/ip/dhcp-server/lease</span> (DHCP leasy — jména + statická/dynamická),
+      <span class="mono">GET /rest/ip/arp</span> (IP+MAC, i statická zařízení mimo DHCP) a
+      <span class="mono">POST /rest/tool/ip-scan</span> (nově — aktivní sken běžící <b>na routeru</b>).</li>
+    <li><b>ip-scan na routeru</b> řízený přes Nastavení <span class="mono">mikrotik.ipscan</span>
+      (výchozí ZAP) a <span class="mono">mikrotik.ipscan_duration_sec</span> (výchozí 10 s);
+      read-only účet <span class="mono">dhcp-reader</span> má povoleno POST ip-scan. Každé
+      stále bezejmenné zařízení se pojmenuje podle MAC (reálné DHCP jméno hostitele vždy vyhrává).</li>
+    <li>Aktivní sken z aplikačního serveru pingne celé nakonfigurované rozsahy a živé hosty ukládá
+      do inventáře — vidí všechny živé stroje (i vzdálené lokality — Svitavy, Jihlava, 10.8.3, 10.181.3).</li>
+    <li>Počítače v doméně se <span class="ok">párují podle IP/hostname na AD</span> → ukazují jméno a stav
       automaticky (SVITAVY*, JIHLAVA*, …).</li>
-    <li>Zařízení mimo AD a mimo dosah routerů (tiskárny, brány) jsou vedená <b>jen podle IP</b> —
-      ve sloupci MAC mají <code>—</code> a nemají hostname. Příklad:
+    <li><b>Brno (CHR router):</b> ip-scan vrací <span class="ok">~256 NETBIOS + ~53 DNS jmen</span> →
+      statické tiskárny a servery zde dostávají reálná jména.</li>
+    <li><b>Pobočky (hEX routery — Svitavy / Jihlava / Zastávka):</b> ip-scan vrací IP+MAC, ale
+      <span class="warn">0 NETBIOS a 0 DNS</span> → statická zařízení mimo AD (tiskárny, brány) zůstávají
+      vedená <b>jen podle MAC/IP</b> bez síťově zjištěného jména. Příklad:
       <span class="mono">10.90.182.250 (HP LJ426)</span>, <span class="mono">10.90.182.5 (Brother 2802DW)</span>.</li>
   </ul>
 
-  <h2>2) Proč MAC / hostname chybí</h2>
+  <h2>2) Kanály identity a odkud běží</h2>
+  <p class="sub" style="margin:0 0 10px">Klíčový posun: NetBIOS i reverzní DNS teď neběží z aplikačního
+    serveru <code>.213</code>, ale <b>z routeru</b> přes <code>tool/ip-scan</code> — router je <em>uvnitř</em>
+    podsítě, takže to, co je z <code>.213</code> blokované, se z routeru vyřeší. Ale jen tam, kde to síť
+    vůbec publikuje.</p>
   <table>
-    <tr><th>Kanál</th><th>Co dává</th><th>Funguje z <code>.213</code>?</th></tr>
+    <tr><th>Kanál</th><th>Co dává</th><th>Kde běží / stav</th></tr>
     <tr>
-      <td><b>ARP</b> (L2)</td>
+      <td><b>DHCP lease</b> (<code>/rest/ip/dhcp-server/lease</code>)</td>
+      <td>jméno hostitele + statická/dynamická</td>
+      <td><span class="badge b-ok">FUNGUJE</span> Na routeru. Reálné DHCP jméno je nejsilnější zdroj jména.</td>
+    </tr>
+    <tr>
+      <td><b>ARP</b> (<code>/rest/ip/arp</code>, L2)</td>
       <td>MAC</td>
-      <td><span class="badge b-crit">jen lokálně</span> ARP má jen router <b>přímo připojený</b> na daný subnet. Svitavy/Jihlava routuje jejich lokální MikroTik, který v konfiguraci není.</td>
+      <td><span class="badge b-ok">FUNGUJE</span> Na routeru. Zachytí i statická zařízení mimo DHCP na daném subnetu.</td>
     </tr>
     <tr>
-      <td><b>NetBIOS</b> (<code>nbtstat</code>, UDP 137)</td>
-      <td>MAC + hostname</td>
-      <td><span class="badge b-crit">blokováno</span> Z pracovní stanice <code>.181</code> funguje, z <code>.213</code> ne — UDP 137 je v cestě serveru zafiltrovaný.</td>
+      <td><b>ip-scan → NETBIOS</b> (<code>/rest/tool/ip-scan</code>)</td>
+      <td>hostname (+ nepřímo MAC)</td>
+      <td><span class="badge b-ok">Brno</span> / <span class="badge b-warn">pobočky</span> Běží <b>na routeru</b> zevnitř podsítě (z <code>.213</code> je NetBIOS blokovaný). Brno ~256 jmen; pobočky <b>0</b> — PC mají vypnutý NetBIOS přes TCP/IP.</td>
     </tr>
     <tr>
-      <td><b>SNMP</b> (UDP 161)</td>
-      <td>hostname (<code>sysName</code>) + model (<code>sysDescr</code>) + <b>MAC</b> (<code>ifPhysAddress</code>)</td>
-      <td><span class="badge b-ok">FUNGUJE</span> Ověřeno živě — přes SNMP se z <code>.213</code> čtou náplně Svitavských tiskáren (online · 6 % / 69 %), takže port 161 je otevřený.</td>
+      <td><b>ip-scan → reverzní DNS</b> (PTR)</td>
+      <td>hostname</td>
+      <td><span class="badge b-ok">Brno</span> / <span class="badge b-warn">pobočky</span> Brno ~53 jmen; pobočky <b>0</b> — interní DNS nemá PTR zóny pro <code>10.10.18x.x</code>.</td>
     </tr>
     <tr>
-      <td><b>AD párování</b> (podle IP)</td>
+      <td><b>ip-scan → SNMP</b> (UDP 161)</td>
+      <td>hostname (<code>sysName</code>) + model (<code>sysDescr</code>)</td>
+      <td><span class="badge b-ok">FUNGUJE</span> Pokud má zařízení zapnuté SNMP. Náplně tiskáren se přes SNMP čtou (port 161 otevřený), takže tudy jde doplnit i jméno/model.</td>
+    </tr>
+    <tr>
+      <td><b>AD párování</b> (podle hostname / IP)</td>
       <td>hostname + stav</td>
-      <td><span class="badge b-ok">HOTOVO</span> Doménové PC už jméno z AD dostávají.</td>
+      <td><span class="badge b-ok">HOTOVO</span> Doménová PC už jméno a stav z AD dostávají.</td>
     </tr>
   </table>
 
-  <h2>3) Co je potřeba udělat</h2>
+  <h2>3) Co už je hotové a co zbývá</h2>
   <table>
-    <tr><th>Opatření</th><th>Doplní</th><th>Pokryje</th><th>Kdo</th><th>Náročnost</th></tr>
+    <tr><th>Opatření</th><th>Doplní</th><th>Pokryje</th><th>Kdo</th><th>Stav</th></tr>
     <tr>
-      <td><b>A. SNMP enrichment</b><br><span class="dim">(doporučeno)</span></td>
-      <td>MAC + hostname + model</td>
-      <td>Tiskárny a SNMP zařízení (síťové prvky)</td>
+      <td><b>ip-scan na routeru</b> (NETBIOS + DNS + SNMP zevnitř podsítě)</td>
+      <td>hostname (+ model)</td>
+      <td>Vše, kde síť jméno publikuje — <b>Brno plně</b></td>
       <td><span class="badge b-dev">vývoj (já)</span></td>
-      <td>nízká — SNMP už máme a 161 je otevřené</td>
+      <td><span class="badge b-ok">HOTOVO</span> nasazeno <code>b370537</code></td>
     </tr>
     <tr>
-      <td><b>B. Otevřít UDP 137</b> (NetBIOS) z <code>.213</code> na vzdálené subnety</td>
-      <td>MAC + hostname</td>
-      <td>Windows stroje bez AD párování</td>
-      <td><span class="badge b-warn">firewall / síťař</span></td>
-      <td>nízká (pravidlo na FW), ale závisí na kolegovi</td>
-    </tr>
-    <tr>
-      <td><b>C. Přidat lokální routery</b> (Svitavy / Jihlava MikroTik) do konfigurace + povolit <code>.213</code></td>
-      <td>MAC (z ARP / DHCP)</td>
-      <td>Vše na daných subnetech</td>
-      <td><span class="badge b-warn">síťař</span></td>
-      <td>střední — přístup na router + <code>allowed-address</code></td>
-    </tr>
-    <tr>
-      <td><b>D. Reverzní DNS (PTR)</b></td>
+      <td><b>A. Reverzní DNS (PTR) zóny</b> pro <code>10.10.18x.x</code> na DC</td>
       <td>hostname</td>
-      <td>Cokoli s PTR záznamem</td>
+      <td>Pobočková zařízení s PTR (po doplnění)</td>
       <td><span class="badge b-warn">DNS admin</span></td>
-      <td>nízká, ale jen pokud PTR existují</td>
+      <td>zbývá — ip-scan PTR pak zužitkuje automaticky</td>
+    </tr>
+    <tr>
+      <td><b>B. Zapnout SNMP na pobočkových tiskárnách</b></td>
+      <td>hostname + model</td>
+      <td>Pobočkové tiskárny bez NETBIOS/DNS</td>
+      <td><span class="badge b-warn">správce tiskáren</span></td>
+      <td>zbývá — ip-scan SNMP větev pak jméno vytáhne</td>
+    </tr>
+    <tr>
+      <td><b>C. Ruční / AD pojmenování</b> zbylých statických zařízení</td>
+      <td>hostname (operátorský název dle MAC)</td>
+      <td>Cokoli, co síť nepublikuje žádným kanálem</td>
+      <td><span class="badge b-dev">operátor</span></td>
+      <td>vždy dostupné — editace názvu v záložce Zařízení</td>
     </tr>
   </table>
 
   <h2>4) Doporučený postup</h2>
 
   <div class="step">
-    <b>Krok 1 — SNMP enrichment (hned, bez infrastruktury).</b>
-    U zařízení vedených jen podle IP zkusit SNMP GET:
-    <ul>
-      <li><code>sysName</code> (<span class="mono">1.3.6.1.2.1.1.5.0</span>) → <b>hostname</b></li>
-      <li><code>sysDescr</code> (<span class="mono">1.3.6.1.2.1.1.1.0</span>) → <b>model</b> (a vendor pro návrh kategorie)</li>
-      <li><code>ifPhysAddress</code> (<span class="mono">1.3.6.1.2.1.2.2.1.6</span>, walk → první neprázdná) → <b>reálná MAC</b></li>
-    </ul>
-    Reálná MAC pak nahradí syntetický klíč <code>IP-&lt;ip&gt;</code>. Pokryje to <b>všechny tiskárny</b>
-    (= hlavní cíl) a SNMP-schopné prvky, <b>bez čekání na kolegu</b>. <span class="dim">→ Tohle postavím já.</span>
+    <b>Krok 1 — ip-scan na routeru (hotovo, nasazeno).</b>
+    Sběr volá <span class="mono">POST /rest/tool/ip-scan</span> na každém routeru; ten zevnitř podsítě
+    vyřeší NETBIOS + reverzní DNS + SNMP jména. Řízeno přes <span class="mono">mikrotik.ipscan</span>
+    (výchozí ZAP) a <span class="mono">mikrotik.ipscan_duration_sec</span> (výchozí 10 s);
+    <span class="mono">dhcp-reader</span> má povoleno POST ip-scan. <b>Brno tím dostává reálná jména
+    statických tiskáren/serverů.</b> <span class="dim">→ Postaveno a běží.</span>
   </div>
 
   <div class="step">
-    <b>Krok 2 — Otevřít UDP 137 z <code>.213</code> (firewall).</b>
-    Pro <b>ne-SNMP</b> stroje (PC/servery, IoT) bez AD párování. Pak <code>nbtstat</code>
-    z <code>.213</code> vrátí MAC i jméno (ověřeno, že to z jiné stanice funguje — jen port v cestě
-    serveru je zavřený). <span class="dim">→ Na kolegovi, který spravuje firewall / SD-WAN.</span>
+    <b>Krok 2 — Reverzní DNS (PTR) zóny pro pobočky.</b>
+    Pobočkové subnety <code>10.10.18x.x</code> nemají na interním DNS reverzní zóny, takže ip-scan
+    z nich nedostane žádné DNS jméno. Po doplnění PTR zón na DC začne ip-scan jména vytahovat
+    automaticky. <span class="dim">→ Na DNS adminovi.</span>
   </div>
 
   <div class="step">
-    <b>Krok 3 (volitelně) — Lokální routery do konfigurace.</b>
-    Když se přidají MikroTiky Svitavy/Jihlava (a povolí <code>.213</code> v <code>dhcp-reader allowed-address</code>),
-    doplní se MAC z ARP/DHCP plošně — i pro zařízení, co nemluví SNMP ani NetBIOS.
-    <span class="dim">→ Na síťaři + přístup na routery.</span>
+    <b>Krok 3 — SNMP na pobočkových tiskárnách / ruční název.</b>
+    Pobočková PC mají vypnutý NetBIOS přes TCP/IP — ten se nedoplní bez zásahu na klientech.
+    Pro statické tiskárny stačí zapnout SNMP (ip-scan jméno/model vytáhne přes <code>sysName</code>/<code>sysDescr</code>);
+    cokoli, co síť nepublikuje vůbec, se pojmenuje ručně v záložce Zařízení (název se ukládá dle MAC).
+    <span class="dim">→ Správce tiskáren + operátor.</span>
   </div>
 
   <div class="panel">
-    <b>Co to znamená prakticky:</b> drtivou většinu (<b>tiskárny</b>) vyřeší <b>Krok 1 (SNMP)</b>
-    sám a hned. Zbytek (pár ne-SNMP strojů mimo AD) doplní <b>Krok 2 (otevřít UDP 137)</b>.
-    Krok 3 je pojistka pro úplnost. Doménové PC jsou už pořešené přes AD.
+    <b>Co to znamená prakticky:</b> <b>Brno je vyřešené</b> — ip-scan zevnitř podsítě dává reálná jména.
+    Na pobočkách ip-scan vidí IP+MAC, ale jména síť nepublikuje (NetBIOS vypnutý, žádné PTR zóny).
+    Doplnit je lze <b>PTR zónami (Krok 2)</b>, <b>SNMP na tiskárnách (Krok 3)</b>, nebo ručním názvem.
+    Doménová PC jsou pořešená přes AD bez ohledu na lokalitu.
   </div>
 
   <div class="foot">
     ITDashboard · aplikační server <code>10.8.2.213</code> · DB <code>10.8.2.225</code> ·
-    dokument vygenerován jako podklad pro rozhodnutí (vývoj vs. firewall/síťař).
+    ip-scan na routeru nasazen (<code>b370537</code>); zbytek = PTR zóny / SNMP na tiskárnách / ruční název.
   </div>
 
 </div>
