@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IT Dashboard — system overview</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #ffffff; --ink: #0f172a; --muted: #64748b;
+    --accent: #2563eb; --accent2: #0ea5e9; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    --line: #e2e8f0; --soft: #f1f5f9;
+    --font: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: var(--font); color: var(--ink); background: #e8edf3; line-height: 1.6; }
+  .slide {
+    max-width: 980px; margin: 28px auto; background: var(--card);
+    border: 1px solid var(--line); border-radius: 16px; padding: 48px 56px;
+    box-shadow: 0 10px 30px rgba(15,23,42,.06); page-break-after: always;
+  }
+  .slide.cover { background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #2563eb 100%); color: #fff; border: 0; }
+  .kicker { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 700; color: var(--accent); }
+  .cover .kicker { color: #93c5fd; }
+  h1 { font-size: 40px; line-height: 1.15; margin: 10px 0 8px; }
+  h2 { font-size: 26px; margin: 4px 0 18px; }
+  h3 { font-size: 17px; margin: 0 0 6px; }
+  p { margin: 0 0 14px; }
+  .lead { font-size: 19px; color: #e2e8f0; max-width: 70ch; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+  @media (max-width: 760px){ .g2,.g3{ grid-template-columns: 1fr; } .slide{ padding: 30px 24px; } }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; background: #fff; border-left: 4px solid var(--accent); }
+  .card.ok { border-left-color: var(--ok); } .card.warn { border-left-color: var(--warn); }
+  .card.bad { border-left-color: var(--bad); } .card.sky { border-left-color: var(--accent2); }
+  .pill { display:inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--soft); color: var(--muted); margin: 0 6px 6px 0; }
+  ul.clean { margin: 6px 0 0; padding-left: 18px; } ul.clean li { margin: 4px 0; }
+  .metric { font-size: 34px; font-weight: 800; color: var(--accent); line-height: 1; }
+  .metric.ok { color: var(--ok); } .metric.warn{ color: var(--warn);} .metric.bad{ color: var(--bad);}
+  .metric-label { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .flow { display:flex; flex-wrap:wrap; align-items:center; gap:10px; font-size:14px; }
+  .node { border:1px solid var(--line); border-radius:10px; padding:10px 14px; background:var(--soft); font-weight:600; }
+  .node.src { border-left:4px solid var(--accent2); } .node.core { border-left:4px solid var(--accent); } .node.out { border-left:4px solid var(--ok); }
+  .arrow { color: var(--muted); font-weight:700; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .note { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); margin-top: 22px; padding-top: 12px; }
+  .footer-brand { font-weight: 700; color: var(--accent); }
+  .anon { background: #fffbeb; border:1px solid #fde68a; color:#92400e; border-radius:10px; padding:10px 14px; font-size:13px; }
+  .ss { border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 6px 18px rgba(15,23,42,.08); }
+  .ss-bar { background:#0f172a; color:#cbd5e1; padding:8px 14px; font-size:12px; display:flex; gap:8px; align-items:center; }
+  .ss-dot { width:10px; height:10px; border-radius:50%; background:#475569; }
+  .ss-body { padding:16px; background:#f8fafc; }
+  .tile { background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .bar { height:8px; border-radius:5px; background:#e5e7eb; overflow:hidden; }
+  .bar > span { display:block; height:100%; }
+  @media print { body { background:#fff; } .slide { box-shadow:none; margin:0 auto; border-radius:0; border:0; max-width:100%; } .noprint { display:none; } }
+  .toolbar { position:sticky; top:0; z-index:9; background:#0f172aee; color:#fff; padding:8px 14px; font-size:13px; text-align:center; backdrop-filter: blur(4px); }
+  .toolbar a { color:#93c5fd; text-decoration:none; margin:0 8px; }
+</style>
+</head>
+<body>
+
+<div class="toolbar noprint">
+  IT Dashboard — system overview (anonymized) ·
+  <a href="prezentace-system.html">🇨🇿 Česky</a> ·
+  <a href="javascript:window.print()">Print / PDF</a> ·
+  <a href="#cover">top</a>
+</div>
+
+<!-- 1 — COVER -->
+<section class="slide cover" id="cover">
+  <div class="kicker">IT infrastructure monitoring</div>
+  <h1>IT Dashboard</h1>
+  <p class="lead">A single, unified view of the health of computers, servers, network devices and printers —
+     automatic data collection, timely e-mail alerts and management summaries in one place.</p>
+  <div style="margin-top:26px" class="small">System overview presentation · anonymized version for an external audience</div>
+</section>
+
+<!-- 2 — PROBLEM -->
+<section class="slide" id="problem">
+  <div class="kicker">Why the system exists</div>
+  <h2>From manual checks to an automatic overview</h2>
+  <div class="anon" style="margin-bottom:20px">
+    🔒 This version is <strong>anonymized</strong>. All names, IP addresses, device names and e-mails are
+    replaced with generic examples (e.g. <em>Site A</em>, <code>10.0.0.x</code>, <code>PC-001</code>).
+  </div>
+  <div class="grid g2">
+    <div>
+      <p>Running a larger IT estate (tens to hundreds of computers, several sites, network gear, printers)
+         without a tool relies on manual checks and scattered scripts. That means:</p>
+      <ul class="clean">
+        <li>problems are found <strong>late</strong> — once a user reports them,</li>
+        <li>there is no <strong>single inventory</strong> of what is actually on the network,</li>
+        <li>repetitive manual work (inventories, disk / service / printer checks).</li>
+      </ul>
+    </div>
+    <div class="card sky">
+      <h3>Goal</h3>
+      <p class="small">One dashboard that <strong>collects</strong> data from many sources on its own, keeps it in
+         a database, visualizes the state and <strong>proactively warns</strong> about a problem before anyone reports it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3 — AGENDAS -->
+<section class="slide" id="agendas">
+  <div class="kicker">What the system covers</div>
+  <h2>Every agenda in one place</h2>
+  <div class="grid g3">
+    <div class="card"><h3>🖥 Computers &amp; servers</h3><p class="small muted">Availability, OS, packet loss &amp; latency, owner and notes.</p></div>
+    <div class="card sky"><h3>🌐 Network inventory</h3><p class="small muted">Devices on the network merged by MAC address from several sources.</p></div>
+    <div class="card warn"><h3>💾 Disks</h3><p class="small muted">Free space, critical thresholds, e-mail alert for key machines.</p></div>
+    <div class="card bad"><h3>⚙ Services</h3><p class="small muted">Monitoring of critical and ordinary system services.</p></div>
+    <div class="card"><h3>🔌 Ports</h3><p class="small muted">Reachability of key TCP ports from outside (network → firewall → service).</p></div>
+    <div class="card ok"><h3>🖨 Printers</h3><p class="small muted">Online/offline state, supply levels, alert on outage.</p></div>
+  </div>
+  <p class="note">Each agenda has its own collector, a dashboard visualization and optional e-mail alerts with shared
+     settings (thresholds, recipients, maintenance window, throttling).</p>
+</section>
+
+<!-- 4 — ARCHITECTURE -->
+<section class="slide" id="architecture">
+  <div class="kicker">How it works</div>
+  <h2>Architecture in a nutshell</h2>
+  <div class="flow" style="margin:10px 0 22px">
+    <div class="node src">Network gear</div>
+    <div class="node src">Computers / Directory</div>
+    <div class="node src">Printers (SNMP)</div>
+    <span class="arrow">→</span>
+    <div class="node core">Collectors</div>
+    <span class="arrow">→</span>
+    <div class="node core">Database</div>
+    <span class="arrow">→</span>
+    <div class="node out">Dashboard (web)</div>
+    <div class="node out">E-mail alerts</div>
+  </div>
+  <div class="grid g3">
+    <div class="card">
+      <h3>Collection</h3>
+      <p class="small muted">An application server periodically reads from network devices and the directory service,
+         pings hosts and reads SNMP from printers. Fully configurable, no secrets in code.</p>
+    </div>
+    <div class="card">
+      <h3>Storage</h3>
+      <p class="small muted">A structured SQL database with history. The inventory is keyed by <strong>MAC address</strong>
+         (a permanent identity) — the IP is only a temporary "where it lives".</p>
+    </div>
+    <div class="card">
+      <h3>Presentation</h3>
+      <p class="small muted">A web dashboard with filtering and management summaries, plus automatic e-mail reports
+         and alerts via the corporate SMTP relay.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 5 — NETWORK INVENTORY -->
+<section class="slide" id="inventory">
+  <div class="kicker">Key capability</div>
+  <h2>Network inventory: merging many sources by MAC</h2>
+  <div class="grid g2">
+    <div>
+      <p>No single source sees everything. The system combines several views and merges them by MAC address
+         into one record per device:</p>
+      <table>
+        <tr><th>Source</th><th>What it adds</th></tr>
+        <tr><td>DHCP records</td><td>dynamic and reserved devices + names</td></tr>
+        <tr><td>ARP table</td><td>statically addressed devices outside DHCP</td></tr>
+        <tr><td>Active scan</td><td>names (NETBIOS/DNS) and not-yet-seen devices</td></tr>
+      </table>
+      <p class="small muted" style="margin-top:12px">Duplicates are impossible by design: one row per
+        <code>(site, MAC)</code>, merge-and-enrich, never a new duplicate.</p>
+    </div>
+    <div>
+      <div class="card sky">
+        <h3>Robust collection</h3>
+        <p class="small">Data is read both live over an API and from file snapshots the network device writes
+          for itself on a schedule. The snapshot doubles as a <strong>freshness signal</strong> — when it stops
+          "breathing", the system knows something is wrong and raises an alert.</p>
+      </div>
+      <div class="card ok" style="margin-top:14px">
+        <h3>Identity = MAC</h3>
+        <p class="small">A device keeps its category, name and IP history even when its IP changes.
+          "MAC = the permanent ID, IP = the temporary address."</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 — DASHBOARD MOCK -->
+<section class="slide" id="dashboard">
+  <div class="kicker">Operator's view</div>
+  <h2>Dashboard — estate health at a glance</h2>
+  <div class="ss">
+    <div class="ss-bar"><span class="ss-dot"></span><span class="ss-dot"></span><span class="ss-dot"></span>
+      &nbsp; IT Dashboard — Overview</div>
+    <div class="ss-body">
+      <div class="grid g3" style="margin-bottom:14px">
+        <div class="tile"><div class="metric ok">182</div><div class="metric-label">Computers online</div></div>
+        <div class="tile"><div class="metric">49</div><div class="metric-label">Printers</div></div>
+        <div class="tile"><div class="metric warn">3</div><div class="metric-label">Disks at risk</div></div>
+      </div>
+      <div class="grid g2">
+        <div class="tile">
+          <h3 class="small">Operating systems</h3>
+          <div class="small muted">Windows 11</div><div class="bar"><span style="width:62%;background:var(--accent)"></span></div>
+          <div class="small muted" style="margin-top:6px">Windows 10</div><div class="bar"><span style="width:24%;background:var(--accent2)"></span></div>
+          <div class="small muted" style="margin-top:6px">Server</div><div class="bar"><span style="width:14%;background:#94a3b8"></span></div>
+        </div>
+        <div class="tile">
+          <h3 class="small">Sites</h3>
+          <table>
+            <tr><td>Site A</td><td class="muted">128 devices</td></tr>
+            <tr><td>Site B</td><td class="muted">41 devices</td></tr>
+            <tr><td>Site C</td><td class="muted">37 devices</td></tr>
+            <tr><td>Site D</td><td class="muted">22 devices</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Illustrative interface — rendered from neutral data, contains no real values.</p>
+</section>
+
+<!-- 7 — ALERTS -->
+<section class="slide" id="alerts">
+  <div class="kicker">Proactivity</div>
+  <h2>E-mail alerts, not problem hunting</h2>
+  <div class="grid g2">
+    <div>
+      <p>Instead of walking the floor, the system sends a structured e-mail the moment a defined state occurs.
+         Every alert shares a sensible model:</p>
+      <ul class="clean">
+        <li><strong>Debounce</strong> — won't fire on a momentary blip,</li>
+        <li><strong>Throttling</strong> — reminds at a sensible interval, never floods,</li>
+        <li><strong>Maintenance window</strong> — stays quiet during planned work,</li>
+        <li><strong>Per-site / per-machine</strong> — exceptions, so what is still being rolled out doesn't "scream".</li>
+      </ul>
+    </div>
+    <div class="card bad">
+      <h3>🔴 Example: critical disk</h3>
+      <p class="small"><strong>PC-001</strong> · drive C: · <span style="color:var(--bad);font-weight:700">2.1&nbsp;GB free</span>
+        of 240&nbsp;GB (0.9&nbsp;%)</p>
+      <div class="bar" style="margin:6px 0"><span style="width:99%;background:var(--bad)"></span></div>
+      <p class="small muted">Delivered to the agenda's recipient list; repeats at the configured frequency
+         while the condition persists.</p>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card warn"><h3>💾 Disks</h3><p class="small muted">below the critical threshold</p></div>
+    <div class="card bad"><h3>⚙ Services</h3><p class="small muted">a critical service is down</p></div>
+    <div class="card ok"><h3>🖨 Printers</h3><p class="small muted">offline / low supplies</p></div>
+  </div>
+</section>
+
+<!-- 8 — TECH + SECURITY -->
+<section class="slide" id="technology">
+  <div class="kicker">Under the hood</div>
+  <h2>Technology, security, operations</h2>
+  <div class="grid g2">
+    <div>
+      <h3>Technology</h3>
+      <div style="margin:8px 0">
+        <span class="pill">Node.js / TypeScript</span><span class="pill">REST API</span>
+        <span class="pill">SQL database</span><span class="pill">Web frontend</span>
+        <span class="pill">SNMP</span><span class="pill">Directory service</span>
+        <span class="pill">SMTP</span>
+      </div>
+      <h3 style="margin-top:16px">Operations</h3>
+      <ul class="clean small">
+        <li>runs as a service on an internal server,</li>
+        <li>automatic deployment after an approved change (CI: tests → build → migrations),</li>
+        <li>a health-check endpoint for external monitoring.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Security</h3>
+      <ul class="clean small">
+        <li><strong>Read-only</strong> service accounts talk to network devices for reading only,</li>
+        <li>access restricted to <strong>allow-listed addresses</strong>,</li>
+        <li>passwords and secrets are <strong>encrypted</strong>, never in code or the repository,</li>
+        <li>data stays <strong>inside the corporate network</strong>.</li>
+      </ul>
+      <div class="card ok" style="margin-top:14px">
+        <p class="small">Least-privilege by design: even on a leak, the service account can only read,
+          and only from defined locations.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 — BENEFITS -->
+<section class="slide" id="benefits">
+  <div class="kicker">Summary</div>
+  <h2>What it delivers</h2>
+  <div class="grid g3">
+    <div class="card ok"><h3>We know sooner</h3><p class="small muted">Problems surfaced automatically, often before a user notices.</p></div>
+    <div class="card sky"><h3>One overview</h3><p class="small muted">Computers, network, disks, services and printers in one place, with filtering.</p></div>
+    <div class="card"><h3>Less manual work</h3><p class="small muted">Inventories and checks run themselves; people handle only the exceptions.</p></div>
+    <div class="card warn"><h3>Management summaries</h3><p class="small muted">Clear estate-health reports — also for a non-technical audience.</p></div>
+    <div class="card"><h3>Extensible</h3><p class="small muted">New agendas and sources are added following the same pattern.</p></div>
+    <div class="card bad"><h3>Secure</h3><p class="small muted">Read-only, allow-list, encrypted secrets, data inside the network.</p></div>
+  </div>
+  <div class="note">
+    <span class="footer-brand">IT Dashboard</span> — overview presentation · anonymized version.
+    Specific names, addresses and data are available only in the internal version.
+  </div>
+</section>
+
+</body>
+</html>

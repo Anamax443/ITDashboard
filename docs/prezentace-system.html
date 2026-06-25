@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IT Dashboard — přehled systému</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #ffffff; --ink: #0f172a; --muted: #64748b;
+    --accent: #2563eb; --accent2: #0ea5e9; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+    --line: #e2e8f0; --soft: #f1f5f9;
+    --font: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: var(--font); color: var(--ink); background: #e8edf3; line-height: 1.6; }
+
+  /* Each <section class="slide"> is one "page" of the deck. */
+  .slide {
+    max-width: 980px; margin: 28px auto; background: var(--card);
+    border: 1px solid var(--line); border-radius: 16px; padding: 48px 56px;
+    box-shadow: 0 10px 30px rgba(15,23,42,.06);
+    page-break-after: always;
+  }
+  .slide.cover {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #2563eb 100%);
+    color: #fff; border: 0;
+  }
+  .kicker { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 700; color: var(--accent); }
+  .cover .kicker { color: #93c5fd; }
+  h1 { font-size: 40px; line-height: 1.15; margin: 10px 0 8px; }
+  h2 { font-size: 26px; margin: 4px 0 18px; }
+  h3 { font-size: 17px; margin: 0 0 6px; }
+  p { margin: 0 0 14px; }
+  .lead { font-size: 19px; color: #e2e8f0; max-width: 70ch; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+  @media (max-width: 760px){ .g2,.g3{ grid-template-columns: 1fr; } .slide{ padding: 30px 24px; } }
+
+  .card {
+    border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; background: #fff;
+    border-left: 4px solid var(--accent);
+  }
+  .card.ok { border-left-color: var(--ok); }
+  .card.warn { border-left-color: var(--warn); }
+  .card.bad { border-left-color: var(--bad); }
+  .card.sky { border-left-color: var(--accent2); }
+
+  .pill { display:inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    background: var(--soft); color: var(--muted); margin: 0 6px 6px 0; }
+
+  ul.clean { margin: 6px 0 0; padding-left: 18px; }
+  ul.clean li { margin: 4px 0; }
+
+  .metric { font-size: 34px; font-weight: 800; color: var(--accent); line-height: 1; }
+  .metric.ok { color: var(--ok); } .metric.warn{ color: var(--warn);} .metric.bad{ color: var(--bad);}
+  .metric-label { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  .flow { display:flex; flex-wrap:wrap; align-items:center; gap:10px; font-size:14px; }
+  .node { border:1px solid var(--line); border-radius:10px; padding:10px 14px; background:var(--soft); font-weight:600; }
+  .node.src { border-left:4px solid var(--accent2); }
+  .node.core { border-left:4px solid var(--accent); }
+  .node.out { border-left:4px solid var(--ok); }
+  .arrow { color: var(--muted); font-weight:700; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+
+  .note { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); margin-top: 22px; padding-top: 12px; }
+  .footer-brand { font-weight: 700; color: var(--accent); }
+  .anon { background: #fffbeb; border:1px solid #fde68a; color:#92400e; border-radius:10px; padding:10px 14px; font-size:13px; }
+
+  /* a faux UI screenshot rendered purely in HTML (anonymized, no real data) */
+  .ss { border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:0 6px 18px rgba(15,23,42,.08); }
+  .ss-bar { background:#0f172a; color:#cbd5e1; padding:8px 14px; font-size:12px; display:flex; gap:8px; align-items:center; }
+  .ss-dot { width:10px; height:10px; border-radius:50%; background:#475569; }
+  .ss-body { padding:16px; background:#f8fafc; }
+  .tile { background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .bar { height:8px; border-radius:5px; background:#e5e7eb; overflow:hidden; }
+  .bar > span { display:block; height:100%; }
+
+  @media print {
+    body { background:#fff; }
+    .slide { box-shadow:none; margin:0 auto; border-radius:0; border:0; max-width:100%; }
+    .noprint { display:none; }
+  }
+  .toolbar { position:sticky; top:0; z-index:9; background:#0f172aee; color:#fff; padding:8px 14px; font-size:13px; text-align:center; backdrop-filter: blur(4px); }
+  .toolbar a { color:#93c5fd; text-decoration:none; margin:0 8px; }
+</style>
+</head>
+<body>
+
+<div class="toolbar noprint">
+  IT Dashboard — přehledová prezentace (anonymizováno) ·
+  <a href="presentation-system.html">🇬🇧 English</a> ·
+  <a href="javascript:window.print()">Tisk / PDF</a> ·
+  <a href="#cover">nahoru</a>
+</div>
+
+<!-- 1 — COVER -->
+<section class="slide cover" id="cover">
+  <div class="kicker">Monitoring IT infrastruktury</div>
+  <h1>IT Dashboard</h1>
+  <p class="lead">Jednotný přehled o stavu počítačů, serverů, síťových zařízení a tiskáren —
+     automatický sběr dat, včasné e-mailové výstrahy a manažerské souhrny na jednom místě.</p>
+  <div style="margin-top:26px" class="small">Přehledová prezentace systému · anonymizovaná verze pro externí publikum</div>
+</section>
+
+<!-- 2 — ANONYMIZATION NOTE + PROBLEM -->
+<section class="slide" id="problem">
+  <div class="kicker">Proč systém vznikl</div>
+  <h2>Od ručních kontrol k automatickému přehledu</h2>
+  <div class="anon" style="margin-bottom:20px">
+    🔒 Tato verze je <strong>anonymizovaná</strong>. Všechny názvy, IP adresy, jména zařízení a e-maily
+    jsou nahrazeny generickými příklady (např. <em>Pobočka A</em>, <code>10.0.0.x</code>, <code>PC-001</code>).
+  </div>
+  <div class="grid g2">
+    <div>
+      <p>Správa rozsáhlejší IT infrastruktury (desítky až stovky počítačů, několik poboček,
+         síťové prvky, tiskárny) se bez nástroje opírá o ruční kontroly a roztříštěné skripty.
+         To znamená:</p>
+      <ul class="clean">
+        <li>problémy se zjistí <strong>pozdě</strong> — až je nahlásí uživatel,</li>
+        <li>není <strong>jednotný přehled</strong> o tom, co v síti vlastně je,</li>
+        <li>opakovaná ruční práce (inventury, kontroly disků, služeb, tiskáren).</li>
+      </ul>
+    </div>
+    <div class="card sky">
+      <h3>Cíl</h3>
+      <p class="small">Jeden dashboard, který <strong>sám</strong> sbírá data z více zdrojů, drží je v databázi,
+         vizualizuje stav a <strong>proaktivně upozorní</strong> na problém dřív, než ho někdo nahlásí.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 3 — WHAT IT DOES (AGENDAS) -->
+<section class="slide" id="agendy">
+  <div class="kicker">Co systém pokrývá</div>
+  <h2>Agendy na jednom místě</h2>
+  <div class="grid g3">
+    <div class="card"><h3>🖥 Počítače &amp; servery</h3><p class="small muted">Dostupnost, OS, ztrátovost a odezva sítě, operátor a poznámky.</p></div>
+    <div class="card sky"><h3>🌐 Síťový inventář</h3><p class="small muted">Zařízení v síti spojená podle MAC adresy z více zdrojů.</p></div>
+    <div class="card warn"><h3>💾 Disky</h3><p class="small muted">Volné místo, kritické prahy, e-mailová výstraha u klíčových strojů.</p></div>
+    <div class="card bad"><h3>⚙ Služby</h3><p class="small muted">Sledování běhu kritických i běžných systémových služeb.</p></div>
+    <div class="card"><h3>🔌 Porty</h3><p class="small muted">Dostupnost klíčových TCP portů zvenčí (síť → firewall → služba).</p></div>
+    <div class="card ok"><h3>🖨 Tiskárny</h3><p class="small muted">Stav online/offline, hladiny náplní, výstraha při výpadku.</p></div>
+  </div>
+  <p class="note">Každá agenda má vlastní sběrač dat, vizualizaci na dashboardu a volitelné e-mailové výstrahy
+     se společným nastavením (prahy, příjemci, okno údržby, throttling).</p>
+</section>
+
+<!-- 4 — ARCHITECTURE -->
+<section class="slide" id="architektura">
+  <div class="kicker">Jak to funguje</div>
+  <h2>Architektura ve zkratce</h2>
+  <div class="flow" style="margin:10px 0 22px">
+    <div class="node src">Síťové prvky</div>
+    <div class="node src">Počítače / AD</div>
+    <div class="node src">Tiskárny (SNMP)</div>
+    <span class="arrow">→</span>
+    <div class="node core">Sběrače dat</div>
+    <span class="arrow">→</span>
+    <div class="node core">Databáze</div>
+    <span class="arrow">→</span>
+    <div class="node out">Dashboard (web)</div>
+    <div class="node out">E-mailové výstrahy</div>
+  </div>
+  <div class="grid g3">
+    <div class="card">
+      <h3>Sběr dat</h3>
+      <p class="small muted">Aplikační server periodicky čte data ze síťových prvků, z adresářové služby,
+         pinguje zařízení a čte SNMP z tiskáren. Vše konfigurovatelné, bez tajemství v kódu.</p>
+    </div>
+    <div class="card">
+      <h3>Uložení</h3>
+      <p class="small muted">Strukturovaná SQL databáze s historií. Inventář je klíčovaný <strong>MAC adresou</strong>
+         (trvalá identita) — IP je jen dočasná „adresa pobytu".</p>
+    </div>
+    <div class="card">
+      <h3>Prezentace</h3>
+      <p class="small muted">Webový dashboard s filtrací a manažerskými souhrny + automatické e-mailové
+         reporty a výstrahy přes firemní SMTP relay.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 5 — NETWORK INVENTORY (the MikroTik/FTP story, anonymized) -->
+<section class="slide" id="inventar">
+  <div class="kicker">Klíčová funkce</div>
+  <h2>Síťový inventář: sloučení více zdrojů podle MAC</h2>
+  <div class="grid g2">
+    <div>
+      <p>Žádný jediný zdroj nevidí všechno. Systém proto kombinuje několik pohledů a slučuje je
+         podle MAC adresy do jednoho záznamu na zařízení:</p>
+      <table>
+        <tr><th>Zdroj</th><th>Co přidává</th></tr>
+        <tr><td>DHCP záznamy</td><td>dynamická i rezervovaná zařízení + jména</td></tr>
+        <tr><td>ARP tabulka</td><td>staticky adresovaná zařízení mimo DHCP</td></tr>
+        <tr><td>Aktivní sken</td><td>jména (NETBIOS/DNS) i dosud neviděná zařízení</td></tr>
+      </table>
+      <p class="small muted" style="margin-top:12px">Duplicity jsou vyloučené z principu: jeden řádek na
+        <code>(lokalita, MAC)</code>, sloučení a doplňování dat, nikdy nový duplikát.</p>
+    </div>
+    <div>
+      <div class="card sky">
+        <h3>Robustní sběr</h3>
+        <p class="small">Data se čtou jednak živě přes API, jednak ze souborových snímků, které si síťový
+          prvek sám pravidelně vytváří. Snímek funguje i jako <strong>signál aktuálnosti</strong> —
+          když přestane „dýchat", systém pozná, že je něco špatně, a upozorní.</p>
+      </div>
+      <div class="card ok" style="margin-top:14px">
+        <h3>Identita = MAC</h3>
+        <p class="small">Zařízení si drží kategorii, jméno i historii IP adres, i když mu IP změní.
+          „MAC = rodné číslo, IP = dočasná adresa."</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 — DASHBOARD MOCK -->
+<section class="slide" id="dashboard">
+  <div class="kicker">Pohled operátora</div>
+  <h2>Dashboard — stav parku na první pohled</h2>
+  <div class="ss">
+    <div class="ss-bar"><span class="ss-dot"></span><span class="ss-dot"></span><span class="ss-dot"></span>
+      &nbsp; IT Dashboard — Přehled</div>
+    <div class="ss-body">
+      <div class="grid g3" style="margin-bottom:14px">
+        <div class="tile"><div class="metric ok">182</div><div class="metric-label">Počítače online</div></div>
+        <div class="tile"><div class="metric">49</div><div class="metric-label">Tiskárny</div></div>
+        <div class="tile"><div class="metric warn">3</div><div class="metric-label">Disky v riziku</div></div>
+      </div>
+      <div class="grid g2">
+        <div class="tile">
+          <h3 class="small">Operační systémy</h3>
+          <div class="small muted">Windows 11</div><div class="bar"><span style="width:62%;background:var(--accent)"></span></div>
+          <div class="small muted" style="margin-top:6px">Windows 10</div><div class="bar"><span style="width:24%;background:var(--accent2)"></span></div>
+          <div class="small muted" style="margin-top:6px">Server</div><div class="bar"><span style="width:14%;background:#94a3b8"></span></div>
+        </div>
+        <div class="tile">
+          <h3 class="small">Pobočky</h3>
+          <table>
+            <tr><td>Pobočka A</td><td class="muted">128 zařízení</td></tr>
+            <tr><td>Pobočka B</td><td class="muted">41 zařízení</td></tr>
+            <tr><td>Pobočka C</td><td class="muted">37 zařízení</td></tr>
+            <tr><td>Pobočka D</td><td class="muted">22 zařízení</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Ilustrační rozhraní — vykresleno z neutrálních dat, neobsahuje reálné hodnoty.</p>
+</section>
+
+<!-- 7 — ALERTS -->
+<section class="slide" id="alerty">
+  <div class="kicker">Proaktivita</div>
+  <h2>E-mailové výstrahy, ne hledání problémů</h2>
+  <div class="grid g2">
+    <div>
+      <p>Místo ručního obcházení systém pošle strukturovaný e-mail, jakmile nastane definovaný stav.
+         Každá výstraha má společný „rozumný" model:</p>
+      <ul class="clean">
+        <li><strong>Debounce</strong> — nepípne na chvilkový výpadek,</li>
+        <li><strong>Throttling</strong> — připomene se v rozumném intervalu, ne zahltí,</li>
+        <li><strong>Okno údržby</strong> — během plánovaných prací mlčí,</li>
+        <li><strong>Per-lokalita / per-stroj</strong> — výjimky, aby „nekřičelo" to, co se teprve nasazuje.</li>
+      </ul>
+    </div>
+    <div class="card bad">
+      <h3>🔴 Příklad: kritický stav disku</h3>
+      <p class="small"><strong>PC-001</strong> · disk C: · <span style="color:var(--bad);font-weight:700">2,1&nbsp;GB volných</span>
+        z 240&nbsp;GB (0,9&nbsp;%)</p>
+      <div class="bar" style="margin:6px 0"><span style="width:99%;background:var(--bad)"></span></div>
+      <p class="small muted">Doručeno na seznam příjemců dané agendy; opakuje se podle nastavené četnosti,
+         dokud stav trvá.</p>
+    </div>
+  </div>
+  <div class="grid g3" style="margin-top:16px">
+    <div class="card warn"><h3>💾 Disky</h3><p class="small muted">pod kritickým prahem</p></div>
+    <div class="card bad"><h3>⚙ Služby</h3><p class="small muted">kritická služba mimo provoz</p></div>
+    <div class="card ok"><h3>🖨 Tiskárny</h3><p class="small muted">offline / docházející náplň</p></div>
+  </div>
+</section>
+
+<!-- 8 — TECH + SECURITY -->
+<section class="slide" id="technologie">
+  <div class="kicker">Pod kapotou</div>
+  <h2>Technologie, bezpečnost, provoz</h2>
+  <div class="grid g2">
+    <div>
+      <h3>Technologie</h3>
+      <div style="margin:8px 0">
+        <span class="pill">Node.js / TypeScript</span><span class="pill">REST API</span>
+        <span class="pill">SQL databáze</span><span class="pill">Webový frontend</span>
+        <span class="pill">SNMP</span><span class="pill">Adresářová služba</span>
+        <span class="pill">SMTP</span>
+      </div>
+      <h3 style="margin-top:16px">Provoz</h3>
+      <ul class="clean small">
+        <li>běží jako služba na interním serveru,</li>
+        <li>automatické nasazení po schválené změně (CI: testy → build → migrace),</li>
+        <li>health-check endpoint pro externí monitoring.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Bezpečnost</h3>
+      <ul class="clean small">
+        <li><strong>Read-only</strong> servisní účty se síťovými prvky komunikují jen pro čtení,</li>
+        <li>přístup omezený na <strong>povolené adresy</strong> (allow-list),</li>
+        <li>hesla a tajemství <strong>šifrovaná</strong>, nikdy v kódu ani v repozitáři,</li>
+        <li>data zůstávají <strong>uvnitř firemní sítě</strong>.</li>
+      </ul>
+      <div class="card ok" style="margin-top:14px">
+        <p class="small">Princip nejnižších oprávnění: i kdyby únik, servisní účet umí jen číst
+          a jen z definovaných míst.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 — BENEFITS / CLOSING -->
+<section class="slide" id="prinosy">
+  <div class="kicker">Shrnutí</div>
+  <h2>Co to přináší</h2>
+  <div class="grid g3">
+    <div class="card ok"><h3>Dřív víme</h3><p class="small muted">Problémy odhalené automaticky, často dřív, než je zaznamená uživatel.</p></div>
+    <div class="card sky"><h3>Jeden přehled</h3><p class="small muted">Počítače, síť, disky, služby a tiskárny na jednom místě, s filtrací.</p></div>
+    <div class="card"><h3>Méně ruční práce</h3><p class="small muted">Inventury a kontroly běží samy; člověk řeší jen výjimky.</p></div>
+    <div class="card warn"><h3>Manažerské souhrny</h3><p class="small muted">Přehledné reporty stavu parku — i pro netechnické publikum.</p></div>
+    <div class="card"><h3>Rozšiřitelné</h3><p class="small muted">Nové agendy a zdroje se přidávají podle stejného vzoru.</p></div>
+    <div class="card bad"><h3>Bezpečné</h3><p class="small muted">Read-only, allow-list, šifrovaná tajemství, data uvnitř sítě.</p></div>
+  </div>
+  <div class="note">
+    <span class="footer-brand">IT Dashboard</span> — přehledová prezentace · anonymizovaná verze.
+    Konkrétní názvy, adresy a data jsou k dispozici pouze v interní verzi.
+  </div>
+</section>
+
+</body>
+</html>
