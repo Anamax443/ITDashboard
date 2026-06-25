@@ -152,13 +152,16 @@ async function dedupeLegacyShareKeys(): Promise<void> {
       AND m.mac_address LIKE 'SHR-%' AND m.mac_address NOT LIKE 'SHR-%.%'
       AND m.site = legacy.site AND m.host_name = legacy.host_name
     WHERE NOT EXISTS (SELECT 1 FROM device_categories d2 WHERE d2.mac_address = m.mac_address)`);
-  // 2) Drop legacy IP-keyed share rows that now have a modern sibling, or that were
-  //    never operator-identified. Keep identified-but-orphaned ones (printer offline).
+  // 2) Drop legacy IP-keyed share rows that now have a modern sibling, were never
+  //    operator-identified, or are unreconcilable junk (no host_name -> can never
+  //    match a sibling, so they would linger forever). Keep only identified rows that
+  //    still carry a host_name but have no modern sibling yet (printer offline).
   await pool.request().query(`
     DELETE legacy FROM dhcp_leases legacy
     WHERE legacy.source = 'share' AND legacy.mac_address LIKE 'SHR-%.%'
       AND (
-        EXISTS (SELECT 1 FROM dhcp_leases m WHERE m.source = 'share'
+        legacy.host_name IS NULL OR legacy.host_name = ''
+        OR EXISTS (SELECT 1 FROM dhcp_leases m WHERE m.source = 'share'
                   AND m.mac_address LIKE 'SHR-%' AND m.mac_address NOT LIKE 'SHR-%.%'
                   AND m.site = legacy.site AND m.host_name = legacy.host_name)
         OR NOT EXISTS (SELECT 1 FROM device_categories dc WHERE dc.mac_address = legacy.mac_address
