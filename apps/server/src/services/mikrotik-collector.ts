@@ -727,11 +727,13 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
           WHERE last_seen < DATEADD(DAY, -@days, SYSUTCDATETIME())
             AND (reach_checked_at IS NULL OR reach_checked_at < DATEADD(DAY, -@days, SYSUTCDATETIME()))
             AND (last_reachable_at IS NULL OR last_reachable_at < DATEADD(DAY, -@days, SYSUTCDATETIME()))
-            -- Never prune a device the operator has IDENTIFIED (category / name /
-            -- note): once identified it stays in the inventory, shown offline.
+            -- Never prune a device the operator has IDENTIFIED as stable equipment
+            -- (a confirmed category other than phone, or a name / note): it stays in
+            -- the inventory, shown offline. Phones are exempt — Wi-Fi phones cycle
+            -- through randomized MACs, so a stale phone MAC SHOULD prune as a ghost.
             AND NOT EXISTS (
               SELECT 1 FROM device_categories dc WHERE dc.mac_address = dhcp_leases.mac_address
-                AND ((dc.category IS NOT NULL AND dc.category <> '')
+                AND ((dc.category IS NOT NULL AND dc.category NOT IN ('', 'phone'))
                   OR (dc.name IS NOT NULL AND dc.name <> '')
                   OR (dc.note IS NOT NULL AND dc.note <> '')));
         `);

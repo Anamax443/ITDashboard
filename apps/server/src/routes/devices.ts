@@ -75,9 +75,10 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
       -- DB IDENTITIES not currently observed: a device the operator identified
       -- (confirmed category) whose live lease/scan/share row is gone. "The info is
       -- in the DB" — so we still SHOW it (offline, last-known IP/site from the IP
-      -- archive) and it stays counted, instead of vanishing. pc/server are excluded
-      -- (those AD machines live in the Computers tab); printers / IoT / phones /
-      -- network gear — the real equipment — are what we surface here.
+      -- archive) and it stays counted, instead of vanishing. Excluded: pc/server
+      -- (those AD machines live in the Computers tab) and phone (Wi-Fi phones use
+      -- randomized MACs — a stale random MAC is not real equipment to resurrect).
+      -- Printers / IoT / network gear — the stable equipment — are surfaced here.
       SELECT COALESCE(h.site, N'?') AS site, dc.mac_address, h.ip_address,
              NULL, NULL, NULL, N'identity', NULL, N'db', NULL, NULL, h.last_seen,
              CAST(0 AS BIT), NULL, NULL, NULL,
@@ -89,7 +90,7 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
         SELECT TOP 1 ip_address, site, last_seen
         FROM device_ip_history WHERE mac_address = dc.mac_address ORDER BY last_seen DESC
       ) h
-      WHERE dc.category IS NOT NULL AND dc.category NOT IN (N'', N'pc', N'server')
+      WHERE dc.category IS NOT NULL AND dc.category NOT IN (N'', N'pc', N'server', N'phone')
         AND NOT EXISTS (SELECT 1 FROM dhcp_leases l2 WHERE l2.mac_address = dc.mac_address)
 
       ORDER BY site, ip_address
