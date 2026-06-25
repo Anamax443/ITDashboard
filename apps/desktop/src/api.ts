@@ -940,6 +940,12 @@ export const api = {
     if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/printers/test → ${r.status}`);
     return body as { ok: true; recipients: number; offline: number };
   },
+  sendFreshnessAlertTest: async () => {
+    const r = await fetch(`${API_BASE}/alerts/freshness/test`, { method: 'POST' });
+    const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; stale?: number };
+    if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/freshness/test → ${r.status}`);
+    return body as { ok: true; recipients: number; stale: number };
+  },
   reportOverview: () => jget<OverviewReport>('/reports/overview'),
   sendReportEmail: async (machines?: string[]) => {
     const r = await fetch(`${API_BASE}/reports/email`, {

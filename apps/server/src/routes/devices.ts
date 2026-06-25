@@ -192,6 +192,20 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
     }
   });
 
+  // Per-site FTP data-freshness status: the header timestamps of the router's
+  // export files, parsed counts, when the data last advanced (file_changed_at) and
+  // the last fetch error. Drives the dashboard freshness indicator + the
+  // availability alert. Read-only.
+  app.get('/devices/site-status', async () => {
+    const pool = await getPool();
+    const r = await pool.request().query(`
+      SELECT site, lease_file_time, arp_file_time, lease_count, arp_count,
+             file_changed_at, fetched_at, last_error, updated_at,
+             DATEDIFF(MINUTE, file_changed_at, SYSUTCDATETIME()) AS mins_since_change
+      FROM site_data_status ORDER BY site`);
+    return r.recordset;
+  });
+
   // IP-address archive for one device (by MAC): every IP it has been seen at, with
   // its first/last-seen window — "MAC = the permanent ID, IP = the connection log".
   app.get('/devices/ip-history', async (req) => {

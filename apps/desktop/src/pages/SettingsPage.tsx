@@ -1145,6 +1145,56 @@ export function SettingsPage() {
           <PrinterAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
         </Section>
 
+        <Section title={t('settings.section.freshnessAlerts')} description={t('settings.section.freshnessAlertsDesc')}>
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.freshnessEnabled')}
+              checked={value('alerts.freshness.enabled', '1') === '1'}
+              onChange={(checked) => set('alerts.freshness.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.freshnessThreshold')}>
+              <NumberInput v={value('alerts.freshness.threshold_minutes', '45')} onChange={(v) => set('alerts.freshness.threshold_minutes', v)} suffix={t('settings.unit.minutes')} />
+            </Field>
+            <Field label={t('settings.field.freshnessDebounce')}>
+              <NumberInput v={value('alerts.freshness.debounce_minutes', '10')} onChange={(v) => set('alerts.freshness.debounce_minutes', v)} suffix={t('settings.unit.minutes')} />
+            </Field>
+            <Field label={t('settings.field.freshnessFrequency')}>
+              <NumberInput v={value('alerts.freshness.frequency_hours', '24')} onChange={(v) => set('alerts.freshness.frequency_hours', v)} suffix={t('settings.unit.hour24')} />
+            </Field>
+            <Field label={t('settings.field.printerMaintenance')}>
+              <input
+                type="text"
+                value={value('alerts.freshness.maintenance_window', '')}
+                onChange={(e) => set('alerts.freshness.maintenance_window', e.target.value)}
+                placeholder="02:00-04:00"
+                style={{ ...fieldStyle, minWidth: 130, fontFamily: 'Consolas, monospace' }}
+              />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.freshnessMutedSites')}>
+            <textarea
+              value={value('alerts.freshness.muted_sites', '')}
+              onChange={(e) => set('alerts.freshness.muted_sites', e.target.value)}
+              placeholder="Zastavka, Svitavy, Jihlava"
+              rows={2}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 8px 0', lineHeight: 1.5 }}>
+            {t('settings.field.freshnessMutedHelp')}
+          </p>
+          <Field label={t('settings.field.printerRecipients')}>
+            <textarea
+              value={value('alerts.freshness.recipients', '')}
+              onChange={(e) => set('alerts.freshness.recipients', e.target.value)}
+              placeholder={t('settings.field.recipientsOverridePlaceholder')}
+              rows={2}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
+            />
+          </Field>
+          <FreshnessAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
+        </Section>
+
         <Section title={t('settings.section.reportEmail')} description={t('settings.section.reportEmailDesc')}>
           <Field label={t('settings.field.recipientsReportOverride')}>
             <textarea
@@ -1297,6 +1347,40 @@ function PrinterAlertTestButton({ onSaveFirst, hasUnsaved }: { onSaveFirst: () =
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <button className="refresh-btn" onClick={send} disabled={busy}>
         {busy ? t('settings.field.printerTesting') : t('settings.field.printerTest')}
+      </button>
+      {result && <span style={{ color: 'var(--ok)', fontSize: 12 }}>✓ {result}</span>}
+      {error && <span style={{ color: 'var(--critical)', fontSize: 12 }}>⚠ {error}</span>}
+    </div>
+  );
+}
+
+function FreshnessAlertTestButton({ onSaveFirst, hasUnsaved }: { onSaveFirst: () => Promise<void>; hasUnsaved: boolean }) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async () => {
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      if (hasUnsaved) await onSaveFirst();
+      const r = await api.sendFreshnessAlertTest();
+      setResult(t('settings.field.freshnessTestOk')
+        .replace('{recipients}', String(r.recipients))
+        .replace('{stale}', String(r.stale)));
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <button className="refresh-btn" onClick={send} disabled={busy}>
+        {busy ? t('settings.field.freshnessTesting') : t('settings.field.freshnessTest')}
       </button>
       {result && <span style={{ color: 'var(--ok)', fontSize: 12 }}>✓ {result}</span>}
       {error && <span style={{ color: 'var(--critical)', fontSize: 12 }}>⚠ {error}</span>}

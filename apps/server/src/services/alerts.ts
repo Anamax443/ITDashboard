@@ -1037,3 +1037,221 @@ export function renderPrinterAlert(down: DownPrinter[], now: number, isTest: boo
 
   return { subject, text, html };
 }
+
+// =====================================================================
+// Data-freshness / per-site availability alerting
+// =====================================================================
+//
+// Watches the MikroTik FTP file source. A monitored site (listed in
+// mikrotik.ftp_sites, NOT in alerts.freshness.muted_sites) is "stale" when its
+// export files stop advancing past alerts.freshness.threshold_minutes, can't be
+// fetched at all (last_error), or has never produced data. Timezone-safe — it
+// reads file_changed_at (real UTC, moved only when the newest file timestamp
+// actually increases), never the router's local file clock. Same debounce /
+// throttle / maintenance model as the other agendas; state in
+// data_freshness_alert_state. Runs at the end of each MikroTik collect.
+
+export interface StaleSite {
+  site: string;
+  reason: 'no_data' | 'fetch_error' | 'not_advancing';
+  detail: string;
+  minutesStale: number | null;
+  lastFileTime: Date | null;
+  firstStaleAt: Date | null;
+  lastSentAt: Date | null;
+}
+
+interface SiteStatusRow {
+  site: string; file_changed_at: Date | null; lease_file_time: Date | null; arp_file_time: Date | null;
+  last_error: string | null; fetched_at: Date | null; mins_since_change: number | null;
+  first_stale_at: Date | null; last_sent_at: Date | null;
+}
+
+// Monitored = FTP sites minus muted sites. Returns the ones currently stale.
+async function loadStaleSites(settings: SettingsMap): Promise<StaleSite[]> {
+  const ftpSites = parseList(settings['mikrotik.ftp_sites']);
+  const muted = new Set(parseList(settings['alerts.freshness.muted_sites']).map((s) => s.toLowerCase()));
+  const monitored = ftpSites.filter((s) => !muted.has(s.toLowerCase()));
+  if (monitored.length === 0) return [];
+  const threshold = Number(settings['alerts.freshness.threshold_minutes'] ?? 45) || 45;
+
+  const pool = await getPool();
+  const rows = (await pool.request().query<SiteStatusRow>(`
+    SELECT s.site, s.file_changed_at, s.lease_file_time, s.arp_file_time, s.last_error, s.fetched_at,
+           DATEDIFF(MINUTE, s.file_changed_at, SYSUTCDATETIME()) AS mins_since_change,
+           st.first_stale_at, st.last_sent_at
+    FROM site_data_status s
+    LEFT JOIN data_freshness_alert_state st ON st.site = s.site
+  `)).recordset;
+  const bySite = new Map(rows.map((r) => [r.site.toLowerCase(), r]));
+  const stateOnly = (await pool.request().query<{ site: string; first_stale_at: Date | null; last_sent_at: Date | null }>(
+    `SELECT site, first_stale_at, last_sent_at FROM data_freshness_alert_state`)).recordset;
+  const stateBySite = new Map(stateOnly.map((r) => [r.site.toLowerCase(), r]));
+
+  const out: StaleSite[] = [];
+  for (const site of monitored) {
+    const r = bySite.get(site.toLowerCase());
+    const st = stateBySite.get(site.toLowerCase());
+    if (!r) {
+      out.push({ site, reason: 'no_data', detail: 'žádná data z FTP (zatím nestaženo)', minutesStale: null,
+        lastFileTime: null, firstStaleAt: st?.first_stale_at ?? null, lastSentAt: st?.last_sent_at ?? null });
+      continue;
+    }
+    const lastFileTime = r.lease_file_time && r.arp_file_time
+      ? (r.lease_file_time > r.arp_file_time ? r.lease_file_time : r.arp_file_time)
+      : (r.lease_file_time ?? r.arp_file_time ?? null);
+    if (r.last_error) {
+      out.push({ site, reason: 'fetch_error', detail: `nelze stáhnout soubory: ${r.last_error}`, minutesStale: r.mins_since_change,
+        lastFileTime, firstStaleAt: r.first_stale_at, lastSentAt: r.last_sent_at });
+    } else if (r.file_changed_at == null || (r.mins_since_change != null && r.mins_since_change > threshold)) {
+      out.push({ site, reason: 'not_advancing', detail: `data se neaktualizují${r.mins_since_change != null ? ` ${r.mins_since_change} min` : ''}`,
+        minutesStale: r.mins_since_change, lastFileTime, firstStaleAt: r.first_stale_at, lastSentAt: r.last_sent_at });
+    }
+  }
+  return out;
+}
+
+// Called at the end of each MikroTik collect. Alerts on sites stale at least
+// alerts.freshness.debounce_minutes, suppressed during the maintenance window,
+// throttled by frequency_hours. Self-contained; never throws.
+export async function evaluateAndSendDataFreshnessAlerts(): Promise<void> {
+  const settings = await getAllSettings();
+  if (!boolSetting(settings['alerts.freshness.enabled'])) return;
+
+  const pool = await getPool();
+  const candidates = await loadStaleSites(settings);
+  const candSites = new Set(candidates.map((c) => c.site.toLowerCase()));
+
+  // Recovery: drop state for sites no longer stale so the next outage debounces fresh.
+  const existing = await pool.request().query<{ site: string }>(`SELECT site FROM data_freshness_alert_state`);
+  for (const s of existing.recordset) {
+    if (!candSites.has(s.site.toLowerCase())) {
+      await pool.request().input('site', s.site).query(`DELETE FROM data_freshness_alert_state WHERE site = @site`);
+    }
+  }
+
+  const nowDate = new Date();
+  const now = nowDate.getTime();
+
+  // Start the debounce clock for newly-stale sites.
+  for (const c of candidates) {
+    if (c.firstStaleAt == null) {
+      await pool.request().input('site', c.site).input('t', nowDate)
+        .query(`IF NOT EXISTS (SELECT 1 FROM data_freshness_alert_state WHERE site=@site)
+                INSERT INTO data_freshness_alert_state (site, first_stale_at) VALUES (@site,@t)`);
+      c.firstStaleAt = nowDate;
+    }
+  }
+
+  if (inMaintenanceWindow(settings['alerts.freshness.maintenance_window'], nowDate)) return;
+
+  const debounceMs = (Number(settings['alerts.freshness.debounce_minutes'] ?? 10) || 10) * 60_000;
+  const freqMs = (Number(settings['alerts.freshness.frequency_hours'] ?? 24) || 24) * 3_600_000;
+
+  const toAlert = candidates.filter((c) => shouldAlertNow(c.firstStaleAt, c.lastSentAt, now, debounceMs, freqMs));
+  if (toAlert.length === 0) return;
+
+  try {
+    const recipients = await sendMail(settings, renderFreshnessAlert(toAlert, now, false, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.freshness.recipients');
+    for (const a of toAlert) {
+      await pool.request().input('site', a.site).input('t', nowDate)
+        .query(`UPDATE data_freshness_alert_state SET last_sent_at=@t WHERE site=@site`);
+    }
+    logActivity('warn', 'alerts', `Data-freshness alert email sent to ${recipients} recipient(s) — ${toAlert.length} site(s) stale`);
+  } catch (err) {
+    logActivity('error', 'alerts', `Data-freshness alert email failed: ${String(err).split('\n')[0]}`);
+  }
+}
+
+// Manual test from Settings — sends the current stale-site state regardless of
+// enable/debounce/maintenance/throttle.
+export async function sendDataFreshnessAlertTest(): Promise<{ recipients: number; stale: number }> {
+  const settings = await getAllSettings();
+  const candidates = await loadStaleSites(settings);
+  const recipients = await sendMail(settings, renderFreshnessAlert(candidates, Date.now(), true, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.freshness.recipients');
+  logActivity('info', 'alerts', `Data-freshness alert TEST email sent to ${recipients} recipient(s) (${candidates.length} site(s) stale)`);
+  return { recipients, stale: candidates.length };
+}
+
+function freshnessCard(c: StaleSite): string {
+  const badge = c.reason === 'fetch_error' ? '📡 nedostupný' : c.reason === 'no_data' ? '❓ bez dat' : '⏳ stará data';
+  const last = c.lastFileTime
+    ? `poslední data: ${new Date(c.lastFileTime).toLocaleString('cs-CZ', { timeZone: 'Europe/Prague', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+    : 'dosud žádná data';
+  return `
+        <tr><td style="padding:0 0 12px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#ffffff;border:1px solid #e5e7eb;border-left:4px solid #dc2626;border-radius:8px">
+            <tr><td style="padding:14px 16px">
+              <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.04em;font-family:${FONT}">${badge}</div>
+              <div style="font-size:16px;font-weight:700;color:#111827;font-family:${FONT}">${escHtml(c.site)}</div>
+              <div style="font-size:13px;color:#6b7280;margin:2px 0 6px;font-family:${FONT}">${escHtml(c.detail)} · ${escHtml(last)}</div>
+            </td></tr>
+          </table>
+        </td></tr>`;
+}
+
+export function renderFreshnessAlert(stale: StaleSite[], _now: number, isTest: boolean, dashboardUrl: string): { subject: string; text: string; html: string } {
+  const has = stale.length > 0;
+  const prefix = subjectPrefix(has, isTest);
+  const subject = has
+    ? `${prefix}ITDashboard — stará data / nedostupná lokalita (${stale.length})`
+    : `${prefix}ITDashboard — test alertu aktuálnosti dat (vše čerstvé)`;
+
+  const generated = new Date().toLocaleString('cs-CZ', {
+    timeZone: 'Europe/Prague', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+
+  const lines = stale.map((c) => `  • ${c.site} — ${c.detail}`);
+  const text = (has
+    ? `ITDashboard — stará data / nedostupná lokalita\n${stale.length} lokalit(a) se neaktualizuje:\n\n${lines.join('\n')}\n`
+    : 'ITDashboard — test alertu aktuálnosti dat\nVšechny sledované lokality mají čerstvá data.\n')
+    + (isTest ? '\n(Testovací zpráva spuštěná ručně z Nastavení.)\n' : '')
+    + (dashboardUrl ? `\nOtevřít ITDashboard: ${dashboardUrl}\n` : '')
+    + `Vygenerováno: ${generated}\n`;
+
+  const headerBg = has ? '#dc2626' : '#16a34a';
+  const headerSub = has ? '#fde2e2' : '#dcfce7';
+  const headerTitle = has ? '📡 Stará data / nedostupná lokalita' : '✅ Data jsou čerstvá';
+  const headerLine = has ? `${stale.length} sledovaná lokalita(y) se neaktualizuje` : 'Všechny sledované lokality mají čerstvá data';
+
+  const body = has
+    ? stale.map(freshnessCard).join('')
+    : `<tr><td style="padding:4px 0 12px;font-size:14px;color:#374151;font-family:${FONT}">Všechny sledované lokality dodávají čerstvá data. 👍</td></tr>`;
+
+  const testBanner = isTest
+    ? `<tr><td style="padding:0 0 14px"><div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:6px;padding:10px 14px;font-size:13px;font-family:${FONT}">ℹ️ Testovací zpráva spuštěná ručně z Nastavení.</div></td></tr>`
+    : '';
+  const ctaButton = dashboardUrl
+    ? `<tr><td style="padding:2px 0 16px"><a href="${escHtml(dashboardUrl)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 20px;border-radius:6px;font-family:${FONT}">Otevřít ITDashboard →</a></td></tr>`
+    : '';
+  const footerAddr = dashboardUrl
+    ? `<a href="${escHtml(dashboardUrl)}" style="color:#6b7280;text-decoration:underline">${escHtml(dashboardUrl)}</a> · `
+    : '';
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 12px">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;border-collapse:collapse">
+        <tr><td style="background:${headerBg};border-radius:10px 10px 0 0;padding:18px 20px">
+          <div style="font-size:18px;font-weight:700;color:#ffffff;font-family:${FONT}">${prefix}${headerTitle}</div>
+          <div style="font-size:13px;color:${headerSub};margin-top:3px;font-family:${FONT}">${headerLine}</div>
+        </td></tr>
+        <tr><td style="background:#ffffff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 10px 10px;padding:18px 20px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            ${testBanner}
+            ${body}
+            ${ctaButton}
+          </table>
+          <div style="margin-top:8px;padding-top:14px;border-top:1px solid #eef0f2;font-size:12px;color:#9ca3af;font-family:${FONT};line-height:1.6">
+            ${footerAddr}Vygenerováno ${generated} · ITDashboard automatický report.<br>
+            Sleduje aktuálnost souborů z routerů (FTP). Lokality, práh a výjimky (mute): Nastavení → Notifikace.
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  return { subject, text, html };
+}

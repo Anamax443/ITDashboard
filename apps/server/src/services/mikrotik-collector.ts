@@ -5,7 +5,7 @@ import { getPool } from '../db/pool.js';
 import { getAllSettings, type SettingsMap } from './settings.js';
 import { decryptSecret } from './secret-crypto.js';
 import { boolSetting } from './alerts-util.js';
-import { evaluateAndSendPrinterAlerts } from './alerts.js';
+import { evaluateAndSendPrinterAlerts, evaluateAndSendDataFreshnessAlerts } from './alerts.js';
 import { logActivity } from './activity-log.js';
 import { icmpPing } from './reachability-collector.js';
 import { pingWithOutput } from './port-status-collector.js';
@@ -240,11 +240,17 @@ function ftpArpToNorm(site: string, a: FtpArp): NormDevice {
 // error) for the Phase-2 data-freshness / availability alert. Best-effort.
 async function recordSiteStatus(site: string, r: FtpSiteResult): Promise<void> {
   try {
+    // Signature of the newest file timestamp — used to detect (timezone-free)
+    // whether the data is actually advancing. file_changed_at moves to real-UTC
+    // now only when this signature changes, so the freshness alert never has to
+    // compare the router's local file clock against UTC now.
+    const times = [r.leaseTime, r.arpTime].filter((d): d is Date => d != null).map((d) => d.getTime());
+    const sig = times.length ? String(Math.max(...times)) : null;
     const pool = await getPool();
     await pool.request()
       .input('site', site).input('lt', r.leaseTime).input('at', r.arpTime)
       .input('lc', r.leases.length).input('ac', r.arp.length)
-      .input('got', r.leaseTime || r.arpTime ? 1 : 0).input('err', r.error)
+      .input('got', r.leaseTime || r.arpTime ? 1 : 0).input('sig', sig).input('err', r.error)
       .query(`
         MERGE site_data_status AS t USING (SELECT @site AS site) AS s ON t.site = s.site
         WHEN MATCHED THEN UPDATE SET
@@ -252,9 +258,14 @@ async function recordSiteStatus(site: string, r: FtpSiteResult): Promise<void> {
           arp_file_time = COALESCE(@at, t.arp_file_time),
           lease_count = @lc, arp_count = @ac,
           fetched_at = CASE WHEN @got = 1 THEN SYSUTCDATETIME() ELSE t.fetched_at END,
+          file_changed_at = CASE WHEN @sig IS NOT NULL AND (t.last_file_sig IS NULL OR t.last_file_sig <> @sig)
+                                 THEN SYSUTCDATETIME() ELSE t.file_changed_at END,
+          last_file_sig = COALESCE(@sig, t.last_file_sig),
           last_error = @err, updated_at = SYSUTCDATETIME()
-        WHEN NOT MATCHED THEN INSERT (site, lease_file_time, arp_file_time, lease_count, arp_count, fetched_at, last_error)
-          VALUES (@site, @lt, @at, @lc, @ac, CASE WHEN @got = 1 THEN SYSUTCDATETIME() ELSE NULL END, @err);
+        WHEN NOT MATCHED THEN INSERT (site, lease_file_time, arp_file_time, lease_count, arp_count, fetched_at, file_changed_at, last_file_sig, last_error)
+          VALUES (@site, @lt, @at, @lc, @ac,
+                  CASE WHEN @got = 1 THEN SYSUTCDATETIME() ELSE NULL END,
+                  CASE WHEN @sig IS NOT NULL THEN SYSUTCDATETIME() ELSE NULL END, @sig, @err);
       `);
   } catch { /* best-effort status; never block a collect */ }
 }
@@ -901,6 +912,10 @@ export async function runMikrotikCollectOnce(): Promise<MikrotikRunResult | null
     // Printer-offline alert eval runs on the collector's own cadence (fresh
     // reachability is in the DB now). Self-contained; never throws.
     try { await evaluateAndSendPrinterAlerts(); } catch (e) { logActivity('error', 'alerts', `Printer alert eval failed: ${String(e).split('\n')[0]}`); }
+
+    // Per-site data-freshness / availability alert — the FTP file status was just
+    // refreshed above. Self-contained; never throws.
+    try { await evaluateAndSendDataFreshnessAlerts(); } catch (e) { logActivity('error', 'alerts', `Freshness alert eval failed: ${String(e).split('\n')[0]}`); }
 
     return { routers: routers.length, leases, unmatchedPinged, reachable, scanned, errors, durationMs };
   } catch (err) {
