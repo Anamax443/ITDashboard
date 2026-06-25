@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { api, parseDiskThresholds, summarizeDisks, isStaleComputer } from '../api.js';
 import type { DeviceItem, ComputerItem, PrinterDevice, DiskItem } from '../api.js';
 import { useI18n } from '../i18n.js';
 
-// Managerial summary — a "take it to the meeting" page: how much equipment we have,
-// where (by branch), and the operational health. Client-side aggregation over the
-// existing endpoints; one click prints / saves it to PDF (landscape A4 print CSS).
+// Managerial summary — a "take it to the meeting" report. Rendered as a self-contained
+// WHITE document (AXIMA managerial house style: Segoe UI, #1d4ed8 accent) regardless of
+// the app theme, so Print/PDF and the saved standalone HTML come out clean and identical.
+// Print and Save both serialize the same `.mr-wrap` node, so what you see is what prints.
 
 const CAT_LABEL: Record<string, string> = {
   pc: 'PC / notebook', server: 'Server', printer: 'Tiskárna', phone: 'Telefon',
@@ -13,26 +14,60 @@ const CAT_LABEL: Record<string, string> = {
 };
 const catLabel = (k: string | null) => (k ? (CAT_LABEL[k] ?? k) : '—');
 
-function Card({ value, label, color }: { value: React.ReactNode; label: string; color?: string }) {
+// House style. Scoped under .mr-wrap so injecting it globally can't bleed into the app.
+const REPORT_CSS = `
+.mr-wrap,.mr-wrap *{box-sizing:border-box}
+.mr-wrap{font-family:'Segoe UI',Arial,sans-serif;color:#111;background:#fff;max-width:900px;margin:0 auto;padding:26px;font-size:12px}
+.mr-wrap .mr-top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1d4ed8;padding-bottom:12px}
+.mr-wrap h1{font-size:20px;margin:0}
+.mr-wrap .mr-meta{color:#555;font-size:11px;margin:4px 0 0}
+.mr-wrap h2{font-size:14px;margin:24px 0 8px;padding-bottom:5px;border-bottom:1px solid #cbd2dd}
+.mr-wrap h3{font-size:12px;margin:0 0 6px}
+.mr-wrap .mr-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}
+.mr-wrap .mr-kpi{border:1px solid #cbd2dd;border-radius:8px;padding:12px}
+.mr-wrap .mr-kl{font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:#666}
+.mr-wrap .mr-kv{font-size:26px;font-weight:300;line-height:1.1}
+.mr-wrap .mr-kv.crit{color:#b91c1c}.mr-wrap .mr-kv.warn{color:#b45309}.mr-wrap .mr-kv.ok{color:#15803d}
+.mr-wrap .mr-strip{margin:8px 0 0;color:#444}
+.mr-wrap .mr-pill{display:inline-block;background:#f1f3f7;border:1px solid #cbd2dd;border-radius:20px;padding:3px 10px;margin:2px 4px 2px 0;font-size:11px}
+.mr-wrap .mr-br{display:flex;align-items:center;gap:8px;margin:3px 0}
+.mr-wrap .mr-bl{width:170px;flex:none;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mr-wrap .mr-bt{flex:1;background:#eef1f6;border-radius:4px;height:15px;overflow:hidden}
+.mr-wrap .mr-bf{height:100%;background:#1d4ed8}
+.mr-wrap .mr-bv{width:130px;flex:none;text-align:right;font-size:11px;font-variant-numeric:tabular-nums}
+.mr-wrap .mr-sub{color:#888}
+.mr-wrap table.mr-t{border-collapse:collapse;width:100%;font-size:11px}
+.mr-wrap .mr-t th,.mr-wrap .mr-t td{border:1px solid #cbd2dd;padding:4px 8px;text-align:left}
+.mr-wrap .mr-t th{background:#f1f3f7;font-size:9px;text-transform:uppercase;color:#555}
+.mr-wrap .mr-t .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mr-wrap .num.crit{color:#b91c1c}.mr-wrap .num.ok{color:#15803d}
+.mr-wrap .mr-note{color:#777;font-size:10px;margin-top:14px;border-top:1px solid #cbd2dd;padding-top:6px}
+@media print{@page{margin:12mm}.mr-wrap h2{break-after:avoid}.mr-wrap .mr-grid,.mr-wrap .mr-kpis{break-inside:avoid}}
+`;
+
+function Kpi({ label, value, tone }: { label: string; value: React.ReactNode; tone?: 'crit' | 'warn' | 'ok' }) {
   return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '14px 18px', minWidth: 120 }}>
-      <div style={{ fontSize: 28, fontWeight: 700, color: color ?? 'var(--text)', lineHeight: 1.1 }}>{value}</div>
-      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>{label}</div>
+    <div className="mr-kpi">
+      <div className="mr-kl">{label}</div>
+      <div className={'mr-kv' + (tone ? ' ' + tone : '')}>{value}</div>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function BarRow({ label, value, max, sub }: { label: string; value: number; max: number; sub?: string }) {
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (
-    <div className="ms-section" style={{ marginTop: 22, breakInside: 'avoid' }}>
-      <h3 style={{ fontSize: 15, margin: '0 0 10px', borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>{title}</h3>
-      {children}
+    <div className="mr-br">
+      <div className="mr-bl" title={label}>{label}</div>
+      <div className="mr-bt"><div className="mr-bf" style={{ width: pct + '%' }} /></div>
+      <div className="mr-bv">{value}{sub != null && <span className="mr-sub"> {sub}</span>}</div>
     </div>
   );
 }
 
 export function ManagerSummaryPage({ settings = {} }: { settings?: Record<string, string> }) {
   const { t } = useI18n();
+  const reportRef = useRef<HTMLDivElement>(null);
   const [devices, setDevices] = useState<DeviceItem[]>([]);
   const [computers, setComputers] = useState<ComputerItem[]>([]);
   const [printers, setPrinters] = useState<PrinterDevice[]>([]);
@@ -57,6 +92,7 @@ export function ManagerSummaryPage({ settings = {} }: { settings?: Record<string
   const byCat = new Map<string, number>();
   for (const d of equip) byCat.set(d.category!, (byCat.get(d.category!) ?? 0) + 1);
   const catRows = [...byCat.entries()].sort((a, b) => b[1] - a[1]);
+  const catMax = Math.max(1, ...catRows.map(([, v]) => v));
 
   // By branch (site): total + per key category + online/offline.
   const sites = [...new Set(devices.map((d) => d.site).filter(Boolean))].sort() as string[];
@@ -87,96 +123,122 @@ export function ManagerSummaryPage({ settings = {} }: { settings?: Record<string
   const stale = computers.filter((c) => isStaleComputer(c, inactiveDays)).length;
   const servers = managed.filter((c) => /server/i.test(c.os_version ?? '')).length;
   const pcs = managed.length - servers;
-  // Disks: PCs with a critical / warning drive — same scope-aware logic the Dashboard
-  // uses (disks live on their own endpoint, keyed to computer_id, not on ComputerItem).
+  // Disks: PCs with a critical / warning drive — same scope-aware logic as the Dashboard
+  // (disks live on their own endpoint, keyed to computer_id, not on ComputerItem).
   const diskSum = summarizeDisks(disks, parseDiskThresholds(settings));
   const diskCrit = diskSum.criticalPcs;
   const diskWarn = diskSum.warningPcs;
 
   const totalEquip = equip.length;
-  const now = new Date().toLocaleString();
+  const now = new Date().toLocaleString('cs-CZ');
+
+  // Print and Save reuse one standalone document, so output matches the on-screen sheet
+  // exactly and is theme-independent. UTF-8 meta avoids the mojibake of latin1-saved HTML.
+  const buildHtml = () => {
+    const body = reportRef.current ? reportRef.current.outerHTML : '';
+    return '<!DOCTYPE html>\n<html lang="cs"><head><meta charset="UTF-8">'
+      + '<title>' + t('summary.title') + ' — ITDashboard</title>'
+      + '<style>' + REPORT_CSS + '</style></head><body>' + body + '</body></html>';
+  };
+  const printDoc = () => {
+    const w = window.open('', '_blank', 'width=1000,height=800');
+    if (!w) { window.print(); return; }
+    w.document.write(buildHtml());
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 350);
+  };
+  const saveHtml = () => {
+    const blob = new Blob([buildHtml()], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'itdashboard-souhrn-' + new Date().toISOString().slice(0, 10) + '.html';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  };
+
+  const btn: React.CSSProperties = { font: 'inherit', fontSize: 12, padding: '6px 12px', border: '1px solid #1d4ed8', background: '#1d4ed8', color: '#fff', borderRadius: 6, cursor: 'pointer' };
+  const btnSec: React.CSSProperties = { ...btn, background: '#fff', color: '#1d4ed8' };
 
   return (
-    <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1' }}>
-      <style>{`
-        @media print {
-          @page { size: A4 landscape; margin: 10mm; }
-          .panel-header, .no-print { display: none !important; }
-          .ms-body { padding: 0 !important; }
-          body { background: #fff; }
-        }
-        .ms-cards { display: flex; flex-wrap: wrap; gap: 12px; }
-        table.ms { border-collapse: collapse; font-size: 12px; width: 100%; max-width: 760px; }
-        table.ms th, table.ms td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; }
-        table.ms th { background: var(--surface); }
-        table.ms td.n, table.ms th.n { text-align: right; font-variant-numeric: tabular-nums; }
-      `}</style>
-      <div className="panel-header">
-        <h2>📋 {t('summary.title')}</h2>
-        <div className="panel-actions">
-          <button className="refresh-btn" onClick={load}>↻</button>
-          <button className="refresh-btn" onClick={() => window.print()} style={{ fontWeight: 600 }}>🖨 {t('summary.print')}</button>
-        </div>
+    <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1', overflow: 'auto', background: '#e9edf3' }}>
+      <style>{REPORT_CSS}</style>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px' }}>
+        <button style={btnSec} onClick={load}>↻</button>
+        <button style={btn} onClick={printDoc}>🖨 {t('summary.print')}</button>
+        <button style={btnSec} onClick={saveHtml}>⬇ {t('summary.saveHtml')}</button>
       </div>
-      <div className="ms-body panel-body" style={{ padding: 16 }}>
-        {err && <div style={{ color: 'var(--critical)' }}>⚠ {err}</div>}
-        <div style={{ color: 'var(--text-dim)', fontSize: 12, marginBottom: 12 }}>ITDashboard — {now}</div>
 
-        <Section title={t('summary.equipTotal')}>
-          <div className="ms-cards" style={{ marginBottom: 12 }}>
-            <Card value={totalEquip} label={t('summary.equipCount')} />
-            <Card value={pcs} label="PC / notebook" />
-            <Card value={servers} label="Server" />
-            <Card value={printerDevices.length} label="Tiskárny" color="var(--accent)" />
-            <Card value={byCat.get('network') ?? 0} label="Síťové prvky" />
-            <Card value={byCat.get('iot') ?? 0} label="IoT / ostatní" />
-            <Card value={sites.length} label={t('summary.sites')} />
+      <div ref={reportRef} className="mr-wrap">
+        <div className="mr-top">
+          <div>
+            <h1>📋 {t('summary.title')}</h1>
+            <p className="mr-meta">ITDashboard · {now}</p>
           </div>
-          <table className="ms">
-            <thead><tr><th>{t('summary.category')}</th><th className="n">{t('summary.count')}</th></tr></thead>
-            <tbody>{catRows.map(([k, v]) => <tr key={k}><td>{catLabel(k)}</td><td className="n">{v}</td></tr>)}</tbody>
-          </table>
-        </Section>
+        </div>
 
-        <Section title={t('summary.bySite')}>
-          <table className="ms" style={{ maxWidth: 620 }}>
-            <thead><tr>
-              <th>{t('summary.site')}</th><th className="n">{t('summary.count')}</th>
-              <th className="n">PC</th><th className="n">Tiskárny</th>
-              <th className="n">Online</th><th className="n">Offline</th>
-            </tr></thead>
-            <tbody>{siteStat.map((s) => (
+        {err && <div style={{ color: '#b91c1c', marginTop: 10 }}>⚠ {err}</div>}
+
+        <h2>{t('summary.equipTotal')}</h2>
+        <div className="mr-kpis">
+          <Kpi label={t('summary.equipCount')} value={totalEquip} />
+          <Kpi label="PC / notebook" value={pcs} />
+          <Kpi label="Tiskárny" value={printerDevices.length} />
+          <Kpi label={t('summary.sites')} value={sites.length} />
+        </div>
+        <div className="mr-strip">
+          <span className="mr-pill"><b>Server</b> {servers}</span>
+          <span className="mr-pill"><b>Síťové prvky</b> {byCat.get('network') ?? 0}</span>
+          <span className="mr-pill"><b>IoT / ostatní</b> {byCat.get('iot') ?? 0}</span>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          {catRows.map(([k, v]) => <BarRow key={k} label={catLabel(k)} value={v} max={catMax} />)}
+        </div>
+
+        <h2>{t('summary.bySite')}</h2>
+        <table className="mr-t">
+          <thead>
+            <tr>
+              <th>{t('summary.site')}</th><th className="num">{t('summary.count')}</th>
+              <th className="num">PC</th><th className="num">Tiskárny</th>
+              <th className="num">Online</th><th className="num">Offline</th>
+            </tr>
+          </thead>
+          <tbody>
+            {siteStat.map((s) => (
               <tr key={s.site}>
-                <td>{s.site}</td><td className="n">{s.total}</td><td className="n">{s.pc}</td>
-                <td className="n">{s.printer}</td>
-                <td className="n" style={{ color: 'var(--ok)' }}>{s.online}</td>
-                <td className="n" style={{ color: s.offline ? 'var(--critical)' : undefined }}>{s.offline}</td>
+                <td>{s.site}</td><td className="num">{s.total}</td><td className="num">{s.pc}</td>
+                <td className="num">{s.printer}</td>
+                <td className="num ok">{s.online}</td>
+                <td className={'num' + (s.offline ? ' crit' : '')}>{s.offline}</td>
               </tr>
-            ))}</tbody>
-          </table>
-        </Section>
+            ))}
+            {siteStat.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: '#999' }}>—</td></tr>}
+          </tbody>
+        </table>
 
-        <Section title={t('summary.printers')}>
-          <div className="ms-cards">
-            <Card value={printerDevices.length} label={t('summary.printersTotal')} />
-            <Card value={printersOffline} label="Offline" color={printersOffline ? 'var(--critical)' : undefined} />
-            <Card value={suppliesLow} label={t('summary.suppliesLow')} color={suppliesLow ? 'var(--warning)' : undefined} />
-            <Card value={suppliesEmpty} label={t('summary.suppliesEmpty')} color={suppliesEmpty ? 'var(--critical)' : undefined} />
-          </div>
-        </Section>
+        <h2>{t('summary.printers')}</h2>
+        <div className="mr-kpis">
+          <Kpi label={t('summary.printersTotal')} value={printerDevices.length} />
+          <Kpi label="Offline" value={printersOffline} tone={printersOffline ? 'crit' : undefined} />
+          <Kpi label={t('summary.suppliesLow')} value={suppliesLow} tone={suppliesLow ? 'warn' : undefined} />
+          <Kpi label={t('summary.suppliesEmpty')} value={suppliesEmpty} tone={suppliesEmpty ? 'crit' : undefined} />
+        </div>
 
-        <Section title={t('summary.fleet')}>
-          <div className="ms-cards">
-            <Card value={managed.length} label={t('summary.managed')} />
-            <Card value={pcActive} label={t('summary.active')} color="var(--ok)" />
-            <Card value={pcOffline} label="Offline" color={pcOffline ? 'var(--critical)' : undefined} />
-            <Card value={riskPcs} label={t('summary.problemPcs')} color={riskPcs ? 'var(--critical)' : undefined} />
-            <Card value={diskCrit} label={t('summary.diskCrit')} color={diskCrit ? 'var(--critical)' : undefined} />
-            <Card value={diskWarn} label={t('summary.diskWarn')} color={diskWarn ? 'var(--warning)' : undefined} />
-            <Card value={stale} label={t('summary.inactive')} />
-            <Card value={disabled} label={t('summary.disabled')} />
-          </div>
-        </Section>
+        <h2>{t('summary.fleet')}</h2>
+        <div className="mr-kpis">
+          <Kpi label={t('summary.managed')} value={managed.length} />
+          <Kpi label={t('summary.active')} value={pcActive} tone="ok" />
+          <Kpi label="Offline" value={pcOffline} tone={pcOffline ? 'crit' : undefined} />
+          <Kpi label={t('summary.problemPcs')} value={riskPcs} tone={riskPcs ? 'crit' : undefined} />
+          <Kpi label={t('summary.diskCrit')} value={diskCrit} tone={diskCrit ? 'crit' : undefined} />
+          <Kpi label={t('summary.diskWarn')} value={diskWarn} tone={diskWarn ? 'warn' : undefined} />
+          <Kpi label={t('summary.inactive')} value={stale} />
+          <Kpi label={t('summary.disabled')} value={disabled} />
+        </div>
+
+        <p className="mr-note">© AXIMA IT · ITDashboard — manažerský souhrn. Technika bez telefonů (randomizovaná MAC).</p>
       </div>
     </div>
   );
