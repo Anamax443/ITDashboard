@@ -954,6 +954,12 @@ export const api = {
     minsSinceChange: number | null; stale: boolean | null; thresholdMinutes: number;
     devices: number; bySource: { dhcp: number; arp: number; scan: number; unifi: number } | null;
   }>>('/network/routers'),
+  ftpFetchNow: async () => {
+    const r = await fetch(`${API_BASE}/network/ftp-fetch`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const body = await r.json().catch(() => ({})) as { items?: Array<{ site: string; ip: string; ok: boolean; lines: string[] }>; error?: string };
+    if (!r.ok || body.error) throw new Error(body.error || `POST /network/ftp-fetch → ${r.status}`);
+    return body.items ?? [];
+  },
   reportOverview: () => jget<OverviewReport>('/reports/overview'),
   sendReportEmail: async (machines?: string[]) => {
     const r = await fetch(`${API_BASE}/reports/email`, {

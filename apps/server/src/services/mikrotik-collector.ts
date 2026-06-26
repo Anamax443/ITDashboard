@@ -272,6 +272,36 @@ async function recordSiteStatus(site: string, r: FtpSiteResult): Promise<void> {
   } catch { /* best-effort status; never block a collect */ }
 }
 
+export interface FtpFetchLog { site: string; ip: string; ok: boolean; lines: string[]; }
+
+// Force an FTP pull of the configured FTP sites NOW and return a per-site
+// communication log — backs the Routers page "fetch now" button + its console.
+// Records site_data_status so the freshness cards refresh immediately; the full
+// device merge into dhcp_leases still happens on the next regular collect.
+export async function runFtpFetchOnce(): Promise<FtpFetchLog[]> {
+  const settings = await getAllSettings();
+  const cfg = resolveConfig(settings);
+  const out: FtpFetchLog[] = [];
+  if (!cfg) { return out; }
+  if (!cfg.ftpEnabled) { out.push({ site: '—', ip: '', ok: false, lines: ['FTP zdroj je vypnutý (Nastavení → MikroTik → „Číst i ze souborů přes FTP").'] }); return out; }
+  const ftpRouters = cfg.routers.filter((r) => cfg.ftpSites.has(r.site));
+  if (ftpRouters.length === 0) { out.push({ site: '—', ip: '', ok: false, lines: ['Žádná FTP lokalita není nastavená (Nastavení → MikroTik → „FTP lokality").'] }); return out; }
+  for (const router of ftpRouters) {
+    const lines: string[] = [`→ FTP ${router.ip}  (účet ${cfg.user})`];
+    const t0 = Date.now();
+    const ftp = await fetchFtpSite({ host: router.ip, user: cfg.user, pass: cfg.pass }, { lease: 'IP_scan.txt', arp: 'ARP_scan.txt' });
+    if (ftp.leaseTime) lines.push(`  ✓ IP_scan.txt  — ${ftp.leases.length} leasů  (čas souboru ${ftp.leaseTime.toISOString().replace('T', ' ').slice(0, 19)})`);
+    else lines.push('  ✗ IP_scan.txt  — nestaženo');
+    if (ftp.arpTime) lines.push(`  ✓ ARP_scan.txt — ${ftp.arp.length} ARP záznamů  (čas souboru ${ftp.arpTime.toISOString().replace('T', ' ').slice(0, 19)})`);
+    else lines.push('  ✗ ARP_scan.txt — nestaženo');
+    if (ftp.error) lines.push(`  ⚠ ${ftp.error}`);
+    lines.push(`  hotovo za ${Date.now() - t0} ms`);
+    await recordSiteStatus(router.site, ftp);
+    out.push({ site: router.site, ip: router.ip, ok: !ftp.error && (!!ftp.leaseTime || !!ftp.arpTime), lines });
+  }
+  return out;
+}
+
 // Clean a usable host name from an ip-scan row: NETBIOS short name (before the
 // "/WORKGROUP" domain part) first, else the reverse-DNS short host, else SNMP.
 function ipScanName(s: RawIpScan): string | null {

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../db/pool.js';
 import { getAllSettings } from '../services/settings.js';
-import { runMikrotikCollectOnce, probeDeviceNow, suggestCategory, testRouters } from '../services/mikrotik-collector.js';
+import { runMikrotikCollectOnce, runFtpFetchOnce, probeDeviceNow, suggestCategory, testRouters } from '../services/mikrotik-collector.js';
 import { runUnifiCollectOnce } from '../services/unifi-collector.js';
 import { runSharedPrintersOnce } from '../services/shared-printers-collector.js';
 
@@ -259,6 +259,17 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
         bySource: c ? { dhcp: c.dhcp, arp: c.arp, scan: c.scan, unifi: c.unifi } : null,
       };
     });
+  });
+
+  // Force an FTP pull of the configured FTP sites now and return a per-site
+  // communication log (the Routers page "fetch now" + console).
+  app.post('/network/ftp-fetch', async (_req, reply) => {
+    try {
+      return { items: await runFtpFetchOnce() };
+    } catch (err) {
+      reply.code(500);
+      return { error: String(err) };
+    }
   });
 
   // IP-address archive for one device (by MAC): every IP it has been seen at, with

@@ -81,11 +81,15 @@ function RouterCard({ r }: { r: Row }) {
   );
 }
 
+type FetchLog = Awaited<ReturnType<typeof api.ftpFetchNow>>[number];
+
 export function NetworkPage() {
   const { t } = useI18n();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [fetching, setFetching] = useState(false);
+  const [log, setLog] = useState<FetchLog[] | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -96,13 +100,46 @@ export function NetworkPage() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
+  // Force an FTP pull NOW; show the per-site communication log in the console box,
+  // then reload the cards so fresh file times appear.
+  const fetchNow = async () => {
+    if (fetching) return;
+    setFetching(true);
+    setLog([{ site: '', ip: '', ok: true, lines: ['⏳ Stahuji soubory přes FTP…'] }]);
+    try {
+      const items = await api.ftpFetchNow();
+      setLog(items);
+      load();
+    } catch (e) {
+      setLog([{ site: '', ip: '', ok: false, lines: [`⚠ ${e instanceof Error ? e.message : String(e)}`] }]);
+    } finally {
+      setFetching(false);
+    }
+  };
+
   return (
     <div style={{ padding: 20, overflow: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>{t('net.title')}</h2>
         <button className="refresh-btn" onClick={load} disabled={loading}>{loading ? '…' : `🔄 ${t('net.refresh')}`}</button>
+        <button className="refresh-btn" onClick={fetchNow} disabled={fetching} style={{ fontWeight: 600 }}>
+          {fetching ? '⏳ …' : `⬇ ${t('net.fetchNow')}`}
+        </button>
       </div>
       <p style={{ color: 'var(--text-dim)', fontSize: 13, margin: '0 0 16px' }}>{t('net.subtitle')}</p>
+
+      {log && (
+        <div style={{ background: '#0b1220', border: '1px solid #1e293b', borderRadius: 8, padding: '12px 14px', marginBottom: 16, fontFamily: 'Consolas, monospace', fontSize: 12.5, lineHeight: 1.5, color: '#cbd5e1', whiteSpace: 'pre-wrap', maxHeight: 300, overflow: 'auto' }}>
+          {log.map((s, i) => (
+            <div key={i} style={{ marginBottom: s.site ? 10 : 0 }}>
+              {s.site && <div style={{ color: s.ok ? '#4ade80' : '#f87171', fontWeight: 700 }}>{s.ok ? '●' : '○'} {s.site} {s.ip}</div>}
+              {s.lines.map((ln, j) => (
+                <div key={j} style={{ color: ln.includes('✗') || ln.includes('⚠') ? '#f87171' : ln.includes('✓') ? '#86efac' : '#94a3b8' }}>{ln}</div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
 
       {err && <div style={{ color: 'var(--critical)', marginBottom: 12 }}>⚠ {err}</div>}
       {!loading && rows.length === 0 && !err && <div style={{ color: 'var(--text-dim)' }}>{t('net.none')}</div>}
