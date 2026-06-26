@@ -1,7 +1,25 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Summary, ComputerItem, DiskSummary, ServiceProblem, PerfSummary, InactiveStats } from '../api.js';
-import { serviceWhitelist, isServiceWhitelisted } from '../api.js';
+import { api, serviceWhitelist, isServiceWhitelisted } from '../api.js';
 import { useI18n } from '../i18n.js';
+
+// Dashboard tile layout: the operator can pin a tile to an explicit grid cell
+// (column letter A–H + row number, e.g. "B3"). Pinned tiles hold their cell; the
+// rest auto-flow into the remaining free cells. Persisted in the
+// `dashboard.tile_layout` setting. No two pinned tiles may share a cell.
+const LAYOUT_COLS = 8;
+const COL_LETTERS = 'ABCDEFGH';
+function parsePos(s: string): { row: number; col: number } | null {
+  const m = /^([A-Ha-h])\s*0*(\d{1,2})$/.exec(s.trim());
+  if (!m) return null;
+  const col = COL_LETTERS.indexOf(m[1]!.toUpperCase()) + 1;
+  const row = parseInt(m[2]!, 10);
+  if (col < 1 || col > LAYOUT_COLS || row < 1) return null;
+  return { row, col };
+}
+function fmtPos(row: number, col: number): string {
+  return `${COL_LETTERS[col - 1]}${row}`;
+}
 
 interface Props {
   summary: Summary | null;
@@ -60,6 +78,14 @@ export function SummaryCards({
   onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
 }: Props) {
   const { t } = useI18n();
+  const [layout, setLayout] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(settings['dashboard.tile_layout'] || '{}') as Record<string, string>; }
+    catch { return {}; }
+  });
+  const [editMode, setEditMode] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState('');
+  const [layoutErr, setLayoutErr] = useState<string | null>(null);
   const windowDays = summary?.window_days ?? 1;
   const windowLabel = windowDays === 1 ? '24h' : `${windowDays}d`;
   // Service problems: count real (not trigger/delayed/per-user) and not on the
@@ -125,10 +151,90 @@ export function SummaryCards({
     { id: 'computers', el: <Card label={t('cards.computers')} value={`${enabledCount}/${total}`} kind="info" onClick={onClickComputers} /> },
   ];
 
+  // --- Tile placement: pinned overrides hold their cell, the rest auto-flow ---
+  const overrides = new Map<string, { row: number; col: number }>();
+  for (const tl of tiles) {
+    const raw = layout[tl.id];
+    if (raw) { const p = parsePos(raw); if (p) overrides.set(tl.id, p); }
+  }
+  const cellKey = (r: number, c: number) => `${r}:${c}`;
+  const occupied = new Set<string>();
+  for (const p of overrides.values()) occupied.add(cellKey(p.row, p.col));
+  const cursor = { row: 1, col: 1 };
+  const takeFree = () => {
+    while (occupied.has(cellKey(cursor.row, cursor.col))) {
+      cursor.col++; if (cursor.col > LAYOUT_COLS) { cursor.col = 1; cursor.row++; }
+    }
+    const pos = { row: cursor.row, col: cursor.col };
+    occupied.add(cellKey(pos.row, pos.col));
+    cursor.col++; if (cursor.col > LAYOUT_COLS) { cursor.col = 1; cursor.row++; }
+    return pos;
+  };
+  const placed = tiles.map((tl) => ({ tile: tl, ...(overrides.get(tl.id) ?? takeFree()) }));
+
+  const persist = (next: Record<string, string>) => {
+    setLayout(next);
+    api.saveSettings({ 'dashboard.tile_layout': JSON.stringify(next) }).catch(() => {});
+  };
+  const commitEdit = (tileId: string) => {
+    const v = editVal.trim();
+    if (v === '') { const next = { ...layout }; delete next[tileId]; persist(next); setEditing(null); setLayoutErr(null); return; }
+    const p = parsePos(v);
+    if (!p) { setLayoutErr(t('cards.layout.invalid')); return; }
+    // No two PINNED tiles may share a cell (auto-flow tiles never collide — they
+    // fill whatever cells are left after the pins).
+    for (const tl of tiles) {
+      if (tl.id === tileId) continue;
+      const raw = layout[tl.id]; if (!raw) continue;
+      const op = parsePos(raw); if (!op) continue;
+      if (op.row === p.row && op.col === p.col) { setLayoutErr(t('cards.layout.taken')); return; }
+    }
+    persist({ ...layout, [tileId]: fmtPos(p.row, p.col) });
+    setEditing(null); setLayoutErr(null);
+  };
+
   return (
-    <div className="cards">
-      {tiles.map((t) => React.cloneElement(t.el, { key: t.id }))}
-    </div>
+    <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: editMode ? 6 : 0 }}>
+        {editMode && <span style={{ fontSize: 11, color: 'var(--text-dim)', marginRight: 'auto' }}>{t('cards.layout.hint')}</span>}
+        <button
+          onClick={() => { setEditMode(!editMode); setEditing(null); setLayoutErr(null); }}
+          title={t('cards.layout.edit')}
+          style={{ fontSize: 12, padding: '2px 8px', cursor: 'pointer', background: editMode ? 'var(--accent)' : 'rgba(120,130,150,0.18)', color: editMode ? '#fff' : 'var(--text-dim)', border: '1px solid var(--border)', borderRadius: 6 }}
+        >{editMode ? t('cards.layout.done') : '✏️'}</button>
+      </div>
+      <div className="cards" style={{ display: 'grid', gridTemplateColumns: `repeat(${LAYOUT_COLS}, minmax(140px, 1fr))`, alignItems: 'stretch', justifyContent: 'start' }}>
+        {placed.map(({ tile, row, col }) => (
+          <div key={tile.id} style={{ gridColumn: col, gridRow: row, position: 'relative' }}>
+            {editMode && <div style={{ position: 'absolute', inset: 0, zIndex: 3 }} />}
+            {editMode && (editing === tile.id ? (
+              <div style={{ position: 'absolute', top: 3, left: 4, zIndex: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <input
+                    autoFocus
+                    value={editVal}
+                    onChange={(e) => setEditVal(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') commitEdit(tile.id); else if (e.key === 'Escape') { setEditing(null); setLayoutErr(null); } }}
+                    placeholder={t('cards.layout.placeholder')}
+                    style={{ width: 50, fontSize: 11, padding: '1px 4px' }}
+                  />
+                  <button onClick={() => commitEdit(tile.id)} title="OK" style={{ fontSize: 11, padding: '1px 5px', cursor: 'pointer' }}>✓</button>
+                  <button onClick={() => { setEditing(null); setLayoutErr(null); }} title={t('cards.layout.cancel')} style={{ fontSize: 11, padding: '1px 5px', cursor: 'pointer' }}>✕</button>
+                </div>
+                {layoutErr && <span style={{ fontSize: 10, color: 'var(--critical)', background: 'var(--surface)', padding: '1px 3px', borderRadius: 4 }}>{layoutErr}</span>}
+              </div>
+            ) : (
+              <button
+                onClick={() => { setEditing(tile.id); setEditVal(layout[tile.id] ?? ''); setLayoutErr(null); }}
+                title={t('cards.layout.edit')}
+                style={{ position: 'absolute', top: 3, left: 4, zIndex: 6, fontSize: 10, lineHeight: 1, padding: '2px 5px', background: layout[tile.id] ? 'var(--accent)' : 'rgba(120,130,150,0.25)', color: layout[tile.id] ? '#fff' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+              >✏️ {fmtPos(row, col)}</button>
+            ))}
+            {React.cloneElement(tile.el, { key: tile.id })}
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
