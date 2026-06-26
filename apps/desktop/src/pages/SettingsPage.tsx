@@ -388,7 +388,7 @@ const SettingsFilterContext = React.createContext('');
 // All retention policies in one place (the "Retenční politika" overview table).
 // Every table that grows has a row here; snapshot tables (overwritten in place)
 // are noted below the table, not listed.
-const RETENTION_ROWS: { key: string; def: string; table: string; label: string; unit: string }[] = [
+const RETENTION_ROWS = [
   { key: 'events.retention_days', def: '90', table: 'events', label: 'settings.ret.events', unit: 'settings.unit.days' },
   { key: 'events.dedup_lookback_days', def: '90', table: 'events (dedup)', label: 'settings.ret.dedup', unit: 'settings.unit.days' },
   { key: 'activity.retention_days', def: '30', table: 'activity_log', label: 'settings.ret.activity', unit: 'settings.unit.days' },
@@ -398,7 +398,7 @@ const RETENTION_ROWS: { key: string; def: string; table: string; label: string; 
   { key: 'devices.lease_retention_days', def: '14', table: 'dhcp_leases', label: 'settings.ret.ghosts', unit: 'settings.unit.days' },
   { key: 'devices.history_retention_days', def: '365', table: 'device_ip_history', label: 'settings.ret.history', unit: 'settings.unit.days' },
   { key: 'devices.loss_window_hours', def: '24', table: 'device_ping_samples', label: 'settings.ret.loss', unit: 'settings.unit.hour24' },
-];
+] as const;
 
 export function SettingsPage() {
   const { t } = useI18n();
