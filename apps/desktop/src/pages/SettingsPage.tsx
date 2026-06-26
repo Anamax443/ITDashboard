@@ -256,12 +256,17 @@ interface RetentionReport {
   steps: RetentionStep[];
 }
 
-type RetentionStepName = 'events_purge' | 'activity_log_purge' | 'pc_user_history_purge' | 'events_dedup';
-const ALL_STEPS: RetentionStepName[] = ['events_purge', 'activity_log_purge', 'pc_user_history_purge', 'events_dedup'];
+type RetentionStepName =
+  | 'events_purge' | 'activity_log_purge' | 'pc_user_history_purge' | 'perf_purge'
+  | 'ad_sync_runs_purge' | 'dhcp_leases_purge' | 'device_ip_history_purge'
+  | 'ping_samples_purge' | 'events_dedup';
 
-function RetentionRunBlock() {
-  const { t } = useI18n();
+// Shared run-state for the retention table. The per-row controls (checkbox + ▶) and
+// the toolbar (select all / deselect all / run selected) all drive this one hook, so
+// a manual run is just runSteps([...]) with whichever step names are involved.
+function useRetentionRun() {
   const [running, setRunning] = useState(false);
+  const [busySteps, setBusySteps] = useState<Set<RetentionStepName>>(() => new Set());
   const [report, setReport] = useState<RetentionReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [nextRunAt, setNextRunAt] = useState<string | null>(null);
@@ -277,23 +282,24 @@ function RetentionRunBlock() {
     }).catch(() => {});
   }, []);
 
-  const toggle = (name: RetentionStepName) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name); else next.add(name);
-      return next;
-    });
-  };
+  const toggle = (name: RetentionStepName) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name); else next.add(name);
+    return next;
+  });
+  const selectAll = () => setSelected(new Set(ALL_STEPS));
+  const clearAll = () => setSelected(new Set());
 
-  const run = async () => {
-    if (selected.size === 0) return;
+  const runSteps = async (steps: RetentionStepName[]) => {
+    if (running || steps.length === 0) return;
     setRunning(true);
+    setBusySteps(new Set(steps));
     setError(null);
     try {
       const res = await fetch('/api/retention/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ steps: Array.from(selected) }),
+        body: JSON.stringify({ steps }),
       });
       const j = await res.json();
       if (j?.ok) setReport(j.report); else setError(String(j?.error ?? 'unknown'));
@@ -301,82 +307,50 @@ function RetentionRunBlock() {
       setError(String(e));
     } finally {
       setRunning(false);
+      setBusySteps(new Set());
     }
   };
 
-  return (
-    <div style={{ marginTop: 18, padding: 14, background: 'rgba(59, 130, 246, 0.06)', border: '1px solid var(--accent)', borderRadius: 4 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{t('settings.retention.manualHeader')}</div>
-      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 14, lineHeight: 1.5 }}>{t('settings.retention.manualHint')}</div>
-      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>{t('settings.retention.pickSteps')}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-        {ALL_STEPS.map((name) => (
-          <label key={name} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: 12 }}>
-            <input
-              type="checkbox"
-              checked={selected.has(name)}
-              onChange={() => toggle(name)}
-              style={{ marginTop: 2 }}
-            />
-            <span>
-              <span style={{ fontWeight: 600 }}>{t(`settings.retention.step.${name}.label` as const)}</span>
-              <span style={{ color: 'var(--text-dim)', marginLeft: 6 }}>— {t(`settings.retention.step.${name}.desc` as const)}</span>
-            </span>
-          </label>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button
-          className="refresh-btn"
-          onClick={run}
-          disabled={running || selected.size === 0}
-          style={{ background: (running || selected.size === 0) ? 'var(--text-dim)' : 'var(--accent)', color: 'white', border: 'none', padding: '6px 14px', fontSize: 12, fontWeight: 600 }}
-        >
-          {running ? t('settings.retention.running') : t('settings.retention.runSelected', { n: selected.size })}
-        </button>
-        {nextRunAt && (
-          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-            {t('settings.retention.next')}: {new Date(nextRunAt).toLocaleString()}
-          </span>
-        )}
-        {error && <span style={{ color: 'var(--critical)', fontSize: 11 }}>⚠ {error}</span>}
-      </div>
+  return { running, busySteps, report, error, nextRunAt, selected, toggle, selectAll, clearAll, runSteps };
+}
 
-      {report && (
-        <div style={{ marginTop: 12, fontSize: 12 }}>
-          <div style={{ color: 'var(--text-dim)', marginBottom: 6 }}>
-            {t('settings.retention.lastRun', {
-              source: report.triggerSource,
-              when: new Date(report.startedAt).toLocaleString(),
-              dur: (report.totalDurationMs / 1000).toFixed(1),
-            })}
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-            <thead>
-              <tr style={{ color: 'var(--text-dim)', textAlign: 'left' }}>
-                <th style={{ padding: '4px 6px' }}>{t('settings.retention.col.step')}</th>
-                <th style={{ padding: '4px 6px' }}>{t('settings.retention.col.detail')}</th>
-                <th style={{ padding: '4px 6px', textAlign: 'right' }}>{t('settings.retention.col.rows')}</th>
-                <th style={{ padding: '4px 6px', textAlign: 'right' }}>{t('settings.retention.col.duration')}</th>
-                <th style={{ padding: '4px 6px' }}>{t('settings.retention.col.status')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.steps.map((s) => (
-                <tr key={s.name} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: '4px 6px', fontFamily: 'Consolas, monospace' }}>{s.name}</td>
-                  <td style={{ padding: '4px 6px', color: 'var(--text-dim)' }}>{s.detail}</td>
-                  <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{s.rowsAffected.toLocaleString()}</td>
-                  <td style={{ padding: '4px 6px', textAlign: 'right', color: 'var(--text-dim)' }}>{(s.durationMs / 1000).toFixed(2)}s</td>
-                  <td style={{ padding: '4px 6px', color: s.ok ? 'var(--ok)' : 'var(--critical)' }}>
-                    {s.ok ? '✓' : `✗ ${s.error ?? ''}`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+// Last-run report table, shown below the retention policy table.
+function RetentionReportView({ report }: { report: RetentionReport | null }) {
+  const { t } = useI18n();
+  if (!report) return null;
+  return (
+    <div style={{ marginTop: 14, fontSize: 12 }}>
+      <div style={{ color: 'var(--text-dim)', marginBottom: 6 }}>
+        {t('settings.retention.lastRun', {
+          source: report.triggerSource,
+          when: new Date(report.startedAt).toLocaleString(),
+          dur: (report.totalDurationMs / 1000).toFixed(1),
+        })}
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <thead>
+          <tr style={{ color: 'var(--text-dim)', textAlign: 'left' }}>
+            <th style={{ padding: '4px 6px' }}>{t('settings.retention.col.step')}</th>
+            <th style={{ padding: '4px 6px' }}>{t('settings.retention.col.detail')}</th>
+            <th style={{ padding: '4px 6px', textAlign: 'right' }}>{t('settings.retention.col.rows')}</th>
+            <th style={{ padding: '4px 6px', textAlign: 'right' }}>{t('settings.retention.col.duration')}</th>
+            <th style={{ padding: '4px 6px' }}>{t('settings.retention.col.status')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {report.steps.map((s) => (
+            <tr key={s.name} style={{ borderTop: '1px solid var(--border)' }}>
+              <td style={{ padding: '4px 6px', fontFamily: 'Consolas, monospace' }}>{s.name}</td>
+              <td style={{ padding: '4px 6px', color: 'var(--text-dim)' }}>{s.detail}</td>
+              <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'Consolas, monospace' }}>{s.rowsAffected.toLocaleString()}</td>
+              <td style={{ padding: '4px 6px', textAlign: 'right', color: 'var(--text-dim)' }}>{(s.durationMs / 1000).toFixed(2)}s</td>
+              <td style={{ padding: '4px 6px', color: s.ok ? 'var(--ok)' : 'var(--critical)' }}>
+                {s.ok ? '✓' : `✗ ${s.error ?? ''}`}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -389,16 +363,20 @@ const SettingsFilterContext = React.createContext('');
 // Every table that grows has a row here; snapshot tables (overwritten in place)
 // are noted below the table, not listed.
 const RETENTION_ROWS = [
-  { key: 'events.retention_days', def: '90', table: 'events', label: 'settings.ret.events', unit: 'settings.unit.days' },
-  { key: 'events.dedup_lookback_days', def: '90', table: 'events (dedup)', label: 'settings.ret.dedup', unit: 'settings.unit.days' },
-  { key: 'activity.retention_days', def: '30', table: 'activity_log', label: 'settings.ret.activity', unit: 'settings.unit.days' },
-  { key: 'pcUserHistory.retention_days', def: '90', table: 'pc_user_history', label: 'settings.ret.pcuser', unit: 'settings.unit.days' },
-  { key: 'perf.retention_days', def: '180', table: 'perf_events', label: 'settings.ret.perf', unit: 'settings.unit.days' },
-  { key: 'adsync.runs_retention_days', def: '90', table: 'ad_sync_runs', label: 'settings.ret.adruns', unit: 'settings.unit.days' },
-  { key: 'devices.lease_retention_days', def: '14', table: 'dhcp_leases', label: 'settings.ret.ghosts', unit: 'settings.unit.days' },
-  { key: 'devices.history_retention_days', def: '365', table: 'device_ip_history', label: 'settings.ret.history', unit: 'settings.unit.days' },
-  { key: 'devices.loss_window_hours', def: '24', table: 'device_ping_samples', label: 'settings.ret.loss', unit: 'settings.unit.hour24' },
+  { key: 'events.retention_days', def: '90', table: 'events', label: 'settings.ret.events', unit: 'settings.unit.days', step: 'events_purge' },
+  { key: 'events.dedup_lookback_days', def: '90', table: 'events (dedup)', label: 'settings.ret.dedup', unit: 'settings.unit.days', step: 'events_dedup' },
+  { key: 'activity.retention_days', def: '30', table: 'activity_log', label: 'settings.ret.activity', unit: 'settings.unit.days', step: 'activity_log_purge' },
+  { key: 'pcUserHistory.retention_days', def: '90', table: 'pc_user_history', label: 'settings.ret.pcuser', unit: 'settings.unit.days', step: 'pc_user_history_purge' },
+  { key: 'perf.retention_days', def: '180', table: 'perf_events', label: 'settings.ret.perf', unit: 'settings.unit.days', step: 'perf_purge' },
+  { key: 'adsync.runs_retention_days', def: '90', table: 'ad_sync_runs', label: 'settings.ret.adruns', unit: 'settings.unit.days', step: 'ad_sync_runs_purge' },
+  { key: 'devices.lease_retention_days', def: '14', table: 'dhcp_leases', label: 'settings.ret.ghosts', unit: 'settings.unit.days', step: 'dhcp_leases_purge' },
+  { key: 'devices.history_retention_days', def: '365', table: 'device_ip_history', label: 'settings.ret.history', unit: 'settings.unit.days', step: 'device_ip_history_purge' },
+  { key: 'devices.loss_window_hours', def: '24', table: 'device_ping_samples', label: 'settings.ret.loss', unit: 'settings.unit.hour24', step: 'ping_samples_purge' },
 ] as const;
+
+// Run order for "select all" — mirrors the table order. The server runs steps in its
+// own fixed internal order regardless, so this only sets the checkbox default set.
+const ALL_STEPS: RetentionStepName[] = RETENTION_ROWS.map((r) => r.step);
 
 export function SettingsPage() {
   const { t } = useI18n();
@@ -410,6 +388,7 @@ export function SettingsPage() {
   const [reachRunning, setReachRunning] = useState(false);
   const [reachResult, setReachResult] = useState<string | null>(null);
   const [blockFilter, setBlockFilter] = useState('');
+  const ret = useRetentionRun();
   // Deep-link helper: clear the block filter so the target section is visible, then
   // scroll to it. Used by the "↗ Retenční politika / Notifikace" links in sections.
   const goToSection = (id: string) => {
@@ -884,20 +863,74 @@ export function SettingsPage() {
         >
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
             <thead><tr>
-              {[t('settings.ret.data'), t('settings.ret.table'), t('settings.ret.keep')].map((h, i) => (
-                <th key={i} style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-dim)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', width: i === 2 ? 170 : undefined }}>{h}</th>
+              {[t('settings.ret.data'), t('settings.ret.table'), t('settings.ret.keep'), t('settings.ret.run')].map((h, i) => (
+                <th key={i} style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-dim)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', width: i === 2 ? 170 : i === 3 ? 200 : undefined }}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
-              {RETENTION_ROWS.map((r) => (
+              {RETENTION_ROWS.map((r) => {
+                const last = ret.report?.steps.find((s) => s.name === r.step);
+                const busy = ret.busySteps.has(r.step);
+                return (
                 <tr key={r.key} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={{ padding: '6px 8px' }}>{t(r.label)}</td>
                   <td style={{ padding: '6px 8px', fontFamily: 'Consolas, monospace', color: 'var(--text-dim)' }}>{r.table}</td>
                   <td style={{ padding: '6px 8px' }}><NumberInput v={value(r.key, r.def)} onChange={(v) => set(r.key, v)} suffix={t(r.unit)} /></td>
+                  <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={ret.selected.has(r.step)}
+                        onChange={() => ret.toggle(r.step)}
+                        disabled={ret.running}
+                        title={t('settings.ret.runRow')}
+                        style={{ cursor: ret.running ? 'default' : 'pointer' }}
+                      />
+                      <button
+                        className="refresh-btn"
+                        onClick={() => ret.runSteps([r.step])}
+                        disabled={ret.running}
+                        title={t('settings.ret.runRow')}
+                        style={{ padding: '2px 9px', fontSize: 12 }}
+                      >
+                        {busy ? '⏳' : '▶'}
+                      </button>
+                      {last && (
+                        <span style={{ fontSize: 11, color: last.ok ? 'var(--ok)' : 'var(--critical)' }} title={last.detail}>
+                          {last.ok ? `✓ ${last.rowsAffected.toLocaleString()}` : '✗'}
+                        </span>
+                      )}
+                    </span>
+                  </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+            <button className="refresh-btn" onClick={ret.selectAll} disabled={ret.running} title={t('settings.ret.selectAll')}>
+              {t('settings.ret.selectAll')}
+            </button>
+            <button className="refresh-btn" onClick={ret.clearAll} disabled={ret.running} title={t('settings.ret.deselectAll')}>
+              {t('settings.ret.deselectAll')}
+            </button>
+            <button
+              className="refresh-btn"
+              onClick={() => ret.runSteps([...ret.selected])}
+              disabled={ret.running || ret.selected.size === 0}
+              title={t('settings.retention.runSelected', { n: ret.selected.size })}
+              style={{ background: (ret.running || ret.selected.size === 0) ? 'var(--text-dim)' : 'var(--accent)', color: 'white', border: 'none', fontWeight: 600 }}
+            >
+              {ret.running ? t('settings.retention.running') : t('settings.retention.runSelected', { n: ret.selected.size })}
+            </button>
+            {ret.nextRunAt && (
+              <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                {t('settings.retention.next')}: {new Date(ret.nextRunAt).toLocaleString()}
+              </span>
+            )}
+            {ret.error && <span style={{ color: 'var(--critical)', fontSize: 11 }}>⚠ {ret.error}</span>}
+          </div>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '0 0 4px 0', lineHeight: 1.5 }}>{t('settings.retention.manualHint')}</p>
           <FieldGroup>
             <Field label={t('settings.field.retentionRunHour')}>
               <NumberInput v={value('retention.run_at_hour', '2')} onChange={(v) => set('retention.run_at_hour', v)} suffix={t('settings.unit.hour24')} />
@@ -914,7 +947,7 @@ export function SettingsPage() {
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>
             {t('settings.ret.help')}
           </p>
-          <RetentionRunBlock />
+          <RetentionReportView report={ret.report} />
         </Section>
         </div>
 

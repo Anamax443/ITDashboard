@@ -128,8 +128,9 @@ export async function registerComputersRoutes(app: FastifyInstance) {
       .input('id', params.id)
       .input('x', body.excluded ? 1 : 0)
       .query(`
-        UPDATE computers SET excluded = @x WHERE id = @id;
-        SELECT id, name, excluded FROM computers WHERE id = @id;
+        -- MONITOR and EXCLUDE are mutually exclusive: excluding a PC clears monitoring.
+        UPDATE computers SET excluded = @x, monitor_enabled = CASE WHEN @x = 1 THEN 0 ELSE monitor_enabled END WHERE id = @id;
+        SELECT id, name, excluded, monitor_enabled FROM computers WHERE id = @id;
       `);
     const row = r.recordset[0];
     if (!row) { reply.code(404); return { error: 'Not found' }; }
@@ -144,8 +145,9 @@ export async function registerComputersRoutes(app: FastifyInstance) {
       .input('id', params.id)
       .input('m', body.monitor ? 1 : 0)
       .query(`
-        UPDATE computers SET monitor_enabled = @m WHERE id = @id;
-        SELECT id, name, monitor_enabled FROM computers WHERE id = @id;
+        -- MONITOR and EXCLUDE are mutually exclusive: enabling monitoring un-excludes the PC.
+        UPDATE computers SET monitor_enabled = @m, excluded = CASE WHEN @m = 1 THEN 0 ELSE excluded END WHERE id = @id;
+        SELECT id, name, monitor_enabled, excluded FROM computers WHERE id = @id;
       `);
     const row = r.recordset[0];
     if (!row) {
@@ -257,9 +259,13 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     if (body.ids.length > 5000) { reply.code(400); return { error: 'too many ids' }; }
     const idsCSV = body.ids.join(',');
     const pool = await getPool();
+    // MONITOR and EXCLUDE are mutually exclusive — setting one ON clears the other.
+    let extra = '';
+    if (body.value && body.flag === 'excluded') extra = ', monitor_enabled = 0';
+    else if (body.value && body.flag === 'monitor_enabled') extra = ', excluded = 0';
     const r = await pool.request()
       .input('v', body.value ? 1 : 0)
-      .query(`UPDATE computers SET ${body.flag} = @v WHERE id IN (${idsCSV})`);
+      .query(`UPDATE computers SET ${body.flag} = @v${extra} WHERE id IN (${idsCSV})`);
     return { updated: r.rowsAffected[0] ?? 0, flag: body.flag, value: body.value };
   });
 
@@ -273,7 +279,8 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     const idsCSV = body.ids.join(',');
     const r = await pool.request()
       .input('m', body.monitor ? 1 : 0)
-      .query(`UPDATE computers SET monitor_enabled = @m WHERE id IN (${idsCSV})`);
+      // MONITOR and EXCLUDE are mutually exclusive: enabling monitoring un-excludes.
+      .query(`UPDATE computers SET monitor_enabled = @m${body.monitor ? ', excluded = 0' : ''} WHERE id IN (${idsCSV})`);
     return { updated: r.rowsAffected[0] ?? 0, monitor: body.monitor };
   });
 }

@@ -422,7 +422,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                       checked={c.monitor_enabled}
                       onChange={() => toggleMonitor(c)}
                       title={c.enabled
-                        ? (c.monitor_enabled ? 'Click to stop monitoring' : 'Click to start monitoring')
+                        ? (c.monitor_enabled ? 'Click to stop monitoring' : 'Click to start monitoring (un-excludes the PC — Monitor and Exclude are mutually exclusive)')
                         : 'PC is currently disabled in AD — monitoring will activate when it reappears'}
                       style={{ cursor: 'pointer' }}
                     />
@@ -432,7 +432,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                       type="checkbox"
                       checked={c.excluded}
                       onChange={() => toggleExcluded(c)}
-                      title={c.excluded ? 'Excluded — click to re-include in stats' : 'Click to exclude from all dashboards and stats'}
+                      title={c.excluded ? 'Excluded — click to re-include in stats' : 'Click to exclude from all dashboards and stats (also stops monitoring — Monitor and Exclude are mutually exclusive)'}
                       style={{ cursor: 'pointer' }}
                     />
                   </td>
