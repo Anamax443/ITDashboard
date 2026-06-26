@@ -41,6 +41,8 @@ export async function registerVersionRoutes(app: FastifyInstance) {
   // Convenience aliases for the smoke test in deploy.yml — easy to grep / diff.
   app.get('/version/sha', async () => readVersion().sha);
 
+  const DOCS_CSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'";
+
   app.get('/docs', async (_req, reply) => {
     const html = await readDocsHtml();
     // Docs is static read-only content. Helmet's default CSP (script-src 'self')
@@ -48,7 +50,27 @@ export async function registerVersionRoutes(app: FastifyInstance) {
     // toggles (e.g. CS/EN language switch). Override CSP to allow inline scripts
     // for this single route — the page never accepts user input and has no
     // privileged context.
-    reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
+    reply.header('Content-Security-Policy', DOCS_CSP);
     reply.type('text/html').send(html);
+  });
+
+  // The other static doc pages next to dashboard.html — the bilingual system
+  // presentation, project status, the MAC/hostname write-up. Allow-listed by name
+  // (no path traversal); same relaxed CSP. Their relative cross-links resolve
+  // under /docs/ so the CS↔EN presentation switch works.
+  const DOC_FILES = new Set([
+    'dashboard.html', 'prezentace-system.html', 'presentation-system.html',
+    'project-status.html', 'nacitani-mac-hostname.html',
+  ]);
+  app.get<{ Params: { file: string } }>('/docs/:file', async (req, reply) => {
+    const file = req.params.file;
+    if (!DOC_FILES.has(file)) { reply.code(404).type('text/html').send('<!doctype html><h1>404 — dokument nenalezen</h1>'); return; }
+    try {
+      const html = await readFile(join(process.cwd(), '..', '..', 'docs', file), 'utf8');
+      reply.header('Content-Security-Policy', DOCS_CSP);
+      reply.type('text/html').send(html);
+    } catch {
+      reply.code(404).type('text/html').send('<!doctype html><h1>404 — dokument nenalezen</h1>');
+    }
   });
 }
