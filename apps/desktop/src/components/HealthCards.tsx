@@ -135,7 +135,7 @@ export function HealthCards({ data, onJumpToComputer, onOpenEvents, onChanged, o
       )}
 
       {open && (activeRisk.length > 0 || snoozed.length > 0) && (
-        <div className="panel" style={{ gridColumn: '1 / -1', marginTop: 10 }}>
+        <div className="panel" style={{ marginTop: 10, flexShrink: 0 }}>
           <div className="panel-header">
             <h2>
               🩺 {t('health.reinstall')}{' '}
@@ -145,7 +145,7 @@ export function HealthCards({ data, onJumpToComputer, onOpenEvents, onChanged, o
             </h2>
             <button className="refresh-btn" onClick={() => setOpen(false)} title={t('health.collapse')}>✕</button>
           </div>
-          <div className="panel-body">
+          <div className="panel-body" style={{ flex: 'none' }}>
             <table>
               <thead>
                 <tr>

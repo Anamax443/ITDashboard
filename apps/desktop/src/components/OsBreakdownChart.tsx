@@ -46,7 +46,7 @@ export function OsBreakdownChart({ items, thresholdDays, onSelect, open: openPro
       )}
 
       {open && stats.length > 0 && (
-        <div className="panel" style={{ gridColumn: '1 / -1', marginTop: 10 }}>
+        <div className="panel" style={{ marginTop: 10, flexShrink: 0 }}>
           <div className="panel-header">
             <h2>
               📊 {t('os.title')}{' '}
@@ -56,7 +56,7 @@ export function OsBreakdownChart({ items, thresholdDays, onSelect, open: openPro
             </h2>
             <button className="refresh-btn" onClick={() => setOpen(false)} title={t('health.collapse')}>✕</button>
           </div>
-          <div className="panel-body">
+          <div className="panel-body" style={{ flex: 'none' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {stats.map((s) => {
                 const liveW = (s.live / max) * 100;
