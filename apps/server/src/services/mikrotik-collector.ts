@@ -295,6 +295,17 @@ export async function runFtpFetchOnce(): Promise<FtpFetchLog[]> {
     if (ftp.arpTime) lines.push(`  ✓ ARP_scan.txt — ${ftp.arp.length} ARP záznamů  (čas souboru ${ftp.arpTime.toISOString().replace('T', ' ').slice(0, 19)})`);
     else lines.push('  ✗ ARP_scan.txt — nestaženo');
     if (ftp.error) lines.push(`  ⚠ ${ftp.error}`);
+    // Round-trip into the DB: merge the parsed rows into dhcp_leases by MAC (leases
+    // win, ARP adds statics) so the device inventory updates now — not only on the
+    // next regular collect — and report the write count.
+    let written = 0;
+    if (ftp.leaseTime || ftp.arpTime) {
+      const byMac = new Map<string, NormDevice>();
+      for (const l of ftp.leases) byMac.set(normMac(l.mac), ftpLeaseToNorm(router.site, l));
+      for (const a of ftp.arp) if (!byMac.has(normMac(a.mac))) byMac.set(normMac(a.mac), ftpArpToNorm(router.site, a));
+      for (const d of byMac.values()) { if (await upsertDevice(d)) written++; }
+      lines.push(`  → zapsáno do DB: ${written} zařízení (leasy+ARP sloučené přes MAC)`);
+    }
     lines.push(`  hotovo za ${Date.now() - t0} ms`);
     await recordSiteStatus(router.site, ftp);
     out.push({ site: router.site, ip: router.ip, ok: !ftp.error && (!!ftp.leaseTime || !!ftp.arpTime), lines });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { api } from '../api.js';
 import { useI18n } from '../i18n.js';
 
@@ -90,6 +90,7 @@ export function NetworkPage() {
   const [err, setErr] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
   const [log, setLog] = useState<FetchLog[] | null>(null);
+  const [logCollapsed, setLogCollapsed] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -117,27 +118,42 @@ export function NetworkPage() {
     }
   };
 
+  const consoleBtnStyle: CSSProperties = {
+    background: 'transparent', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 4,
+    width: 26, height: 22, cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0,
+  };
+
   return (
     <div style={{ padding: 20, overflow: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>{t('net.title')}</h2>
-        <button className="refresh-btn" onClick={load} disabled={loading}>{loading ? '…' : `🔄 ${t('net.refresh')}`}</button>
-        <button className="refresh-btn" onClick={fetchNow} disabled={fetching} style={{ fontWeight: 600 }}>
+        <button className="refresh-btn" onClick={load} disabled={loading} title={t('net.refreshHint')}>{loading ? '…' : `🔄 ${t('net.refresh')}`}</button>
+        <button className="refresh-btn" onClick={fetchNow} disabled={fetching} style={{ fontWeight: 600 }} title={t('net.fetchNowHint')}>
           {fetching ? '⏳ …' : `⬇ ${t('net.fetchNow')}`}
         </button>
       </div>
       <p style={{ color: 'var(--text-dim)', fontSize: 13, margin: '0 0 16px' }}>{t('net.subtitle')}</p>
 
       {log && (
-        <div style={{ background: '#0b1220', border: '1px solid #1e293b', borderRadius: 8, padding: '12px 14px', marginBottom: 16, fontFamily: 'Consolas, monospace', fontSize: 12.5, lineHeight: 1.5, color: '#cbd5e1', whiteSpace: 'pre-wrap', maxHeight: 300, overflow: 'auto' }}>
-          {log.map((s, i) => (
-            <div key={i} style={{ marginBottom: s.site ? 10 : 0 }}>
-              {s.site && <div style={{ color: s.ok ? '#4ade80' : '#f87171', fontWeight: 700 }}>{s.ok ? '●' : '○'} {s.site} {s.ip}</div>}
-              {s.lines.map((ln, j) => (
-                <div key={j} style={{ color: ln.includes('✗') || ln.includes('⚠') ? '#f87171' : ln.includes('✓') ? '#86efac' : '#94a3b8' }}>{ln}</div>
+        <div style={{ background: '#0b1220', border: '1px solid #1e293b', borderRadius: 8, marginBottom: 16, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px 5px 12px', background: '#111827', borderBottom: logCollapsed ? 'none' : '1px solid #1e293b' }}>
+            <span style={{ color: '#94a3b8', fontSize: 12, fontFamily: 'Consolas, monospace', flex: 1 }}>▌ {t('net.console')}</span>
+            <button onClick={() => setLogCollapsed((c) => !c)} title={logCollapsed ? t('net.consoleExpand') : t('net.consoleMin')}
+              style={consoleBtnStyle}>{logCollapsed ? '▢' : '—'}</button>
+            <button onClick={() => { setLog(null); setLogCollapsed(false); }} title={t('net.consoleClose')} style={consoleBtnStyle}>×</button>
+          </div>
+          {!logCollapsed && (
+            <div style={{ padding: '12px 14px', fontFamily: 'Consolas, monospace', fontSize: 12.5, lineHeight: 1.5, color: '#cbd5e1', whiteSpace: 'pre-wrap', maxHeight: 300, overflow: 'auto' }}>
+              {log.map((s, i) => (
+                <div key={i} style={{ marginBottom: s.site ? 10 : 0 }}>
+                  {s.site && <div style={{ color: s.ok ? '#4ade80' : '#f87171', fontWeight: 700 }}>{s.ok ? '●' : '○'} {s.site} {s.ip}</div>}
+                  {s.lines.map((ln, j) => (
+                    <div key={j} style={{ color: ln.includes('✗') || ln.includes('⚠') ? '#f87171' : (ln.includes('✓') || ln.includes('→')) ? '#86efac' : '#94a3b8' }}>{ln}</div>
+                  ))}
+                </div>
               ))}
             </div>
-          ))}
+          )}
         </div>
       )}
 
