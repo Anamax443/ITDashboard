@@ -19,14 +19,21 @@ type EventLevel = '' | 'critical' | 'error' | 'warning';
  * moves to a collapsible "Snoozed" list; it returns to standard automatically
  * when the snooze expires (or when the operator clears it early).
  */
-export function HealthCards({ data, onJumpToComputer, onOpenEvents, onChanged }: {
+export function HealthCards({ data, onJumpToComputer, onOpenEvents, onChanged, open: openProp, onOpenChange, hideSummary }: {
   data: PcHealthResult | null;
   onJumpToComputer?: (name: string) => void;
   onOpenEvents?: (computer: string, level: EventLevel) => void;
   onChanged?: () => void;
+  // When the summary tile lives in the main dashboard grid (SummaryCards), this
+  // component renders only its detail panel, controlled from the parent.
+  open?: boolean;
+  onOpenChange?: (o: boolean) => void;
+  hideSummary?: boolean;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = hideSummary ? !!openProp : internalOpen;
+  const setOpen = (o: boolean) => { if (hideSummary) onOpenChange?.(o); else setInternalOpen(o); };
   const [snoozedOpen, setSnoozedOpen] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [days, setDays] = useState(7);
@@ -113,17 +120,19 @@ export function HealthCards({ data, onJumpToComputer, onOpenEvents, onChanged }:
 
   return (
     <>
-      <div className="cards" style={{ marginTop: 10 }}>
-        <Card
-          label={`🩺 ${t('health.reinstall')}`}
-          value={activeRisk.length}
-          sub={`${t('health.score')} ≥ ${data.thresholdRisk} · ${win}`}
-          kind={activeRisk.length > 0 ? 'critical' : 'ok'}
-          onClick={(activeRisk.length > 0 || snoozed.length > 0) ? () => setOpen((o) => !o) : undefined}
-          badge={snoozed.length > 0 ? `💤 ${snoozed.length}` : undefined}
-          badgeTitle={snoozed.length > 0 ? `${snoozed.length} ${t('health.snoozedTileBadge')}` : undefined}
-        />
-      </div>
+      {!hideSummary && (
+        <div className="cards" style={{ marginTop: 10 }}>
+          <Card
+            label={`🩺 ${t('health.reinstall')}`}
+            value={activeRisk.length}
+            sub={`${t('health.score')} ≥ ${data.thresholdRisk} · ${win}`}
+            kind={activeRisk.length > 0 ? 'critical' : 'ok'}
+            onClick={(activeRisk.length > 0 || snoozed.length > 0) ? () => setOpen(!open) : undefined}
+            badge={snoozed.length > 0 ? `💤 ${snoozed.length}` : undefined}
+            badgeTitle={snoozed.length > 0 ? `${snoozed.length} ${t('health.snoozedTileBadge')}` : undefined}
+          />
+        </div>
+      )}
 
       {open && (activeRisk.length > 0 || snoozed.length > 0) && (
         <div className="panel" style={{ gridColumn: '1 / -1', marginTop: 10 }}>

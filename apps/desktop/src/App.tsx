@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
 import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem, PrinterSuppliesResult } from './api.js';
-import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions, deviceDegraded, deviceProblemThresholds, isSnoozeActive } from './api.js';
+import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions, deviceDegraded, deviceProblemThresholds, isSnoozeActive, summarizeOs } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { HealthCards } from './components/HealthCards.js';
 import { EventsTable } from './components/EventsTable.js';
@@ -78,6 +78,10 @@ export function App() {
   const [perfSummary, setPerfSummary] = useState<PerfSummary | null>(null);
   const [inactiveStats, setInactiveStats] = useState<InactiveStats | null>(null);
   const [pcHealth, setPcHealth] = useState<PcHealthResult | null>(null);
+  // The "problem PCs" and "OS breakdown" tiles now live in the SummaryCards grid;
+  // their detail panels expand below, toggled from here.
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [osOpen, setOsOpen] = useState(false);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
   const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'failing' | 'inactive' | null>(null);
   const [computersOsFilter, setComputersOsFilter] = useState<{ bucket: string; stale: boolean | null } | null>(null);
@@ -404,9 +408,16 @@ export function App() {
             onClickDiskWarning={() => { setComputersPreFilter('disk-warning'); setView('computers'); }}
             onClickUnreachable={() => { setComputersPreFilter('failing'); setView('computers'); }}
             onClickInactive={() => { setComputersPreFilter('inactive'); setView('computers'); }}
+            problemPcs={pcHealth ? { count: pcHealth.items.filter((i) => i.level === 'risk' && !isSnoozeActive(i.snoozedUntil)).length, threshold: pcHealth.thresholdRisk, windowDays: pcHealth.windowDays, snoozed: pcHealth.items.filter((i) => isSnoozeActive(i.snoozedUntil)).length } : null}
+            onClickProblemPcs={() => setHealthOpen((o) => !o)}
+            osBreakdown={(() => { const s = summarizeOs(computers, inactiveStats?.thresholdDays ?? 90); return { count: s.length, totalPcs: s.reduce((a, x) => a + x.total, 0), stale: s.reduce((a, x) => a + x.stale, 0) }; })()}
+            onClickOs={() => setOsOpen((o) => !o)}
           />
           <HealthCards
             data={pcHealth}
+            hideSummary
+            open={healthOpen}
+            onOpenChange={setHealthOpen}
             onJumpToComputer={jumpToComputer}
             onOpenEvents={(computer, level) => {
               setFilterComputer(computer);
@@ -419,6 +430,9 @@ export function App() {
           <OsBreakdownChart
             items={computers}
             thresholdDays={inactiveStats?.thresholdDays ?? 90}
+            hideSummary
+            open={osOpen}
+            onOpenChange={setOsOpen}
             onSelect={(bucket, staleness) => {
               setComputersOsFilter({ bucket, stale: staleness === 'stale' });
               setView('computers');

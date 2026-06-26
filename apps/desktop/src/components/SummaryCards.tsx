@@ -20,6 +20,24 @@ function parsePos(s: string): { row: number; col: number } | null {
 function fmtPos(row: number, col: number): string {
   return `${COL_LETTERS[col - 1]}${row}`;
 }
+// '1' = full (important), 'B' = half height + smaller font.
+type TileSize = '1' | 'B';
+type TileLayout = Record<string, { pos?: string; size?: TileSize }>;
+function loadLayout(raw: string | undefined): TileLayout {
+  try {
+    const obj = JSON.parse(raw || '{}') as Record<string, unknown>;
+    const out: TileLayout = {};
+    for (const k of Object.keys(obj)) {
+      const v = obj[k];
+      if (typeof v === 'string') out[k] = { pos: v };               // legacy format
+      else if (v && typeof v === 'object') {
+        const o = v as { pos?: unknown; size?: unknown };
+        out[k] = { pos: typeof o.pos === 'string' ? o.pos : undefined, size: o.size === 'B' ? 'B' : '1' };
+      }
+    }
+    return out;
+  } catch { return {}; }
+}
 
 interface Props {
   summary: Summary | null;
@@ -70,18 +88,20 @@ interface Props {
   onClickServices?: () => void;
   onClickPerf?: () => void;
   onClickInactive?: () => void;
+  problemPcs?: { count: number; threshold: number; windowDays: number; snoozed: number } | null;
+  onClickProblemPcs?: () => void;
+  osBreakdown?: { count: number; totalPcs: number; stale: number } | null;
+  onClickOs?: () => void;
 }
 
 export function SummaryCards({
   summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, esetPcRunning = 0, esetPcTotal = 0, esetSrvRunning = 0, esetSrvTotal = 0, onClickEset, portsWithIssues = 0, portsTotal = 0, onClickPorts, printersOffline = 0, printersTotal = 0, onClickPrinters, routersTotal = 0, routersStale = 0, onClickRouters, degradedDevices = 0, devicesTotal = 0, onClickDegraded, devicesUnidentified = 0, onClickDevices, suppliesLow = 0, suppliesTotal = 0, onClickSupplies, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
   onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
+  problemPcs, onClickProblemPcs, osBreakdown, onClickOs,
 }: Props) {
   const { t } = useI18n();
-  const [layout, setLayout] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(settings['dashboard.tile_layout'] || '{}') as Record<string, string>; }
-    catch { return {}; }
-  });
+  const [layout, setLayout] = useState<TileLayout>(() => loadLayout(settings['dashboard.tile_layout']));
   const [editMode, setEditMode] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
@@ -149,12 +169,19 @@ export function SummaryCards({
     { id: 'inactive', el: <Card label={inactiveStats ? `${t('cards.inactive')} (${inactiveStats.thresholdDays}d+)` : t('cards.inactive')} value={inactiveStats ? inactiveStats.enabledInactive + inactiveStats.disabledInactive : '—'} sub={inactiveStats ? t('cards.inactiveSub').replace('{enabled}', String(inactiveStats.enabledInactive)).replace('{disabled}', String(inactiveStats.disabledInactive)) : undefined} kind={!inactiveStats ? 'info' : (inactiveStats.enabledInactive + inactiveStats.disabledInactive) > 0 ? 'warning' : 'ok'} onClick={inactiveStats && (inactiveStats.enabledInactive + inactiveStats.disabledInactive) > 0 ? onClickInactive : undefined} /> },
     { id: 'eset', el: <Card label={t('cards.eset')} value={`${esetRun}/${esetTot}`} sub={`PC ${esetPcRunning}/${esetPcTotal} · ${t('cards.esetSrv')} ${esetSrvRunning}/${esetSrvTotal}`} kind={esetTot === 0 ? 'info' : esetGap ? 'warning' : 'ok'} onClick={onClickEset} /> },
     { id: 'computers', el: <Card label={t('cards.computers')} value={`${enabledCount}/${total}`} kind="info" onClick={onClickComputers} /> },
+    ...(problemPcs ? [{ id: 'problemPcs', el: <Card label={`🩺 ${t('health.reinstall')}`} value={problemPcs.count} sub={`${t('health.score')} ≥ ${problemPcs.threshold} · ${problemPcs.windowDays} d`} kind={problemPcs.count > 0 ? 'critical' as const : 'ok' as const} onClick={onClickProblemPcs} badge={problemPcs.snoozed > 0 ? `💤 ${problemPcs.snoozed}` : undefined} /> }] : []),
+    ...(osBreakdown ? [{ id: 'osBreakdown', el: <Card label={`📊 ${t('os.title')}`} value={osBreakdown.count} sub={`${osBreakdown.totalPcs} PC${osBreakdown.stale > 0 ? ` · ${osBreakdown.stale} ${t('os.stale')}` : ''}`} kind="info" onClick={onClickOs} /> }] : []),
   ];
 
-  // --- Tile placement: pinned overrides hold their cell, the rest auto-flow ---
+  // --- Tile placement ---------------------------------------------------------
+  // Each tile has a cell (column letter + row) and a size ('1' = full, 'B' = half
+  // height + smaller font). Placed tiles hold their cell; the rest auto-flow into
+  // free cells. Editing FREEZES every tile's current cell first, so later edits
+  // move only the tiles involved (no reshuffle of the whole grid).
+  const sizeOf = (id: string): TileSize => (layout[id]?.size === 'B' ? 'B' : '1');
   const overrides = new Map<string, { row: number; col: number }>();
   for (const tl of tiles) {
-    const raw = layout[tl.id];
+    const raw = layout[tl.id]?.pos;
     if (raw) { const p = parsePos(raw); if (p) overrides.set(tl.id, p); }
   }
   const cellKey = (r: number, c: number) => `${r}:${c}`;
@@ -170,27 +197,37 @@ export function SummaryCards({
     cursor.col++; if (cursor.col > LAYOUT_COLS) { cursor.col = 1; cursor.row++; }
     return pos;
   };
-  const placed = tiles.map((tl) => ({ tile: tl, ...(overrides.get(tl.id) ?? takeFree()) }));
+  const placed = tiles.map((tl) => ({ tile: tl, size: sizeOf(tl.id), ...(overrides.get(tl.id) ?? takeFree()) }));
 
-  const persist = (next: Record<string, string>) => {
+  // Full explicit snapshot — every tile pinned to its current cell. Edits start
+  // from this so unrelated tiles never move.
+  const freeze = (): TileLayout => {
+    const out: TileLayout = {};
+    for (const pl of placed) out[pl.tile.id] = { pos: fmtPos(pl.row, pl.col), size: pl.size };
+    return out;
+  };
+  const persist = (next: TileLayout) => {
     setLayout(next);
     api.saveSettings({ 'dashboard.tile_layout': JSON.stringify(next) }).catch(() => {});
   };
-  const commitEdit = (tileId: string) => {
+  const commitMove = (tileId: string) => {
     const v = editVal.trim();
-    if (v === '') { const next = { ...layout }; delete next[tileId]; persist(next); setEditing(null); setLayoutErr(null); return; }
+    if (v === '') { const next = freeze(); next[tileId] = { size: next[tileId]?.size }; persist(next); setEditing(null); setLayoutErr(null); return; }
     const p = parsePos(v);
     if (!p) { setLayoutErr(t('cards.layout.invalid')); return; }
-    // No two PINNED tiles may share a cell (auto-flow tiles never collide — they
-    // fill whatever cells are left after the pins).
-    for (const tl of tiles) {
-      if (tl.id === tileId) continue;
-      const raw = layout[tl.id]; if (!raw) continue;
-      const op = parsePos(raw); if (!op) continue;
-      if (op.row === p.row && op.col === p.col) { setLayoutErr(t('cards.layout.taken')); return; }
-    }
-    persist({ ...layout, [tileId]: fmtPos(p.row, p.col) });
-    setEditing(null); setLayoutErr(null);
+    const next = freeze();
+    const targetPos = fmtPos(p.row, p.col);
+    const myOld = next[tileId]?.pos;
+    // Swap with whoever holds the target cell — keeps every cell unique, no dupes.
+    const occupantId = Object.keys(next).find((id) => id !== tileId && next[id]!.pos === targetPos);
+    if (occupantId && myOld) next[occupantId] = { ...next[occupantId], pos: myOld };
+    next[tileId] = { ...next[tileId], pos: targetPos };
+    persist(next); setEditing(null); setLayoutErr(null);
+  };
+  const cycleSize = (tileId: string) => {
+    const next = freeze();
+    next[tileId] = { ...next[tileId], size: sizeOf(tileId) === '1' ? 'B' : '1' };
+    persist(next);
   };
 
   return (
@@ -203,8 +240,8 @@ export function SummaryCards({
           style={{ fontSize: 12, padding: '2px 8px', cursor: 'pointer', background: editMode ? 'var(--accent)' : 'rgba(120,130,150,0.18)', color: editMode ? '#fff' : 'var(--text-dim)', border: '1px solid var(--border)', borderRadius: 6 }}
         >{editMode ? t('cards.layout.done') : '✏️'}</button>
       </div>
-      <div className="cards" style={{ display: 'grid', gridTemplateColumns: `repeat(${LAYOUT_COLS}, minmax(140px, 1fr))`, alignItems: 'stretch', justifyContent: 'start' }}>
-        {placed.map(({ tile, row, col }) => (
+      <div className="cards" style={{ display: 'grid', gridTemplateColumns: `repeat(${LAYOUT_COLS}, minmax(140px, 1fr))`, alignItems: 'start', justifyContent: 'start' }}>
+        {placed.map(({ tile, row, col, size }) => (
           <div key={tile.id} style={{ gridColumn: col, gridRow: row, position: 'relative' }}>
             {editMode && <div style={{ position: 'absolute', inset: 0, zIndex: 3 }} />}
             {editMode && (editing === tile.id ? (
@@ -214,23 +251,30 @@ export function SummaryCards({
                     autoFocus
                     value={editVal}
                     onChange={(e) => setEditVal(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') commitEdit(tile.id); else if (e.key === 'Escape') { setEditing(null); setLayoutErr(null); } }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') commitMove(tile.id); else if (e.key === 'Escape') { setEditing(null); setLayoutErr(null); } }}
                     placeholder={t('cards.layout.placeholder')}
-                    style={{ width: 50, fontSize: 11, padding: '1px 4px' }}
+                    style={{ width: 46, fontSize: 11, padding: '1px 4px' }}
                   />
-                  <button onClick={() => commitEdit(tile.id)} title="OK" style={{ fontSize: 11, padding: '1px 5px', cursor: 'pointer' }}>✓</button>
+                  <button onClick={() => commitMove(tile.id)} title="OK" style={{ fontSize: 11, padding: '1px 5px', cursor: 'pointer' }}>✓</button>
                   <button onClick={() => { setEditing(null); setLayoutErr(null); }} title={t('cards.layout.cancel')} style={{ fontSize: 11, padding: '1px 5px', cursor: 'pointer' }}>✕</button>
                 </div>
                 {layoutErr && <span style={{ fontSize: 10, color: 'var(--critical)', background: 'var(--surface)', padding: '1px 3px', borderRadius: 4 }}>{layoutErr}</span>}
               </div>
             ) : (
-              <button
-                onClick={() => { setEditing(tile.id); setEditVal(layout[tile.id] ?? ''); setLayoutErr(null); }}
-                title={t('cards.layout.edit')}
-                style={{ position: 'absolute', top: 3, left: 4, zIndex: 6, fontSize: 10, lineHeight: 1, padding: '2px 5px', background: layout[tile.id] ? 'var(--accent)' : 'rgba(120,130,150,0.25)', color: layout[tile.id] ? '#fff' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
-              >✏️ {fmtPos(row, col)}</button>
+              <div style={{ position: 'absolute', top: 3, left: 4, zIndex: 6, display: 'flex', gap: 3 }}>
+                <button
+                  onClick={() => { setEditing(tile.id); setEditVal(layout[tile.id]?.pos ?? ''); setLayoutErr(null); }}
+                  title={t('cards.layout.edit')}
+                  style={{ fontSize: 10, lineHeight: 1, padding: '2px 5px', background: layout[tile.id]?.pos ? 'var(--accent)' : 'rgba(120,130,150,0.3)', color: layout[tile.id]?.pos ? '#fff' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+                >✏️ {fmtPos(row, col)}</button>
+                <button
+                  onClick={() => cycleSize(tile.id)}
+                  title={t('cards.layout.size')}
+                  style={{ fontSize: 10, lineHeight: 1, padding: '2px 6px', fontWeight: 700, background: size === 'B' ? 'var(--warning)' : 'rgba(120,130,150,0.3)', color: size === 'B' ? '#1a1a1a' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+                >{size}</button>
+              </div>
             ))}
-            {React.cloneElement(tile.el, { key: tile.id })}
+            {React.cloneElement(tile.el, { key: tile.id, size })}
           </div>
         ))}
       </div>
@@ -238,12 +282,14 @@ export function SummaryCards({
   );
 }
 
-export function Card({ label, value, sub, kind, onClick, badge, badgeTitle }: { label: string; value: number | string; sub?: string; kind: 'critical' | 'error' | 'warning' | 'info' | 'ok'; onClick?: () => void; badge?: React.ReactNode; badgeTitle?: string }) {
+export function Card({ label, value, sub, kind, onClick, badge, badgeTitle, size = '1' }: { label: string; value: number | string; sub?: string; kind: 'critical' | 'error' | 'warning' | 'info' | 'ok'; onClick?: () => void; badge?: React.ReactNode; badgeTitle?: string; size?: '1' | 'B' }) {
+  // size 'B' = half height + smaller font (minor tile); sub is dropped to keep it short.
+  const half = size === 'B';
   return (
     <div
       className={`card ${kind}`}
       onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'default', userSelect: 'none', position: 'relative' }}
+      style={{ cursor: onClick ? 'pointer' : 'default', userSelect: 'none', position: 'relative', width: '100%', maxWidth: 'none', height: '100%', minHeight: half ? 38 : 78, padding: half ? '5px 11px' : 13 }}
       title={onClick ? 'Click to drill down' : undefined}
     >
       {badge != null && (
@@ -257,9 +303,9 @@ export function Card({ label, value, sub, kind, onClick, badge, badgeTitle }: { 
           }}
         >{badge}</div>
       )}
-      <div className="label">{label}</div>
-      <div className="value">{value}</div>
-      {sub && <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{sub}</div>}
+      <div className="label" style={half ? { fontSize: 9 } : undefined}>{label}</div>
+      <div className="value" style={half ? { fontSize: 17, marginTop: 1 } : undefined}>{value}</div>
+      {sub && !half && <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{sub}</div>}
     </div>
   );
 }

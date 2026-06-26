@@ -12,13 +12,19 @@ import { useI18n } from '../i18n.js';
  * segment. Clicking a segment drills into the Computers list filtered to that
  * OS + staleness.
  */
-export function OsBreakdownChart({ items, thresholdDays, onSelect }: {
+export function OsBreakdownChart({ items, thresholdDays, onSelect, open: openProp, onOpenChange, hideSummary }: {
   items: ComputerItem[];
   thresholdDays: number;
   onSelect: (bucket: string, staleness: 'live' | 'stale') => void;
+  // When the summary tile lives in the main dashboard grid, render only the panel.
+  open?: boolean;
+  onOpenChange?: (o: boolean) => void;
+  hideSummary?: boolean;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = hideSummary ? !!openProp : internalOpen;
+  const setOpen = (o: boolean) => { if (hideSummary) onOpenChange?.(o); else setInternalOpen(o); };
   const stats = summarizeOs(items, thresholdDays);
   const max = Math.max(1, ...stats.map((s) => s.total));
   const totalPcs = stats.reduce((a, s) => a + s.total, 0);
@@ -27,15 +33,17 @@ export function OsBreakdownChart({ items, thresholdDays, onSelect }: {
 
   return (
     <>
-      <div className="cards" style={{ marginTop: 10 }}>
-        <Card
-          label={`📊 ${t('os.title')}`}
-          value={stats.length}
-          sub={`${totalPcs} PC${totalStale > 0 ? ` · ${totalStale} ${t('os.stale')}` : ''}`}
-          kind="info"
-          onClick={stats.length > 0 ? () => setOpen((o) => !o) : undefined}
-        />
-      </div>
+      {!hideSummary && (
+        <div className="cards" style={{ marginTop: 10 }}>
+          <Card
+            label={`📊 ${t('os.title')}`}
+            value={stats.length}
+            sub={`${totalPcs} PC${totalStale > 0 ? ` · ${totalStale} ${t('os.stale')}` : ''}`}
+            kind="info"
+            onClick={stats.length > 0 ? () => setOpen(!open) : undefined}
+          />
+        </div>
+      )}
 
       {open && stats.length > 0 && (
         <div className="panel" style={{ gridColumn: '1 / -1', marginTop: 10 }}>
