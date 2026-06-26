@@ -385,6 +385,21 @@ function RetentionRunBlock() {
 // description doesn't match the query hides itself (the page has many blocks).
 const SettingsFilterContext = React.createContext('');
 
+// All retention policies in one place (the "Retenční politika" overview table).
+// Every table that grows has a row here; snapshot tables (overwritten in place)
+// are noted below the table, not listed.
+const RETENTION_ROWS: { key: string; def: string; table: string; label: string; unit: string }[] = [
+  { key: 'events.retention_days', def: '90', table: 'events', label: 'settings.ret.events', unit: 'settings.unit.days' },
+  { key: 'events.dedup_lookback_days', def: '90', table: 'events (dedup)', label: 'settings.ret.dedup', unit: 'settings.unit.days' },
+  { key: 'activity.retention_days', def: '30', table: 'activity_log', label: 'settings.ret.activity', unit: 'settings.unit.days' },
+  { key: 'pcUserHistory.retention_days', def: '90', table: 'pc_user_history', label: 'settings.ret.pcuser', unit: 'settings.unit.days' },
+  { key: 'perf.retention_days', def: '180', table: 'perf_events', label: 'settings.ret.perf', unit: 'settings.unit.days' },
+  { key: 'adsync.runs_retention_days', def: '90', table: 'ad_sync_runs', label: 'settings.ret.adruns', unit: 'settings.unit.days' },
+  { key: 'devices.lease_retention_days', def: '14', table: 'dhcp_leases', label: 'settings.ret.ghosts', unit: 'settings.unit.days' },
+  { key: 'devices.history_retention_days', def: '365', table: 'device_ip_history', label: 'settings.ret.history', unit: 'settings.unit.days' },
+  { key: 'devices.loss_window_hours', def: '24', table: 'device_ping_samples', label: 'settings.ret.loss', unit: 'settings.unit.hour24' },
+];
+
 export function SettingsPage() {
   const { t } = useI18n();
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -395,6 +410,15 @@ export function SettingsPage() {
   const [reachRunning, setReachRunning] = useState(false);
   const [reachResult, setReachResult] = useState<string | null>(null);
   const [blockFilter, setBlockFilter] = useState('');
+  // Deep-link helper: clear the block filter so the target section is visible, then
+  // scroll to it. Used by the "↗ Retenční politika / Notifikace" links in sections.
+  const goToSection = (id: string) => {
+    setBlockFilter('');
+    setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  };
+  const sectionLink = (id: string, label: string) => (
+    <a onClick={() => goToSection(id)} title={label} style={{ color: '#60a5fa', cursor: 'pointer', fontSize: 12, textDecoration: 'underline' }}>↗ {label}</a>
+  );
 
   useEffect(() => {
     api.settings().then((s) => setSettings(s)).catch((e) => setError(String(e)));
@@ -614,6 +638,7 @@ export function SettingsPage() {
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
             {t('settings.field.ftpSitesHelp')}
           </p>
+          <div style={{ marginTop: 8 }}>{sectionLink('sec-retention', t('settings.ret.link'))}</div>
 
           <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 10px' }} />
           <CheckField
@@ -852,62 +877,46 @@ export function SettingsPage() {
           </Field>
         </Section>
 
+        <div id="sec-retention">
         <Section
-          title={t('settings.section.eventRetention')}
-          description={t('settings.section.eventRetentionDesc')}
+          title={t('settings.section.retention')}
+          description={t('settings.section.retentionDesc')}
         >
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 12 }}>
+            <thead><tr>
+              {[t('settings.ret.data'), t('settings.ret.table'), t('settings.ret.keep')].map((h, i) => (
+                <th key={i} style={{ textAlign: 'left', padding: '6px 8px', color: 'var(--text-dim)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', width: i === 2 ? 170 : undefined }}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {RETENTION_ROWS.map((r) => (
+                <tr key={r.key} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '6px 8px' }}>{t(r.label)}</td>
+                  <td style={{ padding: '6px 8px', fontFamily: 'Consolas, monospace', color: 'var(--text-dim)' }}>{r.table}</td>
+                  <td style={{ padding: '6px 8px' }}><NumberInput v={value(r.key, r.def)} onChange={(v) => set(r.key, v)} suffix={t(r.unit)} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
           <FieldGroup>
-            <Field label={t('settings.field.eventsSummaryWindow')}>
-              <NumberInput
-                v={value('events.summary_window_days', '1')}
-                onChange={(v) => set('events.summary_window_days', v)}
-                suffix={t('settings.unit.days')}
-              />
-            </Field>
-            <Field label={t('settings.field.eventsRetentionDays')}>
-              <NumberInput
-                v={value('events.retention_days', '90')}
-                onChange={(v) => set('events.retention_days', v)}
-                suffix={t('settings.unit.days')}
-              />
-            </Field>
-            <Field label={t('settings.field.activityRetentionDays')}>
-              <NumberInput
-                v={value('activity.retention_days', '30')}
-                onChange={(v) => set('activity.retention_days', v)}
-                suffix={t('settings.unit.days')}
-              />
-            </Field>
             <Field label={t('settings.field.retentionRunHour')}>
-              <NumberInput
-                v={value('retention.run_at_hour', '2')}
-                onChange={(v) => set('retention.run_at_hour', v)}
-                suffix={t('settings.unit.hour24')}
-              />
+              <NumberInput v={value('retention.run_at_hour', '2')} onChange={(v) => set('retention.run_at_hour', v)} suffix={t('settings.unit.hour24')} />
             </Field>
-          </FieldGroup>
-          <FieldGroup>
             <CheckField
               label={t('settings.field.eventsDedupEnabled')}
               checked={value('events.dedup_enabled', '1') === '1'}
               onChange={(checked) => set('events.dedup_enabled', checked ? '1' : '0')}
             />
-            <Field label={t('settings.field.eventsDedupLookback')}>
-              <NumberInput
-                v={value('events.dedup_lookback_days', '90')}
-                onChange={(v) => set('events.dedup_lookback_days', v)}
-                suffix={t('settings.unit.days')}
-              />
+            <Field label={t('settings.field.eventsSummaryWindow')}>
+              <NumberInput v={value('events.summary_window_days', '1')} onChange={(v) => set('events.summary_window_days', v)} suffix={t('settings.unit.days')} />
             </Field>
           </FieldGroup>
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>
-            {t('settings.field.eventsSummaryWindowHelp')}
-          </p>
-          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>
-            {t('settings.field.eventRetentionHelp')}
+            {t('settings.ret.help')}
           </p>
           <RetentionRunBlock />
         </Section>
+        </div>
 
         <Section
           title={t('settings.section.adsync')}
