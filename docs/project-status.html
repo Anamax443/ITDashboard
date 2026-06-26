@@ -102,6 +102,14 @@
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
 
+  <h2>Poslední změny (2026-06-26) — prezentace jako záložka, historie zařízení, audit retence</h2>
+  <p class="sub" style="margin:0 0 .75rem">Prezentace jako <strong>plnohodnotná záložka v appce</strong>, <strong>historie zařízení</strong> hledatelná podle IP/MAC/hostname a <strong>audit + oprava retenční politiky</strong> celého systému. Živý commit <span class="pill">479b7f4</span>.</p>
+  <ul>
+    <li><strong>Prezentace = záložka 🎞</strong> (CS/EN) přímo v appce, s čistým Tisk/PDF + Uložit HTML (stejný mechanismus jako Souhrn — žádné mojibake/smetí). Statické HTML v <code>/docs</code> zůstává pro sdílení ven.</li>
+    <li><strong>Historie zařízení</strong> — <code>device_ip_history</code> (řádek na okno MAC↔IP, „od → do") dostala <strong>hostname</strong> + indexy (migrace 059); endpoint <code>GET /devices/history?q=</code> hledá podle IP / MAC / hostname; vyhledávací panel na stránce Routery. Vlastní (delší) retence <code>devices.history_retention_days</code> (default 365). Inventář zůstává unikátní/aktuální, historie je přírůstková.</li>
+    <li><strong>Audit retence</strong> — našel <strong>dvě tabulky rostoucí bez mazání</strong> (<code>perf_events</code>, <code>ad_sync_runs</code>); zaceleno (migrace 060: nové purge procedury + prahy do denního runneru). V Nastavení nově <strong>centrální „🗂 Retenční politika" tabulka</strong> se všemi politikami a editovatelnou dobou držení + prolink z datových sekcí.</li>
+  </ul>
+
   <h2>Poslední změny (2026-06-26) — stránka Routery, výpis z DB, dlaždice, defaulty nových PC</h2>
   <p class="sub" style="margin:0 0 .75rem">Samostatná stránka <strong>Routery</strong> (komunikace router→FTP→DB→stránka), <strong>výpis z databáze</strong> s filtrem/řazením/stránkováním/exportem, <strong>dlaždice na Přehledu</strong> a <strong>defaulty pro nové PC</strong>. Všechny 4 pobočky jedou přes FTP. Živý commit <span class="pill">0c86ee9</span>.</p>
 

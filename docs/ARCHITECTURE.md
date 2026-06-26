@@ -378,6 +378,12 @@ excluded (the rest default off). These apply **only on the INSERT branch** of th
 existing PC keeps the operator's per-row intent across syncs. The "AD sync default" Settings section
 exposes each as a checkbox.
 
+### Device history (searchable) + retention policy (migrations 059–060)
+
+The live inventory (`dhcp_leases`) stays **unique / current** (one row per device, upserted) — that's the right pattern; making it append-only would force every read to find "latest" and dedupe. **History lives in dedicated append tables**: `device_ip_history` keeps one `(mac, ip)` row per address a device was ever seen at, with a `first_seen → last_seen` window, fed by every observation (incl. router data). Migration 059 added `host_name` + IP/host indexes, so `GET /devices/history?q=` can match **IP / MAC / hostname** and answer "what was on IP X and for how long" / "where has machine Y been" — surfaced as a search panel on the Routers page. (It's a deduplicated archive, not a per-poll event log or per-session gap tracker — "how long" = first→last span.)
+
+**System-wide retention.** Every table that grows has a purge; snapshot tables (`port_status`, `service_problems`, `critical_service_status`, `site_data_status`) are overwritten in place and don't grow. The daily `retention-runner` (at `retention.run_at_hour`, default 02:00) purges `events` (`events.retention_days` 90), `activity_log` (30), `pc_user_history` (90), and — after a retention audit closed two unbounded gaps — `perf_events` (`perf.retention_days` 180) and `ad_sync_runs` (`adsync.runs_retention_days` 90), plus the event de-dup. The collector prunes `dhcp_leases` ghosts (`devices.lease_retention_days` 14), `device_ip_history` (`devices.history_retention_days` 365) and `device_ping_samples` (`devices.loss_window_hours` 24h). Settings exposes them all in one **"🗂 Retenční politika" overview table** (`#sec-retention`) with a reusable deep-link from the data sections.
+
 ### Per-device packet loss + latency (migrations 045, 047)
 
 The reachability ping for a device is `ping ×N` and the result is **parsed locale-independently** — it does **not** rely on localized summary text. Loss % is computed by **counting `TTL=` reply lines** (vs the number of requests), and latency by **averaging the per-reply `[<=]NNms`** figures. Both are stored in `dhcp_leases.packet_loss` / `latency_ms`, **only while the device is online** (offline → `NULL`).
