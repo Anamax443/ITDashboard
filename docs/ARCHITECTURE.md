@@ -342,6 +342,42 @@ The REST pull is live but fragile (it depends on the router's API being reachabl
 
 **Availability alert (migration 057, `alerts.freshness.*`).** Mirrors the printer agenda (debounce / throttle / maintenance window / per-agenda recipients; state in `data_freshness_alert_state`). A **monitored** site (listed in `mikrotik.ftp_sites`, **not** in `alerts.freshness.muted_sites`) is **stale** when its files stop advancing past `threshold_minutes` (default 45), can't be fetched (`last_error`), or never produced data. Evaluated at the end of each MikroTik collect. **Branches are muted by default** so they don't scream while only Brno produces the files; un-muting a branch = give its router the `ftp` policy + export script + scheduler, add it to `mikrotik.ftp_sites`, and remove it from `muted_sites`. `POST /alerts/freshness/test` sends the current state on demand. Settings section: **"Notifikace — aktuálnost dat / dostupnost lokalit"**.
 
+### Routers page + per-router communication view
+
+A dedicated **"Routery / Routers"** page (`NetworkPage.tsx`) makes the otherwise invisible
+**router → FTP → DB → page** round-trip explicit, one card per configured router so it scales to
+any count. `GET /network/routers` joins the configured `mikrotik.routers` with `site_data_status`
+(FTP freshness) and per-site `dhcp_leases` counts, returning per router: ftp/muted flags, the file
+timestamps, minutes since `file_changed_at`, parsed lease/ARP counts, last error, device count by
+source. **`POST /network/ftp-fetch`** (`runFtpFetchOnce`) forces an FTP pull of the FTP sites NOW,
+**merges the parsed rows into `dhcp_leases`** (so the inventory updates immediately, not only on the
+next collect), records `site_data_status`, and returns a per-site **communication log** — surfaced in
+a collapsible terminal console, so a branch whose router has no `ftp` policy / export shows its real
+`530 Login incorrect` instead of a blank "stale" card. Under the cards, **`GET /network/db-rows`** is a
+read-only listing straight from `dhcp_leases` (newest write first, optional `?site`) — the page renders
+it with a full-text filter across all columns, click-to-sort headers (IP numeric, last_seen by date),
+client-side pagination, and CSV export (semicolon + BOM). A **📡 Routers homepage tile** counts stale
+monitored routers (REST-only don't count) and links here; it and the other device-inventory tiles are
+fetched on the dashboard's 30s refresh (previously once-only, which let them go stale until a reload).
+
+### Data authority model (router → AD → operator)
+
+Conflict-resolution hierarchy, **per-field**: **Router / DHCP = 1st authority** for what it assigns and
+observes on the live wire — IP address, MAC, network presence, online/offline (a router IP beats a stale
+AD/DNS one). **AD = 2nd authority** for what the router can't know — name, OS, type (pc/server), account
+state. **Operator comment / manual edit = override** on top (name/category/note keyed by MAC, never
+overwritten by a collector). Today the device inventory already follows this (it IS the router data, and
+manual edits win); surfacing a **router-authoritative IP + a "router ≠ AD/DNS" mismatch flag on the
+Computers tab** is the open item.
+
+### New-PC defaults on AD sync (migration 058)
+
+When ad-sync discovers a **new** computer it seeds a set of per-row flags from Settings (`adsync.default_*`):
+monitor (default on), disk-email monitoring, broad service monitoring, critical-service monitoring, and
+excluded (the rest default off). These apply **only on the INSERT branch** of the `MERGE computers` — an
+existing PC keeps the operator's per-row intent across syncs. The "AD sync default" Settings section
+exposes each as a checkbox.
+
 ### Per-device packet loss + latency (migrations 045, 047)
 
 The reachability ping for a device is `ping ×N` and the result is **parsed locale-independently** — it does **not** rely on localized summary text. Loss % is computed by **counting `TTL=` reply lines** (vs the number of requests), and latency by **averaging the per-reply `[<=]NNms`** figures. Both are stored in `dhcp_leases.packet_loss` / `latency_ms`, **only while the device is online** (offline → `NULL`).

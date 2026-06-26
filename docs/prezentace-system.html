@@ -98,9 +98,18 @@
 <div class="toolbar noprint">
   IT Dashboard — přehledová prezentace (anonymizováno) ·
   <a href="presentation-system.html">🇬🇧 English</a> ·
-  <a href="javascript:window.print()">Tisk / PDF</a> ·
+  <a href="javascript:window.print()">🖨 Tisk / PDF</a> ·
+  <a href="#" onclick="return downloadDeck('IT-Dashboard-prezentace.html')">💾 Uložit HTML</a> ·
   <a href="#cover">nahoru</a>
 </div>
+<script>
+function downloadDeck(name){
+  var html='<!DOCTYPE html>\n'+document.documentElement.outerHTML;
+  var b=new Blob([html],{type:'text/html;charset=utf-8'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},1000);return false;
+}
+</script>
 
 <!-- 1 — COVER -->
 <section class="slide cover" id="cover">

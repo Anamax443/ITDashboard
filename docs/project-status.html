@@ -102,6 +102,28 @@
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
 
+  <h2>Poslední změny (2026-06-26) — stránka Routery, výpis z DB, dlaždice, defaulty nových PC</h2>
+  <p class="sub" style="margin:0 0 .75rem">Samostatná stránka <strong>Routery</strong> (komunikace router→FTP→DB→stránka), <strong>výpis z databáze</strong> s filtrem/řazením/stránkováním/exportem, <strong>dlaždice na Přehledu</strong> a <strong>defaulty pro nové PC</strong>. Všechny 4 pobočky jedou přes FTP. Živý commit <span class="pill">0c86ee9</span>.</p>
+
+  <p style="margin:0 0 4px"><strong>Stránka „Routery" + výpis z DB</strong> <span class="pill">0c86ee9</span></p>
+  <ul>
+    <li>Karta na každý router: badge <strong>FTP / jen REST</strong> + <strong>čerstvé / stará data / ztlumeno</strong>, kdy se data naposledy pohnula, počty leasů/ARP, zařízení dle zdroje, poslední chyba. Tlačítko <strong>⬇ Stáhnout teď</strong> vynutí FTP stažení, zapíše do DB a vypíše <strong>komunikaci do terminálové konzole</strong> (pobočka bez exportu ukáže reálné <code>530 Login incorrect</code>, ne prázdnou kartu).</li>
+    <li>Pod kartami <strong>živý výpis z <code>dhcp_leases</code></strong> (až 5000 řádků) = fyzický důkaz, že data v DB jsou: fulltext filtr přes všechny sloupce, řazení klikem na hlavičku, stránkování (50/100/200/500/vše), filtr na lokalitu, <strong>export CSV</strong> (středník + BOM).</li>
+    <li>Nová <strong>dlaždice 📡 Routery</strong> na Přehledu (kolik routerů má stará data; červená když problém; REST-only se nepočítají) → klik otevře stránku. Opraveny i zastaralé device-dlaždice (teď v 30s obnově).</li>
+  </ul>
+
+  <p style="margin:8px 0 4px"><strong>Nastavení + defaulty nových PC</strong> <span class="pill">0c86ee9</span> <span class="pill">migrace 058</span></p>
+  <ul>
+    <li>Do bloku MikroTik přidány <strong>FTP přepínač + pole „FTP lokality"</strong> (toleruje i tvar <code>Lokalita=IP</code>). <strong>Filtr bloků</strong> nahoře v Nastavení (sekce se skryje, když nesedí na hledaný text).</li>
+    <li><strong>Defaulty pro nové PC</strong> (sekce „AD sync default"): čerstvě objevené PC z AD dostane volitelně hlídání <strong>disků / služeb / kritických služeb / vyřazení</strong> (kromě monitoru vše vypnuto). Aplikuje se jen při <strong>vložení</strong> nového PC; existující si ruční nastavení zachovají.</li>
+  </ul>
+
+  <p style="margin:8px 0 4px"><strong>Dokumentace + prezentace + autoritní model</strong> <span class="pill">0c86ee9</span></p>
+  <ul>
+    <li>Opraveno servírování <code>/docs/&lt;soubor&gt;</code> (dřív šel ven jen manuál, <strong>prezentace byla 404</strong>) + <strong>odkaz „🎞 Prezentace"</strong> v horní liště + na prezentaci přibylo <strong>💾 Uložit HTML</strong> (vedle 🖨 Tisk/PDF).</li>
+    <li><strong>Autoritní model dat</strong> (rozhodnutí): router/DHCP = 1. autorita pro IP/přítomnost, AD = 2. pro identitu, komentář operátora = override. Per-pole. Otevřené: zobrazit na záložce Počítače autoritativní IP z routeru + příznak rozporu „router ≠ AD/DNS".</li>
+  </ul>
+
   <h2>Poslední změny (2026-06-25) — MikroTik FTP zdroj + alert aktuálnosti dat</h2>
   <p class="sub" style="margin:0 0 .75rem">Router si sám píše <strong>soubory</strong> s leasy a ARP; aplikace je tahá přes <strong>FTP</strong> a slučuje podle MAC — soubor je nově <strong>hlavní zdroj</strong>, REST zůstává jako doplněk. Nový <strong>per-lokalita alert „stará data / nedostupná lokalita"</strong>. Živý commit <span class="pill">0cb377d</span>.</p>
 
