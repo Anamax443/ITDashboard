@@ -51,7 +51,7 @@ export async function registerVersionRoutes(app: FastifyInstance) {
     // for this single route — the page never accepts user input and has no
     // privileged context.
     reply.header('Content-Security-Policy', DOCS_CSP);
-    reply.type('text/html').send(html);
+    reply.type('text/html; charset=utf-8').send(html);
   });
 
   // The other static doc pages next to dashboard.html — the bilingual system
@@ -68,7 +68,7 @@ export async function registerVersionRoutes(app: FastifyInstance) {
     try {
       const html = await readFile(join(process.cwd(), '..', '..', 'docs', file), 'utf8');
       reply.header('Content-Security-Policy', DOCS_CSP);
-      reply.type('text/html').send(html);
+      reply.type('text/html; charset=utf-8').send(html);
     } catch {
       reply.code(404).type('text/html').send('<!doctype html><h1>404 — dokument nenalezen</h1>');
     }

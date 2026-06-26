@@ -73,11 +73,14 @@
   <a href="#cover">top</a>
 </div>
 <script>
+// Save the clean source served by the app (not the live DOM) — avoids browser
+// extension cruft and any decoding issues; the file is byte-for-byte UTF-8.
 function downloadDeck(name){
-  var html='<!DOCTYPE html>\n'+document.documentElement.outerHTML;
-  var b=new Blob([html],{type:'text/html;charset=utf-8'});
-  var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();
-  setTimeout(function(){URL.revokeObjectURL(a.href);},1000);return false;
+  fetch(location.href).then(function(r){return r.blob();}).then(function(b){
+    var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
+  });
+  return false;
 }
 </script>
 
