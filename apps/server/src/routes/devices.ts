@@ -277,6 +277,23 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
     return { items: rows, total };
   });
 
+  // Device IP/MAC/hostname history search — "what was on IP X and for how long",
+  // "where has MAC Y been", "history of hostname Z". One row per (mac, ip) the
+  // archive ever saw, with the first_seen→last_seen window. Empty q = newest first.
+  app.get('/devices/history', async (req) => {
+    const q = z.object({ q: z.string().max(64).optional(), limit: z.coerce.number().min(1).max(2000).optional() }).parse(req.query);
+    const limit = q.limit ?? 500;
+    const term = (q.q ?? '').trim();
+    const pool = await getPool();
+    const r = await pool.request().input('q', `%${term}%`).input('hasq', term ? 1 : 0).input('limit', limit).query(`
+      SELECT TOP (@limit) mac_address, ip_address, host_name, site, source, first_seen, last_seen,
+             DATEDIFF(MINUTE, first_seen, last_seen) AS minutes_span
+      FROM device_ip_history
+      WHERE @hasq = 0 OR mac_address LIKE @q OR ip_address LIKE @q OR host_name LIKE @q
+      ORDER BY last_seen DESC`);
+    return { items: r.recordset };
+  });
+
   // Force an FTP pull of the configured FTP sites now and return a per-site
   // communication log (the Routers page "fetch now" + console).
   app.post('/network/ftp-fetch', async (_req, reply) => {

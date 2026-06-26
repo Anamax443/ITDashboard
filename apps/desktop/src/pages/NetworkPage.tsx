@@ -83,6 +83,15 @@ function RouterCard({ r }: { r: Row }) {
 
 type FetchLog = Awaited<ReturnType<typeof api.ftpFetchNow>>[number];
 type DbRow = Awaited<ReturnType<typeof api.dbRows>>['items'][number];
+type HistRow = Awaited<ReturnType<typeof api.deviceHistory>>['items'][number];
+
+function fmtSpan(mins: number): string {
+  if (mins < 1) return '<1 min';
+  if (mins < 60) return mins + ' min';
+  const h = Math.floor(mins / 60);
+  if (h < 48) return h + ' h';
+  return Math.floor(h / 24) + ' d';
+}
 
 export function NetworkPage() {
   const { t } = useI18n();
@@ -99,10 +108,17 @@ export function NetworkPage() {
   const [dbSort, setDbSort] = useState<{ col: keyof DbRow; dir: 'asc' | 'desc' }>({ col: 'last_seen', dir: 'desc' });
   const [pageSize, setPageSize] = useState(100);
   const [page, setPage] = useState(0);
+  const [histRows, setHistRows] = useState<HistRow[]>([]);
+  const [histQuery, setHistQuery] = useState('');
 
   const loadDb = (site = dbSite) => {
     api.dbRows(site || undefined, 5000)
       .then((r) => { setDbRows(r.items); setDbTotal(r.total); })
+      .catch(() => { /* keep last */ });
+  };
+  const loadHist = (q = histQuery) => {
+    api.deviceHistory(q.trim(), 1000)
+      .then((r) => setHistRows(r.items))
       .catch(() => { /* keep last */ });
   };
   const load = () => {
@@ -113,7 +129,7 @@ export function NetworkPage() {
       .finally(() => setLoading(false));
     loadDb();
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { load(); loadHist(''); /* eslint-disable-next-line */ }, []);
 
   // Force an FTP pull NOW; show the per-site communication log in the console box,
   // then reload the cards so fresh file times appear.
@@ -276,6 +292,45 @@ export function NetworkPage() {
               <button className="refresh-btn" onClick={() => setPage(pageCount - 1)} disabled={curPage >= pageCount - 1} title="» poslední">»</button>
             </>
           )}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 26 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+          <h3 style={{ margin: 0 }}>{t('net.histTitle')}</h3>
+          <span style={{ color: 'var(--text-dim)', fontSize: 13 }}>{t('net.histCount').replace('{n}', String(histRows.length))}</span>
+          <span style={{ flex: 1 }} />
+          <input type="search" value={histQuery}
+            onChange={(e) => setHistQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') loadHist(); }}
+            placeholder={t('net.histSearch')} title={t('net.histSearchHint')}
+            style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 9px', minWidth: 240 }} />
+          <button className="refresh-btn" onClick={() => loadHist()} title={t('net.histSearchHint')}>🔎 {t('net.histSearchBtn')}</button>
+        </div>
+        <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '0 0 8px' }}>{t('net.histHelp')}</p>
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'auto', maxHeight: 440 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ position: 'sticky', top: 0, background: 'var(--surface)' }}>
+              <th style={dbTh}>IP</th><th style={dbTh}>MAC</th><th style={dbTh}>Hostname</th>
+              <th style={dbTh}>{t('net.dbSite')}</th><th style={dbTh}>{t('net.dbSource')}</th>
+              <th style={dbTh}>{t('net.histFrom')}</th><th style={dbTh}>{t('net.histTo')}</th><th style={dbTh}>{t('net.histSpan')}</th>
+            </tr></thead>
+            <tbody>
+              {histRows.map((h, i) => (
+                <tr key={`${h.mac_address}-${h.ip_address}-${i}`} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ ...dbTd, fontFamily: 'Consolas, monospace' }}>{h.ip_address}</td>
+                  <td style={{ ...dbTd, fontFamily: 'Consolas, monospace', color: 'var(--text-dim)' }}>{h.mac_address}</td>
+                  <td style={dbTd}>{h.host_name ?? '—'}</td>
+                  <td style={dbTd}>{h.site ?? '—'}</td>
+                  <td style={dbTd}>{h.source ?? '—'}</td>
+                  <td style={{ ...dbTd, color: 'var(--text-dim)' }}>{fmtTime(h.first_seen)}</td>
+                  <td style={{ ...dbTd, color: 'var(--text-dim)' }}>{fmtTime(h.last_seen)}</td>
+                  <td style={dbTd}>{fmtSpan(h.minutes_span)}</td>
+                </tr>
+              ))}
+              {histRows.length === 0 && <tr><td style={{ ...dbTd, color: 'var(--text-dim)' }} colSpan={8}>—</td></tr>}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

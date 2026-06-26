@@ -964,6 +964,9 @@ export const api = {
     items: Array<{ site: string; ip_address: string | null; mac_address: string; host_name: string | null; source: string | null; status: string | null; last_seen: string }>;
     total: number;
   }>(`/network/db-rows?limit=${limit}${site ? `&site=${encodeURIComponent(site)}` : ''}`),
+  deviceHistory: (q = '', limit = 500) => jget<{
+    items: Array<{ mac_address: string; ip_address: string; host_name: string | null; site: string | null; source: string | null; first_seen: string; last_seen: string; minutes_span: number }>;
+  }>(`/devices/history?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
   reportOverview: () => jget<OverviewReport>('/reports/overview'),
   sendReportEmail: async (machines?: string[]) => {
     const r = await fetch(`${API_BASE}/reports/email`, {
