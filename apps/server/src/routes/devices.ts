@@ -264,8 +264,8 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
   // Raw rows straight from dhcp_leases for the Routers page "database listing" —
   // physical proof the FTP → DB round-trip landed. Newest write first.
   app.get('/network/db-rows', async (req) => {
-    const q = z.object({ site: z.string().max(64).optional(), limit: z.coerce.number().min(1).max(1000).optional() }).parse(req.query);
-    const limit = q.limit ?? 200;
+    const q = z.object({ site: z.string().max(64).optional(), limit: z.coerce.number().min(1).max(20000).optional() }).parse(req.query);
+    const limit = q.limit ?? 5000;
     const pool = await getPool();
     const rows = (await pool.request().input('site', q.site ?? null).input('limit', limit).query(`
       SELECT TOP (@limit) site, ip_address, mac_address, host_name, source, status, last_seen

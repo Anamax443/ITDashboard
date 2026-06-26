@@ -95,9 +95,13 @@ export function NetworkPage() {
   const [dbRows, setDbRows] = useState<DbRow[]>([]);
   const [dbTotal, setDbTotal] = useState(0);
   const [dbSite, setDbSite] = useState('');
+  const [dbFilter, setDbFilter] = useState('');
+  const [dbSort, setDbSort] = useState<{ col: keyof DbRow; dir: 'asc' | 'desc' }>({ col: 'last_seen', dir: 'desc' });
+  const [pageSize, setPageSize] = useState(100);
+  const [page, setPage] = useState(0);
 
   const loadDb = (site = dbSite) => {
-    api.dbRows(site || undefined, 200)
+    api.dbRows(site || undefined, 5000)
       .then((r) => { setDbRows(r.items); setDbTotal(r.total); })
       .catch(() => { /* keep last */ });
   };
@@ -134,6 +138,44 @@ export function NetworkPage() {
   };
   const dbTh: CSSProperties = { textAlign: 'left', padding: '7px 10px', color: 'var(--text-dim)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' };
   const dbTd: CSSProperties = { padding: '6px 10px', whiteSpace: 'nowrap' };
+
+  // Client-side filter (all columns) + sort + pagination over the loaded rows.
+  const ipToNum = (ip: string | null) => (ip ?? '').split('.').reduce((a, o) => a * 256 + (Number(o) || 0), 0);
+  const fq = dbFilter.trim().toLowerCase();
+  const dbView = (fq
+    ? dbRows.filter((d) => [d.site, d.ip_address, d.mac_address, d.host_name, d.source, d.status].some((v) => (v ?? '').toLowerCase().includes(fq)))
+    : dbRows
+  ).slice().sort((a, b) => {
+    const c = dbSort.col;
+    let r: number;
+    if (c === 'ip_address') r = ipToNum(a.ip_address) - ipToNum(b.ip_address);
+    else if (c === 'last_seen') r = new Date(a.last_seen).getTime() - new Date(b.last_seen).getTime();
+    else r = String(a[c] ?? '').localeCompare(String(b[c] ?? ''), 'cs');
+    return dbSort.dir === 'asc' ? r : -r;
+  });
+  const allPage = pageSize === 0;
+  const pageCount = allPage ? 1 : Math.max(1, Math.ceil(dbView.length / pageSize));
+  const curPage = Math.min(page, pageCount - 1);
+  const pageRows = allPage ? dbView : dbView.slice(curPage * pageSize, curPage * pageSize + pageSize);
+
+  const toggleSort = (col: keyof DbRow) => { setDbSort((s) => ({ col, dir: s.col === col && s.dir === 'asc' ? 'desc' : 'asc' })); setPage(0); };
+  const sortTh = (col: keyof DbRow, label: string) => (
+    <th key={String(col)} onClick={() => toggleSort(col)} title={t('net.dbSortHint')} style={{ ...dbTh, cursor: 'pointer', userSelect: 'none' }}>
+      {label}{dbSort.col === col ? (dbSort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
+    </th>
+  );
+
+  const exportCsv = () => {
+    const cols: Array<[keyof DbRow, string]> = [['site', t('net.dbSite')], ['ip_address', 'IP'], ['mac_address', 'MAC'], ['host_name', 'Hostname'], ['source', t('net.dbSource')], ['status', 'Status'], ['last_seen', t('net.dbLastSeen')]];
+    const esc = (v: unknown) => { const s = String(v ?? ''); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const lines = [cols.map((c) => c[1]).join(';'), ...dbView.map((d) => cols.map((c) => esc(d[c[0]])).join(';'))];
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `dhcp_leases${dbSite ? '_' + dbSite : ''}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   return (
     <div style={{ padding: 20, overflow: 'auto' }}>
@@ -177,26 +219,30 @@ export function NetworkPage() {
       </div>
 
       <div style={{ marginTop: 26 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0 }}>{t('net.dbTitle')}</h3>
-          <span style={{ color: 'var(--text-dim)', fontSize: 13 }}>{t('net.dbCount').replace('{shown}', String(dbRows.length)).replace('{total}', String(dbTotal))}</span>
+          <span style={{ color: 'var(--text-dim)', fontSize: 13 }}>{t('net.dbCount').replace('{shown}', String(dbView.length)).replace('{total}', String(dbTotal))}</span>
           <span style={{ flex: 1 }} />
-          <select value={dbSite} onChange={(e) => { setDbSite(e.target.value); loadDb(e.target.value); }} title={t('net.dbSiteHint')}
+          <input type="search" value={dbFilter} onChange={(e) => { setDbFilter(e.target.value); setPage(0); }}
+            placeholder={t('net.dbSearch')} title={t('net.dbSearchHint')}
+            style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 9px', minWidth: 200 }} />
+          <select value={dbSite} onChange={(e) => { setDbSite(e.target.value); setPage(0); loadDb(e.target.value); }} title={t('net.dbSiteHint')}
             style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px' }}>
             <option value="">{t('net.dbAllSites')}</option>
             {rows.map((r) => <option key={r.site} value={r.site}>{r.site}</option>)}
           </select>
+          <button className="refresh-btn" onClick={exportCsv} disabled={dbView.length === 0} title={t('net.dbExportHint')}>⬇ {t('net.dbExport')}</button>
         </div>
-        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'auto', maxHeight: 460 }}>
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'auto', maxHeight: 520 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ position: 'sticky', top: 0, background: 'var(--surface)' }}>
-                <th style={dbTh}>{t('net.dbSite')}</th><th style={dbTh}>IP</th><th style={dbTh}>MAC</th>
-                <th style={dbTh}>Hostname</th><th style={dbTh}>{t('net.dbSource')}</th><th style={dbTh}>Status</th><th style={dbTh}>{t('net.dbLastSeen')}</th>
+                {sortTh('site', t('net.dbSite'))}{sortTh('ip_address', 'IP')}{sortTh('mac_address', 'MAC')}
+                {sortTh('host_name', 'Hostname')}{sortTh('source', t('net.dbSource'))}{sortTh('status', 'Status')}{sortTh('last_seen', t('net.dbLastSeen'))}
               </tr>
             </thead>
             <tbody>
-              {dbRows.map((d, i) => (
+              {pageRows.map((d, i) => (
                 <tr key={`${d.site}-${d.mac_address}-${i}`} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={dbTd}>{d.site}</td>
                   <td style={{ ...dbTd, fontFamily: 'Consolas, monospace' }}>{d.ip_address ?? '—'}</td>
@@ -207,11 +253,29 @@ export function NetworkPage() {
                   <td style={{ ...dbTd, color: 'var(--text-dim)' }}>{fmtTime(d.last_seen)}</td>
                 </tr>
               ))}
-              {dbRows.length === 0 && (
+              {pageRows.length === 0 && (
                 <tr><td style={{ ...dbTd, color: 'var(--text-dim)' }} colSpan={7}>—</td></tr>
               )}
             </tbody>
           </table>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap', fontSize: 13, color: 'var(--text-dim)' }}>
+          <span>{t('net.dbPerPage')}</span>
+          <select value={String(pageSize)} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(0); }}
+            style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 6px' }}>
+            {[50, 100, 200, 500].map((n) => <option key={n} value={n}>{n}</option>)}
+            <option value={0}>{t('net.dbAll')}</option>
+          </select>
+          <span style={{ flex: 1 }} />
+          {!allPage && (
+            <>
+              <button className="refresh-btn" onClick={() => setPage(0)} disabled={curPage === 0} title="« první">«</button>
+              <button className="refresh-btn" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={curPage === 0} title="‹ předchozí">‹</button>
+              <span>{t('net.dbPage').replace('{page}', String(curPage + 1)).replace('{pages}', String(pageCount))}</span>
+              <button className="refresh-btn" onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))} disabled={curPage >= pageCount - 1} title="› další">›</button>
+              <button className="refresh-btn" onClick={() => setPage(pageCount - 1)} disabled={curPage >= pageCount - 1} title="» poslední">»</button>
+            </>
+          )}
         </div>
       </div>
     </div>
