@@ -22,7 +22,8 @@ function fmtPos(row: number, col: number): string {
 }
 // '1' = full (important), 'B' = half height + smaller font.
 type TileSize = '1' | 'B';
-type TileLayout = Record<string, { pos?: string; size?: TileSize }>;
+type TileSlot = 'u' | 'l';   // half tile: upper / lower half of a cell
+type TileLayout = Record<string, { pos?: string; size?: TileSize; slot?: TileSlot }>;
 function loadLayout(raw: string | undefined): TileLayout {
   try {
     const obj = JSON.parse(raw || '{}') as Record<string, unknown>;
@@ -31,12 +32,21 @@ function loadLayout(raw: string | undefined): TileLayout {
       const v = obj[k];
       if (typeof v === 'string') out[k] = { pos: v };               // legacy format
       else if (v && typeof v === 'object') {
-        const o = v as { pos?: unknown; size?: unknown };
-        out[k] = { pos: typeof o.pos === 'string' ? o.pos : undefined, size: o.size === 'B' ? 'B' : '1' };
+        const o = v as { pos?: unknown; size?: unknown; slot?: unknown };
+        out[k] = {
+          pos: typeof o.pos === 'string' ? o.pos : undefined,
+          size: o.size === 'B' ? 'B' : '1',
+          slot: o.slot === 'l' ? 'l' : o.slot === 'u' ? 'u' : undefined,
+        };
       }
     }
     return out;
   } catch { return {}; }
+}
+// Optional heading per tile row, keyed by row number ("1", "2", …).
+function loadTitles(raw: string | undefined): Record<string, string> {
+  try { const o = JSON.parse(raw || '{}'); return (o && typeof o === 'object') ? o as Record<string, string> : {}; }
+  catch { return {}; }
 }
 
 interface Props {
@@ -106,10 +116,14 @@ export function SummaryCards({
   // so a refresh restores the saved arrangement instead of resetting to default.
   const rawLayout = settings['dashboard.tile_layout'] || '';
   useEffect(() => { setLayout(loadLayout(rawLayout)); }, [rawLayout]);
+  const [rowTitles, setRowTitles] = useState<Record<string, string>>(() => loadTitles(settings['dashboard.row_titles']));
+  const rawTitles = settings['dashboard.row_titles'] || '';
+  useEffect(() => { setRowTitles(loadTitles(rawTitles)); }, [rawTitles]);
   const [editMode, setEditMode] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
   const [editSize, setEditSize] = useState<TileSize>('1');
+  const [editSlot, setEditSlot] = useState<TileSlot>('u');
   const [layoutErr, setLayoutErr] = useState<string | null>(null);
   const windowDays = summary?.window_days ?? 1;
   const windowLabel = windowDays === 1 ? '24h' : `${windowDays}d`;
@@ -179,66 +193,157 @@ export function SummaryCards({
   ];
 
   // --- Tile placement ---------------------------------------------------------
-  // Each tile has a cell (column letter + row) and a size ('1' = full, 'B' = half
-  // height + smaller font). Placed tiles hold their cell; the rest auto-flow into
-  // free cells. Editing FREEZES every tile's current cell first, so later edits
-  // move only the tiles involved (no reshuffle of the whole grid).
+  // Each tile has a cell (column letter + row) and a size: '1' = full, 'B' = half.
+  // A cell holds ONE full tile OR up to TWO half tiles stacked — an upper ('u')
+  // and a lower ('l') slot. Pinned tiles hold their cell; the rest auto-flow into
+  // free whole cells. Editing FREEZES the grid first, so edits move only that tile.
   const sizeOf = (id: string): TileSize => (layout[id]?.size === 'B' ? 'B' : '1');
+  const slotOf = (id: string): TileSlot => (layout[id]?.slot === 'l' ? 'l' : 'u');
+  const slotKey = (r: number, c: number, s: TileSlot) => `${r}:${c}:${s}`;
+  const occupied = new Set<string>();
+  const markOcc = (r: number, c: number, size: TileSize, slot: TileSlot) => {
+    if (size === '1') { occupied.add(slotKey(r, c, 'u')); occupied.add(slotKey(r, c, 'l')); }
+    else occupied.add(slotKey(r, c, slot));
+  };
   const overrides = new Map<string, { row: number; col: number }>();
   for (const tl of tiles) {
     const raw = layout[tl.id]?.pos;
-    if (raw) { const p = parsePos(raw); if (p) overrides.set(tl.id, p); }
+    if (raw) { const p = parsePos(raw); if (p) { overrides.set(tl.id, p); markOcc(p.row, p.col, sizeOf(tl.id), slotOf(tl.id)); } }
   }
-  const cellKey = (r: number, c: number) => `${r}:${c}`;
-  const occupied = new Set<string>();
-  for (const p of overrides.values()) occupied.add(cellKey(p.row, p.col));
   const cursor = { row: 1, col: 1 };
+  const cellFree = (r: number, c: number) => !occupied.has(slotKey(r, c, 'u')) && !occupied.has(slotKey(r, c, 'l'));
   const takeFree = () => {
-    while (occupied.has(cellKey(cursor.row, cursor.col))) {
+    while (!cellFree(cursor.row, cursor.col)) {
       cursor.col++; if (cursor.col > LAYOUT_COLS) { cursor.col = 1; cursor.row++; }
     }
     const pos = { row: cursor.row, col: cursor.col };
-    occupied.add(cellKey(pos.row, pos.col));
+    occupied.add(slotKey(pos.row, pos.col, 'u')); occupied.add(slotKey(pos.row, pos.col, 'l'));
     cursor.col++; if (cursor.col > LAYOUT_COLS) { cursor.col = 1; cursor.row++; }
     return pos;
   };
-  const placed = tiles.map((tl) => ({ tile: tl, size: sizeOf(tl.id), ...(overrides.get(tl.id) ?? takeFree()) }));
+  const placed = tiles.map((tl) => {
+    const size = sizeOf(tl.id); const slot = slotOf(tl.id);
+    const pos = overrides.get(tl.id) ?? takeFree();
+    return { tile: tl, size, slot, row: pos.row, col: pos.col };
+  });
+  type Placed = (typeof placed)[number];
 
-  // Full explicit snapshot — every tile pinned to its current cell. Edits start
-  // from this so unrelated tiles never move.
+  // Full explicit snapshot — every tile pinned to its current cell/slot.
   const freeze = (): TileLayout => {
     const out: TileLayout = {};
-    for (const pl of placed) out[pl.tile.id] = { pos: fmtPos(pl.row, pl.col), size: pl.size };
+    for (const pl of placed) out[pl.tile.id] = { pos: fmtPos(pl.row, pl.col), size: pl.size, ...(pl.size === 'B' ? { slot: pl.slot } : {}) };
     return out;
   };
   const persist = (next: TileLayout) => {
     setLayout(next);
     api.saveSettings({ 'dashboard.tile_layout': JSON.stringify(next) }).catch(() => {});
   };
+  const persistTitles = (next: Record<string, string>) => {
+    setRowTitles(next);
+    api.saveSettings({ 'dashboard.row_titles': JSON.stringify(next) }).catch(() => {});
+  };
+  const setRowTitle = (r: number, text: string) => {
+    const next = { ...rowTitles };
+    if (text.trim() === '') delete next[String(r)]; else next[String(r)] = text;
+    persistTitles(next);
+  };
   const openEditor = (tileId: string) => {
     setEditing(tileId);
     setEditVal(layout[tileId]?.pos ?? '');
     setEditSize(sizeOf(tileId));
+    setEditSlot(slotOf(tileId));
     setLayoutErr(null);
   };
-  // Apply BOTH position and size from the editor in one go.
+  // Apply position + size (+ slot for halves) from the editor; enforce capacity.
   const commit = (tileId: string) => {
     const v = editVal.trim();
     const p = v === '' ? null : parsePos(v);
     if (v !== '' && !p) { setLayoutErr(t('cards.layout.invalid')); return; }
     const next = freeze();
-    const myOld = next[tileId]?.pos;
     if (p) {
       const targetPos = fmtPos(p.row, p.col);
-      // Swap with whoever holds the target cell — keeps every cell unique, no dupes.
-      const occupantId = Object.keys(next).find((id) => id !== tileId && next[id]!.pos === targetPos);
-      if (occupantId && myOld) next[occupantId] = { ...next[occupantId], pos: myOld };
-      next[tileId] = { pos: targetPos, size: editSize };
+      const inCell = Object.keys(next).filter((id) => id !== tileId && next[id]!.pos === targetPos);
+      if (editSize === '1') {
+        if (inCell.length > 0) { setLayoutErr(t('cards.layout.cellTaken')); return; }
+        next[tileId] = { pos: targetPos, size: '1' };
+      } else {
+        const hasFull = inCell.some((id) => (next[id]!.size ?? '1') === '1');
+        const slotTaken = inCell.some((id) => next[id]!.size === 'B' && (next[id]!.slot ?? 'u') === editSlot);
+        if (hasFull || slotTaken) { setLayoutErr(t('cards.layout.cellFull')); return; }
+        next[tileId] = { pos: targetPos, size: 'B', slot: editSlot };
+      }
     } else {
-      next[tileId] = { size: editSize };  // empty position = auto-flow
+      next[tileId] = { size: editSize, ...(editSize === 'B' ? { slot: editSlot } : {}) };
     }
     persist(next); setEditing(null); setLayoutErr(null);
   };
+
+  // Renders one tile (with its edit overlay) inside a cell stack.
+  const renderTile = (pl: Placed) => {
+    const { tile, size, slot, row, col } = pl;
+    return (
+      <div key={tile.id} style={{ position: 'relative', height: size === 'B' ? 38 : 84 }}>
+        {editMode && <div style={{ position: 'absolute', inset: 0, zIndex: 3 }} />}
+        {editMode && editing !== tile.id && (
+          <button
+            onClick={() => openEditor(tile.id)}
+            title={t('cards.layout.edit')}
+            style={{ position: 'absolute', top: 3, left: 4, zIndex: 6, fontSize: 10, lineHeight: 1, padding: '2px 6px', background: layout[tile.id]?.pos ? 'var(--accent)' : 'rgba(120,130,150,0.35)', color: layout[tile.id]?.pos ? '#fff' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+          >✏️ {fmtPos(row, col)}{size === 'B' ? (slot === 'u' ? ' ↑' : ' ↓') : ''}</button>
+        )}
+        {editMode && editing === tile.id && (
+          <div style={{ position: 'absolute', top: 3, left: 4, zIndex: 7, width: 174, background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 6, padding: 8, boxShadow: '0 4px 14px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 10, color: 'var(--text-dim)' }}>{t('cards.layout.posLabel')}</label>
+            <input
+              autoFocus
+              value={editVal}
+              onChange={(e) => setEditVal(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') commit(tile.id); else if (e.key === 'Escape') { setEditing(null); setLayoutErr(null); } }}
+              placeholder={t('cards.layout.placeholder')}
+              style={{ width: '100%', fontSize: 12, padding: '3px 5px', boxSizing: 'border-box' }}
+            />
+            <label style={{ fontSize: 10, color: 'var(--text-dim)' }}>{t('cards.layout.sizeLabel')}</label>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {(['1', 'B'] as const).map((s) => (
+                <button key={s} onClick={() => setEditSize(s)}
+                  style={{ flex: 1, fontSize: 11, padding: '3px 4px', cursor: 'pointer', borderRadius: 5, border: '1px solid var(--border)', fontWeight: editSize === s ? 700 : 400, background: editSize === s ? 'var(--accent)' : 'transparent', color: editSize === s ? '#fff' : 'var(--text)' }}>
+                  {s === '1' ? t('cards.layout.full') : t('cards.layout.half')}
+                </button>
+              ))}
+            </div>
+            {editSize === 'B' && (
+              <div style={{ display: 'flex', gap: 4 }}>
+                {(['u', 'l'] as const).map((s) => (
+                  <button key={s} onClick={() => setEditSlot(s)}
+                    style={{ flex: 1, fontSize: 11, padding: '3px 4px', cursor: 'pointer', borderRadius: 5, border: '1px solid var(--border)', fontWeight: editSlot === s ? 700 : 400, background: editSlot === s ? 'var(--accent)' : 'transparent', color: editSlot === s ? '#fff' : 'var(--text)' }}>
+                    {s === 'u' ? `↑ ${t('cards.layout.upper')}` : `↓ ${t('cards.layout.lower')}`}
+                  </button>
+                ))}
+              </div>
+            )}
+            {layoutErr && <span style={{ fontSize: 10, color: 'var(--critical)' }}>{layoutErr}</span>}
+            <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+              <button onClick={() => commit(tile.id)} style={{ flex: 1, fontSize: 11, padding: '3px 4px', cursor: 'pointer', borderRadius: 5, border: 'none', background: 'var(--accent)', color: '#fff', fontWeight: 600 }}>{t('cards.layout.save')}</button>
+              <button onClick={() => { setEditing(null); setLayoutErr(null); }} title={t('cards.layout.cancel')} style={{ fontSize: 11, padding: '3px 8px', cursor: 'pointer', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)' }}>✕</button>
+            </div>
+          </div>
+        )}
+        {React.cloneElement(tile.el, { key: tile.id, size })}
+      </div>
+    );
+  };
+
+  // Group placed tiles by row → column → cell (one full, or upper/lower halves).
+  const byRow = new Map<number, Map<number, { full?: Placed; u?: Placed; l?: Placed }>>();
+  for (const pl of placed) {
+    if (!byRow.has(pl.row)) byRow.set(pl.row, new Map());
+    const cols = byRow.get(pl.row)!;
+    if (!cols.has(pl.col)) cols.set(pl.col, {});
+    const cell = cols.get(pl.col)!;
+    if (pl.size === '1') cell.full = pl;
+    else if (pl.slot === 'l') cell.l = pl; else cell.u = pl;
+  }
+  const rows = [...byRow.keys()].sort((a, b) => a - b);
 
   return (
     <>
@@ -250,47 +355,37 @@ export function SummaryCards({
           style={{ fontSize: 12, padding: '2px 8px', cursor: 'pointer', background: editMode ? 'var(--accent)' : 'rgba(120,130,150,0.18)', color: editMode ? '#fff' : 'var(--text-dim)', border: '1px solid var(--border)', borderRadius: 6 }}
         >{editMode ? t('cards.layout.done') : '✏️'}</button>
       </div>
-      <div className="cards" style={{ display: 'grid', gridTemplateColumns: `repeat(${LAYOUT_COLS}, minmax(140px, 1fr))`, alignItems: 'start', justifyContent: 'start' }}>
-        {placed.map(({ tile, row, col, size }) => (
-          <div key={tile.id} style={{ gridColumn: col, gridRow: row, position: 'relative', height: size === 'B' ? 42 : 84 }}>
-            {editMode && <div style={{ position: 'absolute', inset: 0, zIndex: 3 }} />}
-            {editMode && editing !== tile.id && (
-              <button
-                onClick={() => openEditor(tile.id)}
-                title={t('cards.layout.edit')}
-                style={{ position: 'absolute', top: 3, left: 4, zIndex: 6, fontSize: 10, lineHeight: 1, padding: '2px 6px', background: layout[tile.id]?.pos ? 'var(--accent)' : 'rgba(120,130,150,0.35)', color: layout[tile.id]?.pos ? '#fff' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
-              >✏️ {fmtPos(row, col)} · {size === 'B' ? t('cards.layout.halfShort') : t('cards.layout.fullShort')}</button>
-            )}
-            {editMode && editing === tile.id && (
-              <div style={{ position: 'absolute', top: 3, left: 4, zIndex: 7, width: 168, background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 6, padding: 8, boxShadow: '0 4px 14px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{ fontSize: 10, color: 'var(--text-dim)' }}>{t('cards.layout.posLabel')}</label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {rows.map((r) => {
+          const cols = byRow.get(r)!;
+          const title = rowTitles[String(r)] ?? '';
+          return (
+            <div key={r}>
+              {editMode ? (
                 <input
-                  autoFocus
-                  value={editVal}
-                  onChange={(e) => setEditVal(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') commit(tile.id); else if (e.key === 'Escape') { setEditing(null); setLayoutErr(null); } }}
-                  placeholder={t('cards.layout.placeholder')}
-                  style={{ width: '100%', fontSize: 12, padding: '3px 5px', boxSizing: 'border-box' }}
+                  value={title}
+                  onChange={(e) => setRowTitle(r, e.target.value)}
+                  placeholder={t('cards.layout.rowTitle').replace('{r}', String(r))}
+                  style={{ width: 320, maxWidth: '70%', fontSize: 12, padding: '2px 6px', marginBottom: 5, background: 'transparent', color: 'var(--text)', border: '1px dashed var(--border)', borderRadius: 4 }}
                 />
-                <label style={{ fontSize: 10, color: 'var(--text-dim)' }}>{t('cards.layout.sizeLabel')}</label>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {(['1', 'B'] as const).map((s) => (
-                    <button key={s} onClick={() => setEditSize(s)}
-                      style={{ flex: 1, fontSize: 11, padding: '3px 4px', cursor: 'pointer', borderRadius: 5, border: '1px solid var(--border)', fontWeight: editSize === s ? 700 : 400, background: editSize === s ? 'var(--accent)' : 'transparent', color: editSize === s ? '#fff' : 'var(--text)' }}>
-                      {s === '1' ? t('cards.layout.full') : t('cards.layout.half')}
-                    </button>
-                  ))}
-                </div>
-                {layoutErr && <span style={{ fontSize: 10, color: 'var(--critical)' }}>{layoutErr}</span>}
-                <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
-                  <button onClick={() => commit(tile.id)} style={{ flex: 1, fontSize: 11, padding: '3px 4px', cursor: 'pointer', borderRadius: 5, border: 'none', background: 'var(--accent)', color: '#fff', fontWeight: 600 }}>{t('cards.layout.save')}</button>
-                  <button onClick={() => { setEditing(null); setLayoutErr(null); }} title={t('cards.layout.cancel')} style={{ fontSize: 11, padding: '3px 8px', cursor: 'pointer', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)' }}>✕</button>
-                </div>
+              ) : (title ? (
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '.05em', margin: '2px 0 5px' }}>{title}</div>
+              ) : null)}
+              <div className="cards" style={{ display: 'grid', gridTemplateColumns: `repeat(${LAYOUT_COLS}, minmax(140px, 1fr))`, alignItems: 'start', justifyContent: 'start' }}>
+                {[...cols.entries()].sort((a, b) => a[0] - b[0]).map(([c, cell]) => (
+                  <div key={c} style={{ gridColumn: c, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {cell.full ? renderTile(cell.full) : (
+                      <>
+                        {cell.u && renderTile(cell.u)}
+                        {cell.l && renderTile(cell.l)}
+                      </>
+                    )}
+                  </div>
+                ))}
               </div>
-            )}
-            {React.cloneElement(tile.el, { key: tile.id, size })}
-          </div>
-        ))}
+            </div>
+          );
+        })}
       </div>
     </>
   );
