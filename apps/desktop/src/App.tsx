@@ -57,6 +57,7 @@ export function App() {
   const [criticalServices, setCriticalServices] = useState<CriticalServiceStatus[]>([]);
   const [ports, setPorts] = useState<PortStatusComputer[]>([]);
   const [devices, setDevices] = useState<DeviceItem[]>([]);
+  const [routerStatus, setRouterStatus] = useState<Awaited<ReturnType<typeof api.routersStatus>>>([]);
   const [printerSupplies, setPrinterSupplies] = useState<PrinterSuppliesResult | null>(null);
   // One-shot: arriving on the Ports tab via the dashboard tile pre-checks the
   // "only issues" filter so the operator lands on the problem machines.
@@ -101,6 +102,7 @@ export function App() {
     api.criticalServices().then((r) => setCriticalServices(r.items)).catch(() => {});
     api.portStatus().then((r) => setPorts(r.items)).catch(() => {});
     api.devices().then((r) => setDevices(r.items)).catch(() => {});
+    api.routersStatus().then(setRouterStatus).catch(() => {});
     api.printerSupplies().then(setPrinterSupplies).catch(() => {});
     api.perfSummary(7).then(setPerfSummary).catch(() => {});
     api.inactiveStats().then(setInactiveStats).catch(() => {});
@@ -180,6 +182,10 @@ export function App() {
   const problemTh = deviceProblemThresholds(settingsMap);
   const degradedDevices = devices.filter((d) => deviceDegraded(d, problemTh)).length;
   const devicesUnidentified = devices.filter((d) => !d.category).length;
+  // Routers tile: how many configured routers are stale (FTP files not advancing /
+  // can't be fetched). REST-only routers (stale === null) don't count as a problem.
+  const routersTotal = routerStatus.length;
+  const routersStale = routerStatus.filter((r) => r.stale === true || !!r.lastError).length;
   // Printer supplies tile: printers with any ink/toner/maintenance at or below the
   // "low" threshold (or empty). NULL levels ("some remaining") are not counted.
   const suppliesTotal = printerSupplies?.printers.length ?? 0;
@@ -219,6 +225,7 @@ export function App() {
       api.printerSupplies(),
       api.serviceProblems(),
       api.criticalServices(),
+      api.routersStatus(),
     ]);
     if (results[0].status === 'fulfilled') setSummary(results[0].value);
     if (results[1].status === 'fulfilled') setEvents(results[1].value.items);
@@ -232,8 +239,9 @@ export function App() {
     if (results[9].status === 'fulfilled') setPrinterSupplies(results[9].value);
     if (results[10].status === 'fulfilled') setServiceProblems(results[10].value.items);
     if (results[11].status === 'fulfilled') setCriticalServices(results[11].value.items);
+    if (results[12].status === 'fulfilled') setRouterStatus(results[12].value);
 
-    const errs = results.map((r, i) => r.status === 'rejected' ? `[${['summary','events','topIds','computers','timeline','topComputers','devices','disks','ports','supplies','services','critsvc'][i]}] ${r.reason}` : null).filter(Boolean);
+    const errs = results.map((r, i) => r.status === 'rejected' ? `[${['summary','events','topIds','computers','timeline','topComputers','devices','disks','ports','supplies','services','critsvc','routers'][i]}] ${r.reason}` : null).filter(Boolean);
     setError(errs.length > 0 ? errs.join(' · ') : null);
     setLastFetch(new Date());
   }, [filterComputer, filterLevel, filterHours]);
@@ -363,6 +371,9 @@ export function App() {
             printersOffline={printersOffline}
             printersTotal={printersTotal}
             onClickPrinters={() => { setDevicesInitialOnlyPrinters(true); setView('devices'); }}
+            routersTotal={routersTotal}
+            routersStale={routersStale}
+            onClickRouters={() => setView('network')}
             degradedDevices={degradedDevices}
             devicesTotal={devices.length}
             onClickDegraded={() => { setDevicesInitialOnlyLossy(true); setView('devices'); }}

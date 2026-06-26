@@ -27,6 +27,9 @@ interface Props {
   printersOffline?: number;
   printersTotal?: number;
   onClickPrinters?: () => void;
+  routersTotal?: number;
+  routersStale?: number;
+  onClickRouters?: () => void;
   degradedDevices?: number;
   devicesUnidentified?: number;
   onClickDevices?: () => void;
@@ -52,7 +55,7 @@ interface Props {
 }
 
 export function SummaryCards({
-  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, esetPcRunning = 0, esetPcTotal = 0, esetSrvRunning = 0, esetSrvTotal = 0, onClickEset, portsWithIssues = 0, portsTotal = 0, onClickPorts, printersOffline = 0, printersTotal = 0, onClickPrinters, degradedDevices = 0, devicesTotal = 0, onClickDegraded, devicesUnidentified = 0, onClickDevices, suppliesLow = 0, suppliesTotal = 0, onClickSupplies, perfSummary, inactiveStats,
+  summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, esetPcRunning = 0, esetPcTotal = 0, esetSrvRunning = 0, esetSrvTotal = 0, onClickEset, portsWithIssues = 0, portsTotal = 0, onClickPorts, printersOffline = 0, printersTotal = 0, onClickPrinters, routersTotal = 0, routersStale = 0, onClickRouters, degradedDevices = 0, devicesTotal = 0, onClickDegraded, devicesUnidentified = 0, onClickDevices, suppliesLow = 0, suppliesTotal = 0, onClickSupplies, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
   onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
 }: Props) {
@@ -114,6 +117,7 @@ export function SummaryCards({
     { id: 'printers', el: <Card label={`🖨 ${t('cards.printers')}`} value={printersTotal === 0 ? '—' : `${printersOffline}/${printersTotal}`} sub={printersTotal === 0 ? t('cards.printersNone') : printersOffline > 0 ? `${printersOffline} ${t('cards.printersOffline')}` : `${printersTotal} ${t('cards.printersOk')}`} kind={printersTotal === 0 ? 'info' : printersOffline > 0 ? 'critical' : 'ok'} onClick={printersTotal > 0 ? onClickPrinters : undefined} /> },
     { id: 'degraded', el: <Card label={`📉 ${t('cards.degraded')}`} value={devicesTotal === 0 ? '—' : degradedDevices} sub={devicesTotal === 0 ? '—' : degradedDevices > 0 ? t('cards.degradedSub') : t('cards.degradedOk')} kind={devicesTotal === 0 ? 'info' : degradedDevices > 0 ? 'warning' : 'ok'} onClick={degradedDevices > 0 ? onClickDegraded : undefined} /> },
     { id: 'devices', el: <Card label={`🖧 ${t('cards.devices')}`} value={devicesTotal === 0 ? '—' : `${devicesUnidentified}/${devicesTotal}`} sub={devicesTotal === 0 ? '—' : devicesUnidentified > 0 ? `${devicesUnidentified} ${t('cards.devicesUnident')}` : t('cards.devicesAllSorted')} kind={devicesTotal === 0 ? 'info' : devicesUnidentified > 0 ? 'warning' : 'ok'} onClick={devicesTotal > 0 ? onClickDevices : undefined} /> },
+    { id: 'routers', el: <Card label={`📡 ${t('cards.routers')}`} value={routersTotal === 0 ? '—' : `${routersStale}/${routersTotal}`} sub={routersTotal === 0 ? '—' : routersStale > 0 ? `${routersStale} ${t('cards.routersStale')}` : t('cards.routersAllFresh')} kind={routersTotal === 0 ? 'info' : routersStale > 0 ? 'critical' : 'ok'} onClick={routersTotal > 0 ? onClickRouters : undefined} /> },
     { id: 'supplies', el: <Card label={`🖨 ${t('cards.supplies')}`} value={suppliesTotal === 0 ? '—' : `${suppliesLow}/${suppliesTotal}`} sub={suppliesTotal === 0 ? t('cards.suppliesNone') : suppliesLow > 0 ? `${suppliesLow} ${t('cards.suppliesLow')}` : t('cards.suppliesOk')} kind={suppliesTotal === 0 ? 'info' : suppliesLow > 0 ? 'warning' : 'ok'} onClick={suppliesTotal > 0 ? onClickSupplies : undefined} /> },
     { id: 'slowBoot', el: <Card label={t('cards.slowBootShutdown')} value={perfSummary ? perfSummary.affected_pcs : '—'} sub={perfSummary ? `${perfSummary.total_events} event${perfSummary.total_events === 1 ? '' : 's'}` : undefined} kind={!perfSummary ? 'info' : perfSummary.affected_pcs > 0 ? 'warning' : 'ok'} onClick={perfSummary && perfSummary.affected_pcs > 0 ? onClickPerf : undefined} /> },
     { id: 'inactive', el: <Card label={inactiveStats ? `${t('cards.inactive')} (${inactiveStats.thresholdDays}d+)` : t('cards.inactive')} value={inactiveStats ? inactiveStats.enabledInactive + inactiveStats.disabledInactive : '—'} sub={inactiveStats ? t('cards.inactiveSub').replace('{enabled}', String(inactiveStats.enabledInactive)).replace('{disabled}', String(inactiveStats.disabledInactive)) : undefined} kind={!inactiveStats ? 'info' : (inactiveStats.enabledInactive + inactiveStats.disabledInactive) > 0 ? 'warning' : 'ok'} onClick={inactiveStats && (inactiveStats.enabledInactive + inactiveStats.disabledInactive) > 0 ? onClickInactive : undefined} /> },
