@@ -19,6 +19,7 @@ import { CriticalServicesPage } from './pages/CriticalServicesPage.js';
 import { PortsPage } from './pages/PortsPage.js';
 import { DevicesPage } from './pages/DevicesPage.js';
 import { NetworkPage } from './pages/NetworkPage.js';
+import { PresentationPage } from './pages/PresentationPage.js';
 import { ManagerSummaryPage } from './pages/ManagerSummaryPage.js';
 import { PrinterSuppliesPage } from './pages/PrinterSuppliesPage.js';
 import { DatabasePage } from './pages/DatabasePage.js';
@@ -30,7 +31,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'deviceprinters' | 'printers' | 'network' | 'database' | 'perf' | 'activity' | 'settings';
+type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'deviceprinters' | 'printers' | 'network' | 'database' | 'perf' | 'activity' | 'settings' | 'presentation';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -293,19 +294,13 @@ export function App() {
             >
               📖 {t('nav.docs')}
             </a>
-            <a
-              href={`${API_BASE}/docs/${lang === 'cs' ? 'prezentace-system.html' : 'presentation-system.html'}`}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              className={view === 'presentation' ? 'active' : ''}
+              onClick={() => setView('presentation')}
               title={t('nav.presentationHint')}
-              style={{
-                background: 'transparent', color: 'var(--text-dim)', border: '1px solid transparent',
-                borderRadius: 4, padding: '4px 12px', fontSize: 13, textDecoration: 'none',
-                cursor: 'pointer'
-              }}
             >
               🎞 {t('nav.presentation')}
-            </a>
+            </button>
           </div>
         </div>
         <div className="meta" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -487,6 +482,12 @@ export function App() {
       {view === 'network' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <NetworkPage />
+        </div>
+      )}
+
+      {view === 'presentation' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <PresentationPage />
         </div>
       )}
 
