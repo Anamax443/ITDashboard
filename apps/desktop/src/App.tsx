@@ -293,6 +293,19 @@ export function App() {
             >
               📖 {t('nav.docs')}
             </a>
+            <a
+              href={`${API_BASE}/docs/${lang === 'cs' ? 'prezentace-system.html' : 'presentation-system.html'}`}
+              target="_blank"
+              rel="noreferrer"
+              title={t('nav.presentationHint')}
+              style={{
+                background: 'transparent', color: 'var(--text-dim)', border: '1px solid transparent',
+                borderRadius: 4, padding: '4px 12px', fontSize: 13, textDecoration: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              🎞 {t('nav.presentation')}
+            </a>
           </div>
         </div>
         <div className="meta" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

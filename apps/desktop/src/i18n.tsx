@@ -41,6 +41,8 @@ const dict = {
     'nav.activity': 'Aktivita',
     'nav.settings': 'Nastavení',
     'nav.docs': 'Dokumentace',
+    'nav.presentation': 'Prezentace',
+    'nav.presentationHint': 'Přehledová prezentace systému (anonymizovaná) — otevře se v novém okně',
 
     'topbar.api': 'API',
     'topbar.lang': 'Jazyk',
@@ -684,6 +686,8 @@ const dict = {
     'nav.activity': 'Activity',
     'nav.settings': 'Settings',
     'nav.docs': 'Docs',
+    'nav.presentation': 'Presentation',
+    'nav.presentationHint': 'System overview presentation (anonymized) — opens in a new tab',
 
     'topbar.api': 'API',
     'topbar.lang': 'Language',
