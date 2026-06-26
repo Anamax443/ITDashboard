@@ -946,6 +946,14 @@ export const api = {
     if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/freshness/test → ${r.status}`);
     return body as { ok: true; recipients: number; stale: number };
   },
+  routersStatus: () => jget<Array<{
+    site: string; ip: string; ftp: boolean; muted: boolean;
+    leaseFileTime: string | null; arpFileTime: string | null;
+    leaseCount: number | null; arpCount: number | null;
+    fetchedAt: string | null; lastError: string | null;
+    minsSinceChange: number | null; stale: boolean | null; thresholdMinutes: number;
+    devices: number; bySource: { dhcp: number; arp: number; scan: number; unifi: number } | null;
+  }>>('/network/routers'),
   reportOverview: () => jget<OverviewReport>('/reports/overview'),
   sendReportEmail: async (machines?: string[]) => {
     const r = await fetch(`${API_BASE}/reports/email`, {

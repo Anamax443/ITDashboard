@@ -381,6 +381,10 @@ function RetentionRunBlock() {
   );
 }
 
+// A free-text filter over the Settings sections — a Section whose title or
+// description doesn't match the query hides itself (the page has many blocks).
+const SettingsFilterContext = React.createContext('');
+
 export function SettingsPage() {
   const { t } = useI18n();
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -390,6 +394,7 @@ export function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [reachRunning, setReachRunning] = useState(false);
   const [reachResult, setReachResult] = useState<string | null>(null);
+  const [blockFilter, setBlockFilter] = useState('');
 
   useEffect(() => {
     api.settings().then((s) => setSettings(s)).catch((e) => setError(String(e)));
@@ -446,6 +451,7 @@ export function SettingsPage() {
   const hasChanges = Object.keys(dirty).length > 0;
 
   return (
+    <SettingsFilterContext.Provider value={blockFilter.trim().toLowerCase()}>
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1', overflowY: 'auto' }}>
       <div className="panel-header">
         <h2>{t('settings.title')}</h2>
@@ -463,6 +469,16 @@ export function SettingsPage() {
         <HelpBox title={t('settings.helpTitle')}>
           <p>{t('settings.helpBody')}</p>
         </HelpBox>
+
+        <div style={{ margin: '0 0 18px' }}>
+          <input
+            type="search"
+            value={blockFilter}
+            onChange={(e) => setBlockFilter(e.target.value)}
+            placeholder={t('settings.filterBlocks')}
+            style={{ ...fieldStyle, width: '100%', maxWidth: 460 }}
+          />
+        </div>
 
         <Section title={t('settings.section.periodic')} description={t('settings.section.periodicDesc')}>
           <Field label={t('settings.field.runEvery')}>
@@ -1212,6 +1228,7 @@ export function SettingsPage() {
 
       </div>
     </div>
+    </SettingsFilterContext.Provider>
   );
 }
 
@@ -1429,6 +1446,8 @@ function NumberInput({ v, onChange, suffix }: { v: string; onChange: (v: string)
 }
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+  const q = React.useContext(SettingsFilterContext);
+  if (q && !`${title} ${description ?? ''}`.toLowerCase().includes(q)) return null;
   return (
     <div style={{ marginBottom: 32, paddingBottom: 24, borderBottom: '1px solid var(--border)' }}>
       <h3 style={{ margin: '0 0 4px 0', fontSize: 16, color: 'var(--text)' }}>{title}</h3>

@@ -18,6 +18,7 @@ import { ServicesPage } from './pages/ServicesPage.js';
 import { CriticalServicesPage } from './pages/CriticalServicesPage.js';
 import { PortsPage } from './pages/PortsPage.js';
 import { DevicesPage } from './pages/DevicesPage.js';
+import { NetworkPage } from './pages/NetworkPage.js';
 import { ManagerSummaryPage } from './pages/ManagerSummaryPage.js';
 import { PrinterSuppliesPage } from './pages/PrinterSuppliesPage.js';
 import { DatabasePage } from './pages/DatabasePage.js';
@@ -29,7 +30,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'deviceprinters' | 'printers' | 'database' | 'perf' | 'activity' | 'settings';
+type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'deviceprinters' | 'printers' | 'network' | 'database' | 'perf' | 'activity' | 'settings';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -250,6 +251,7 @@ export function App() {
             <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}>{t('nav.devices')}</button>
             <button className={view === 'deviceprinters' ? 'active' : ''} onClick={() => setView('deviceprinters')}>{t('nav.devicePrinters')}</button>
             <button className={view === 'printers' ? 'active' : ''} onClick={() => setView('printers')}>{t('nav.printers')}</button>
+            <button className={view === 'network' ? 'active' : ''} onClick={() => setView('network')}>{t('nav.network')}</button>
             <button className={view === 'database' ? 'active' : ''} onClick={() => setView('database')}>{t('nav.database')}</button>
             <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>{t('nav.perf')}</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>{t('nav.activity')}</button>
@@ -439,6 +441,12 @@ export function App() {
       {view === 'ports' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <PortsPage onJumpToComputer={jumpToComputer} initialOnlyIssues={portsInitialOnlyIssues} onOnlyIssuesConsumed={() => setPortsInitialOnlyIssues(false)} />
+        </div>
+      )}
+
+      {view === 'network' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <NetworkPage />
         </div>
       )}
 

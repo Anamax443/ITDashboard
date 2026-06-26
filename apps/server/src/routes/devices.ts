@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { getPool } from '../db/pool.js';
+import { getAllSettings } from '../services/settings.js';
 import { runMikrotikCollectOnce, probeDeviceNow, suggestCategory, testRouters } from '../services/mikrotik-collector.js';
 import { runUnifiCollectOnce } from '../services/unifi-collector.js';
 import { runSharedPrintersOnce } from '../services/shared-printers-collector.js';
@@ -204,6 +205,59 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
              DATEDIFF(MINUTE, file_changed_at, SYSUTCDATETIME()) AS mins_since_change
       FROM site_data_status ORDER BY site`);
     return r.recordset;
+  });
+
+  // Per-router communication view (the "Routers" page): each configured router with
+  // its FTP file-source freshness (from site_data_status), whether it is an FTP /
+  // muted site, and a device count by source — the round-trip "router → FTP → DB →
+  // page" surfaced read-only, scaling to however many routers are configured.
+  app.get('/network/routers', async () => {
+    const settings = await getAllSettings();
+    const routers = (settings['mikrotik.routers'] ?? '').split(/[,;]+/).map((s) => s.trim()).filter(Boolean)
+      .map((tok) => { const i = tok.indexOf('='); return i > 0 ? { site: tok.slice(0, i).trim(), ip: tok.slice(i + 1).trim() } : null; })
+      .filter((r): r is { site: string; ip: string } => !!r && !!r.site && !!r.ip);
+    const csv = (v: string | undefined) => new Set((v ?? '').split(/[,;\r\n]+/).map((s) => s.trim()).filter(Boolean).map((s) => s.toLowerCase()));
+    const ftpSites = csv(settings['mikrotik.ftp_sites']);
+    const muted = csv(settings['alerts.freshness.muted_sites']);
+    const ftpEnabled = (settings['mikrotik.ftp_enabled'] ?? '1') === '1';
+    const threshold = Number(settings['alerts.freshness.threshold_minutes'] ?? 45) || 45;
+
+    const pool = await getPool();
+    const status = (await pool.request().query<{
+      site: string; lease_file_time: Date | null; arp_file_time: Date | null; lease_count: number | null;
+      arp_count: number | null; file_changed_at: Date | null; fetched_at: Date | null; last_error: string | null; mins_since_change: number | null;
+    }>(`
+      SELECT site, lease_file_time, arp_file_time, lease_count, arp_count, file_changed_at, fetched_at, last_error,
+             DATEDIFF(MINUTE, file_changed_at, SYSUTCDATETIME()) AS mins_since_change
+      FROM site_data_status`)).recordset;
+    const statusBySite = new Map(status.map((r) => [r.site.toLowerCase(), r]));
+
+    const counts = (await pool.request().query<{ site: string; total: number; dhcp: number; arp: number; scan: number; unifi: number }>(`
+      SELECT site, COUNT(*) AS total,
+             SUM(CASE WHEN source='dhcp' THEN 1 ELSE 0 END) AS dhcp,
+             SUM(CASE WHEN source='arp' THEN 1 ELSE 0 END) AS arp,
+             SUM(CASE WHEN source='scan' THEN 1 ELSE 0 END) AS scan,
+             SUM(CASE WHEN source='unifi' THEN 1 ELSE 0 END) AS unifi
+      FROM dhcp_leases GROUP BY site`)).recordset;
+    const countsBySite = new Map(counts.map((r) => [r.site.toLowerCase(), r]));
+
+    return routers.map((r) => {
+      const st = statusBySite.get(r.site.toLowerCase());
+      const c = countsBySite.get(r.site.toLowerCase());
+      const isFtp = ftpEnabled && ftpSites.has(r.site.toLowerCase());
+      const mins = st?.mins_since_change ?? null;
+      const stale = isFtp ? (!!st?.last_error || st?.file_changed_at == null || (mins != null && mins > threshold)) : null;
+      return {
+        site: r.site, ip: r.ip,
+        ftp: isFtp, muted: muted.has(r.site.toLowerCase()),
+        leaseFileTime: st?.lease_file_time ?? null, arpFileTime: st?.arp_file_time ?? null,
+        leaseCount: st?.lease_count ?? null, arpCount: st?.arp_count ?? null,
+        fetchedAt: st?.fetched_at ?? null, lastError: st?.last_error ?? null,
+        minsSinceChange: mins, stale, thresholdMinutes: threshold,
+        devices: c?.total ?? 0,
+        bySource: c ? { dhcp: c.dhcp, arp: c.arp, scan: c.scan, unifi: c.unifi } : null,
+      };
+    });
   });
 
   // IP-address archive for one device (by MAC): every IP it has been seen at, with
