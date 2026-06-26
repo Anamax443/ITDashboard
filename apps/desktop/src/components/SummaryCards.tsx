@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Summary, ComputerItem, DiskSummary, ServiceProblem, PerfSummary, InactiveStats } from '../api.js';
 import { api, serviceWhitelist, isServiceWhitelisted } from '../api.js';
 import { useI18n } from '../i18n.js';
@@ -102,9 +102,14 @@ export function SummaryCards({
 }: Props) {
   const { t } = useI18n();
   const [layout, setLayout] = useState<TileLayout>(() => loadLayout(settings['dashboard.tile_layout']));
+  // Settings load async — re-sync once the persisted value arrives (or changes),
+  // so a refresh restores the saved arrangement instead of resetting to default.
+  const rawLayout = settings['dashboard.tile_layout'] || '';
+  useEffect(() => { setLayout(loadLayout(rawLayout)); }, [rawLayout]);
   const [editMode, setEditMode] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
+  const [editSize, setEditSize] = useState<TileSize>('1');
   const [layoutErr, setLayoutErr] = useState<string | null>(null);
   const windowDays = summary?.window_days ?? 1;
   const windowLabel = windowDays === 1 ? '24h' : `${windowDays}d`;
@@ -210,24 +215,29 @@ export function SummaryCards({
     setLayout(next);
     api.saveSettings({ 'dashboard.tile_layout': JSON.stringify(next) }).catch(() => {});
   };
-  const commitMove = (tileId: string) => {
-    const v = editVal.trim();
-    if (v === '') { const next = freeze(); next[tileId] = { size: next[tileId]?.size }; persist(next); setEditing(null); setLayoutErr(null); return; }
-    const p = parsePos(v);
-    if (!p) { setLayoutErr(t('cards.layout.invalid')); return; }
-    const next = freeze();
-    const targetPos = fmtPos(p.row, p.col);
-    const myOld = next[tileId]?.pos;
-    // Swap with whoever holds the target cell — keeps every cell unique, no dupes.
-    const occupantId = Object.keys(next).find((id) => id !== tileId && next[id]!.pos === targetPos);
-    if (occupantId && myOld) next[occupantId] = { ...next[occupantId], pos: myOld };
-    next[tileId] = { ...next[tileId], pos: targetPos };
-    persist(next); setEditing(null); setLayoutErr(null);
+  const openEditor = (tileId: string) => {
+    setEditing(tileId);
+    setEditVal(layout[tileId]?.pos ?? '');
+    setEditSize(sizeOf(tileId));
+    setLayoutErr(null);
   };
-  const cycleSize = (tileId: string) => {
+  // Apply BOTH position and size from the editor in one go.
+  const commit = (tileId: string) => {
+    const v = editVal.trim();
+    const p = v === '' ? null : parsePos(v);
+    if (v !== '' && !p) { setLayoutErr(t('cards.layout.invalid')); return; }
     const next = freeze();
-    next[tileId] = { ...next[tileId], size: sizeOf(tileId) === '1' ? 'B' : '1' };
-    persist(next);
+    const myOld = next[tileId]?.pos;
+    if (p) {
+      const targetPos = fmtPos(p.row, p.col);
+      // Swap with whoever holds the target cell — keeps every cell unique, no dupes.
+      const occupantId = Object.keys(next).find((id) => id !== tileId && next[id]!.pos === targetPos);
+      if (occupantId && myOld) next[occupantId] = { ...next[occupantId], pos: myOld };
+      next[tileId] = { pos: targetPos, size: editSize };
+    } else {
+      next[tileId] = { size: editSize };  // empty position = auto-flow
+    }
+    persist(next); setEditing(null); setLayoutErr(null);
   };
 
   return (
@@ -242,38 +252,42 @@ export function SummaryCards({
       </div>
       <div className="cards" style={{ display: 'grid', gridTemplateColumns: `repeat(${LAYOUT_COLS}, minmax(140px, 1fr))`, alignItems: 'start', justifyContent: 'start' }}>
         {placed.map(({ tile, row, col, size }) => (
-          <div key={tile.id} style={{ gridColumn: col, gridRow: row, position: 'relative' }}>
+          <div key={tile.id} style={{ gridColumn: col, gridRow: row, position: 'relative', height: size === 'B' ? 42 : 84 }}>
             {editMode && <div style={{ position: 'absolute', inset: 0, zIndex: 3 }} />}
-            {editMode && (editing === tile.id ? (
-              <div style={{ position: 'absolute', top: 3, left: 4, zIndex: 6, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                  <input
-                    autoFocus
-                    value={editVal}
-                    onChange={(e) => setEditVal(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') commitMove(tile.id); else if (e.key === 'Escape') { setEditing(null); setLayoutErr(null); } }}
-                    placeholder={t('cards.layout.placeholder')}
-                    style={{ width: 46, fontSize: 11, padding: '1px 4px' }}
-                  />
-                  <button onClick={() => commitMove(tile.id)} title="OK" style={{ fontSize: 11, padding: '1px 5px', cursor: 'pointer' }}>✓</button>
-                  <button onClick={() => { setEditing(null); setLayoutErr(null); }} title={t('cards.layout.cancel')} style={{ fontSize: 11, padding: '1px 5px', cursor: 'pointer' }}>✕</button>
+            {editMode && editing !== tile.id && (
+              <button
+                onClick={() => openEditor(tile.id)}
+                title={t('cards.layout.edit')}
+                style={{ position: 'absolute', top: 3, left: 4, zIndex: 6, fontSize: 10, lineHeight: 1, padding: '2px 6px', background: layout[tile.id]?.pos ? 'var(--accent)' : 'rgba(120,130,150,0.35)', color: layout[tile.id]?.pos ? '#fff' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
+              >✏️ {fmtPos(row, col)} · {size === 'B' ? t('cards.layout.halfShort') : t('cards.layout.fullShort')}</button>
+            )}
+            {editMode && editing === tile.id && (
+              <div style={{ position: 'absolute', top: 3, left: 4, zIndex: 7, width: 168, background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 6, padding: 8, boxShadow: '0 4px 14px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 10, color: 'var(--text-dim)' }}>{t('cards.layout.posLabel')}</label>
+                <input
+                  autoFocus
+                  value={editVal}
+                  onChange={(e) => setEditVal(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') commit(tile.id); else if (e.key === 'Escape') { setEditing(null); setLayoutErr(null); } }}
+                  placeholder={t('cards.layout.placeholder')}
+                  style={{ width: '100%', fontSize: 12, padding: '3px 5px', boxSizing: 'border-box' }}
+                />
+                <label style={{ fontSize: 10, color: 'var(--text-dim)' }}>{t('cards.layout.sizeLabel')}</label>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(['1', 'B'] as const).map((s) => (
+                    <button key={s} onClick={() => setEditSize(s)}
+                      style={{ flex: 1, fontSize: 11, padding: '3px 4px', cursor: 'pointer', borderRadius: 5, border: '1px solid var(--border)', fontWeight: editSize === s ? 700 : 400, background: editSize === s ? 'var(--accent)' : 'transparent', color: editSize === s ? '#fff' : 'var(--text)' }}>
+                      {s === '1' ? t('cards.layout.full') : t('cards.layout.half')}
+                    </button>
+                  ))}
                 </div>
-                {layoutErr && <span style={{ fontSize: 10, color: 'var(--critical)', background: 'var(--surface)', padding: '1px 3px', borderRadius: 4 }}>{layoutErr}</span>}
+                {layoutErr && <span style={{ fontSize: 10, color: 'var(--critical)' }}>{layoutErr}</span>}
+                <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+                  <button onClick={() => commit(tile.id)} style={{ flex: 1, fontSize: 11, padding: '3px 4px', cursor: 'pointer', borderRadius: 5, border: 'none', background: 'var(--accent)', color: '#fff', fontWeight: 600 }}>{t('cards.layout.save')}</button>
+                  <button onClick={() => { setEditing(null); setLayoutErr(null); }} title={t('cards.layout.cancel')} style={{ fontSize: 11, padding: '3px 8px', cursor: 'pointer', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)' }}>✕</button>
+                </div>
               </div>
-            ) : (
-              <div style={{ position: 'absolute', top: 3, left: 4, zIndex: 6, display: 'flex', gap: 3 }}>
-                <button
-                  onClick={() => { setEditing(tile.id); setEditVal(layout[tile.id]?.pos ?? ''); setLayoutErr(null); }}
-                  title={t('cards.layout.edit')}
-                  style={{ fontSize: 10, lineHeight: 1, padding: '2px 5px', background: layout[tile.id]?.pos ? 'var(--accent)' : 'rgba(120,130,150,0.3)', color: layout[tile.id]?.pos ? '#fff' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
-                >✏️ {fmtPos(row, col)}</button>
-                <button
-                  onClick={() => cycleSize(tile.id)}
-                  title={t('cards.layout.size')}
-                  style={{ fontSize: 10, lineHeight: 1, padding: '2px 6px', fontWeight: 700, background: size === 'B' ? 'var(--warning)' : 'rgba(120,130,150,0.3)', color: size === 'B' ? '#1a1a1a' : 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }}
-                >{size}</button>
-              </div>
-            ))}
+            )}
             {React.cloneElement(tile.el, { key: tile.id, size })}
           </div>
         ))}
@@ -289,7 +303,7 @@ export function Card({ label, value, sub, kind, onClick, badge, badgeTitle, size
     <div
       className={`card ${kind}`}
       onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'default', userSelect: 'none', position: 'relative', width: '100%', maxWidth: 'none', height: '100%', minHeight: half ? 38 : 78, padding: half ? '5px 11px' : 13 }}
+      style={{ cursor: onClick ? 'pointer' : 'default', userSelect: 'none', position: 'relative', width: '100%', maxWidth: 'none', height: '100%', boxSizing: 'border-box', overflow: 'hidden', padding: half ? '5px 11px' : 12 }}
       title={onClick ? 'Click to drill down' : undefined}
     >
       {badge != null && (
