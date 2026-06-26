@@ -668,6 +668,14 @@ service restarts on new dist/, in-memory state cleared</div>
   </ul>
 </div>
 
+<h3 id="network"><span data-lang="cs">Záložka Routery</span><span data-lang="en">Routers tab</span></h3>
+<div data-lang="en">
+  <p>Surfaces the <strong>router → FTP files → DB → page</strong> round-trip — one card per configured router (FTP / REST-only + fresh / stale / muted badges, minutes since the data last advanced, parsed lease/ARP counts, devices by source, last error). <strong>⬇ Fetch now</strong> forces an FTP pull, writes the parsed rows into the inventory, and prints a per-router communication log in a terminal console — a branch whose router has no <code>ftp</code> policy / export shows its real <code>530 Login incorrect</code> instead of a blank card. Below the cards: a live <code>dhcp_leases</code> listing (full-column filter / click-to-sort / pagination / CSV export) and a <strong>device-history search</strong> by IP / MAC / hostname — "what was on IP X and for how long", "where has machine Y been" (from <code>device_ip_history</code>, the live inventory itself stays unique/current). A 📡 Routers homepage tile counts stale routers and links here.</p>
+</div>
+<div data-lang="cs">
+  <p>Ukazuje cestu <strong>router → FTP soubory → DB → stránka</strong> — karta na každý router (FTP / jen REST + čerstvé / stará data / ztlumeno, kdy se data naposledy pohnula, počty leasů/ARP, zařízení dle zdroje, poslední chyba). <strong>⬇ Stáhnout teď</strong> vynutí FTP stažení, zapíše naparsované řádky do inventáře a vypíše komunikaci po routerech do terminálové konzole — pobočka bez <code>ftp</code> policy / exportu ukáže reálné <code>530 Login incorrect</code> místo prázdné karty. Pod kartami: živý výpis <code>dhcp_leases</code> (filtr přes všechny sloupce / řazení klikem / stránkování / CSV export) a <strong>hledání historie zařízení</strong> podle IP / MAC / hostname — „co bylo na IP X a jak dlouho", „kde byl stroj Y" (z <code>device_ip_history</code>; živý inventář zůstává unikátní/aktuální). Dlaždice 📡 Routery na Přehledu počítá routery se starými daty a vede sem.</p>
+</div>
+
 <h3 id="printer-supplies"><span data-lang="cs">Stav tiskáren</span><span data-lang="en">Printer status</span></h3>
 <div data-lang="en">
   <p>A dedicated <strong>"🖨 Náplně / Supplies" tab</strong> (with a matching <strong>homepage tile</strong>) that reads <strong>ink / toner / maintenance-box / drum / belt levels straight from the network printers</strong> and shows them per printer. The collector probes <strong>only devices the operator has categorised as "Printer"</strong> (<code>category=printer</code>); it is fully <strong>DB-driven</strong> and runs on its own <strong>self-rescheduling timer</strong>.</p>
@@ -1714,14 +1722,21 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
 </table>
 
 <h2 id="retention"><span data-lang="cs">Retention policy</span><span data-lang="en">Retention policy</span></h2>
+<p><span data-lang="cs">Každá tabulka, která roste, má retenci. Všechny doby držení jsou nastavitelné v <strong>Nastavení → „🗂 Retenční politika (přehled)"</strong> — jedna tabulka se všemi politikami a editovatelnou dobou. Maže se denně v <code>retention.run_at_hour</code> (default 02:00); <code>0 = navždy</code>. Snapshotové tabulky se přepisují (jeden řádek na klíč), nerostou.</span><span data-lang="en">Every growing table has retention. All keep-durations are editable in <strong>Settings → "🗂 Retention policy (overview)"</strong> — one table with every policy and an inline duration. Purged daily at <code>retention.run_at_hour</code> (default 02:00); <code>0 = forever</code>. Snapshot tables are overwritten in place (one row per key) and don't grow.</span></p>
 <table>
-  <tr><th>Data</th><th>Retention</th><th>Mechanism</th></tr>
-  <tr><td>Raw <code>events</code></td><td>90 days</td><td><code>sp_purge_old_events @retention_days = 90</code> daily</td></tr>
-  <tr><td><code>event_daily_agg</code></td><td>forever</td><td>no purge</td></tr>
-  <tr><td><code>collector_runs</code></td><td>forever</td><td>no purge</td></tr>
-  <tr><td><code>ad_sync_runs</code></td><td>forever</td><td>no purge</td></tr>
-  <tr><td><code>disks</code></td><td>only latest per (PC, drive)</td><td>MERGE replaces row on each scan</td></tr>
-  <tr><td><code>script_runs</code></td><td>1 year (planned)</td><td>TODO</td></tr>
+  <tr><th>Data</th><th>Retention (setting)</th><th>Mechanism</th></tr>
+  <tr><td><code>events</code></td><td>90 d · <code>events.retention_days</code></td><td><code>sp_purge_old_events</code> — daily runner</td></tr>
+  <tr><td><code>events</code> de-dup</td><td><code>events.dedup_lookback_days</code></td><td><code>sp_purge_duplicate_events</code></td></tr>
+  <tr><td><code>activity_log</code></td><td>30 d · <code>activity.retention_days</code></td><td><code>sp_purge_old_activity</code></td></tr>
+  <tr><td><code>pc_user_history</code></td><td>90 d · <code>pcUserHistory.retention_days</code></td><td><code>sp_purge_pc_user_history</code></td></tr>
+  <tr><td><code>perf_events</code></td><td>180 d · <code>perf.retention_days</code></td><td><code>sp_purge_old_perf</code> <em>(audit 2026-06-26 — byla bez retence)</em></td></tr>
+  <tr><td><code>ad_sync_runs</code></td><td>90 d · <code>adsync.runs_retention_days</code></td><td><code>sp_purge_ad_sync_runs</code> <em>(audit 2026-06-26 — byla bez retence)</em></td></tr>
+  <tr><td><code>dhcp_leases</code> (duchové)</td><td>14 d · <code>devices.lease_retention_days</code></td><td>prune v MikroTik cyklu (nemaže identifikovaná zařízení)</td></tr>
+  <tr><td><code>device_ip_history</code></td><td>365 d · <code>devices.history_retention_days</code></td><td>prune v MikroTik cyklu</td></tr>
+  <tr><td><code>device_ping_samples</code></td><td>24 h · <code>devices.loss_window_hours</code></td><td>prune v MikroTik cyklu</td></tr>
+  <tr><td><code>event_daily_agg</code></td><td>navždy</td><td>agregát (omezený) — bez purge</td></tr>
+  <tr><td>snapshoty: <code>disks</code>, <code>port_status</code>, <code>service_problems</code>, <code>critical_service_status</code>, <code>site_data_status</code></td><td>jen poslední per klíč</td><td>MERGE / přepis při sběru — neroste</td></tr>
+  <tr><td><code>*_alert_state</code></td><td>dokud trvá výpadek</td><td>recovery maže při zotavení</td></tr>
 </table>
 
 <h2 id="permissions"><span data-lang="cs">Požadovaná oprávnění na cílových PC</span><span data-lang="en">Required permissions on target PCs</span></h2>
