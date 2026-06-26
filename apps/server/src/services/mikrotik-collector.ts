@@ -48,8 +48,10 @@ function parseRouters(raw: string | undefined): Router[] {
 interface MtConfig { routers: Router[]; user: string; pass: string; intervalSec: number; scanEnabled: boolean; scanRanges: ScanRange[]; ipscan: boolean; ipscanSec: number; ftpEnabled: boolean; ftpSites: Set<string>; }
 
 // Sites (router names) whose router writes the export files we pull over FTP.
+// Tolerant of the "Site=IP" form (same as mikrotik.routers): only the name before
+// "=" is kept, so the operator can paste the routers list verbatim if they like.
 function parseFtpSites(raw: string | undefined): Set<string> {
-  return new Set((raw ?? '').split(/[,;\r\n]+/).map((s) => s.trim()).filter(Boolean));
+  return new Set((raw ?? '').split(/[,;\r\n]+/).map((s) => s.split('=')[0]!.trim()).filter(Boolean));
 }
 
 function resolveConfig(settings: SettingsMap): MtConfig | null {

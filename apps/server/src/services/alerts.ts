@@ -1069,7 +1069,7 @@ interface SiteStatusRow {
 
 // Monitored = FTP sites minus muted sites. Returns the ones currently stale.
 async function loadStaleSites(settings: SettingsMap): Promise<StaleSite[]> {
-  const ftpSites = parseList(settings['mikrotik.ftp_sites']);
+  const ftpSites = parseList(settings['mikrotik.ftp_sites']).map((s) => s.split('=')[0]!.trim()).filter(Boolean);
   const muted = new Set(parseList(settings['alerts.freshness.muted_sites']).map((s) => s.toLowerCase()));
   const monitored = ftpSites.filter((s) => !muted.has(s.toLowerCase()));
   if (monitored.length === 0) return [];

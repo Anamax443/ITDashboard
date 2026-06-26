@@ -216,7 +216,8 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
     const routers = (settings['mikrotik.routers'] ?? '').split(/[,;]+/).map((s) => s.trim()).filter(Boolean)
       .map((tok) => { const i = tok.indexOf('='); return i > 0 ? { site: tok.slice(0, i).trim(), ip: tok.slice(i + 1).trim() } : null; })
       .filter((r): r is { site: string; ip: string } => !!r && !!r.site && !!r.ip);
-    const csv = (v: string | undefined) => new Set((v ?? '').split(/[,;\r\n]+/).map((s) => s.trim()).filter(Boolean).map((s) => s.toLowerCase()));
+    // Tolerant of the "Site=IP" form — only the name before "=" is kept.
+    const csv = (v: string | undefined) => new Set((v ?? '').split(/[,;\r\n]+/).map((s) => s.split('=')[0]!.trim().toLowerCase()).filter(Boolean));
     const ftpSites = csv(settings['mikrotik.ftp_sites']);
     const muted = csv(settings['alerts.freshness.muted_sites']);
     const ftpEnabled = (settings['mikrotik.ftp_enabled'] ?? '1') === '1';
