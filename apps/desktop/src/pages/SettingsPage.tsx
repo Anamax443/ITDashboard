@@ -598,6 +598,25 @@ export function SettingsPage() {
 
           <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 10px' }} />
           <CheckField
+            label={t('settings.field.ftpEnabled')}
+            checked={value('mikrotik.ftp_enabled', '1') === '1'}
+            onChange={(checked) => set('mikrotik.ftp_enabled', checked ? '1' : '0')}
+          />
+          <Field label={t('settings.field.ftpSites')}>
+            <input
+              type="text"
+              value={value('mikrotik.ftp_sites', '')}
+              onChange={(e) => set('mikrotik.ftp_sites', e.target.value)}
+              placeholder="Brno, Zastavka"
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace' }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+            {t('settings.field.ftpSitesHelp')}
+          </p>
+
+          <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 10px' }} />
+          <CheckField
             label={t('settings.field.scanEnabled')}
             checked={value('mikrotik.scan_enabled', '0') === '1'}
             onChange={(checked) => set('mikrotik.scan_enabled', checked ? '1' : '0')}
