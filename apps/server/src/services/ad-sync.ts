@@ -95,6 +95,13 @@ export async function syncComputersFromAD(triggerSource: 'manual' | 'scheduled' 
   // Existing PCs (UPDATE path) preserve their current monitor_enabled — operator intent persists.
   const defaultMonitorRaw = await getSetting('adsync.default_monitor_enabled').catch(() => undefined);
   const defaultMonitor = (defaultMonitorRaw ?? 'true').toLowerCase() !== 'false' ? 1 : 0;
+  // Per-flag defaults a NEW PC gets (existing PCs keep operator intent — only the
+  // INSERT branch uses these). All default OFF except monitor.
+  const readBool = (raw: string | undefined, dflt: boolean) => ((raw ?? String(dflt)).toLowerCase() === 'true' ? 1 : 0);
+  const defDisk = readBool(await getSetting('adsync.default_disk_email_monitor').catch(() => undefined), false);
+  const defSvc = readBool(await getSetting('adsync.default_service_monitor').catch(() => undefined), false);
+  const defCritSvc = readBool(await getSetting('adsync.default_service_email_monitor').catch(() => undefined), false);
+  const defExcluded = readBool(await getSetting('adsync.default_excluded').catch(() => undefined), false);
 
   try {
     const adList = await fetchFromAD();
@@ -114,14 +121,17 @@ export async function syncComputersFromAD(triggerSource: 'manual' | 'scheduled' 
         .input('dn', c.DistinguishedName)
         .input('ou', ouPath)
         .input('mon', defaultMonitor)
+        .input('disk', defDisk).input('svc', defSvc).input('csvc', defCritSvc).input('exc', defExcluded)
         .query<{ action: 'INSERT' | 'UPDATE' }>(`
           MERGE computers AS tgt
           USING (SELECT @name AS name) AS src ON tgt.name = src.name
           WHEN MATCHED THEN UPDATE SET
             fqdn = @fqdn, os_version = @os, last_seen = @last_seen, enabled = @enabled,
             distinguished_name = @dn, ou_path = @ou
-          WHEN NOT MATCHED THEN INSERT (name, fqdn, os_version, last_seen, enabled, distinguished_name, ou_path, monitor_enabled)
-            VALUES (@name, @fqdn, @os, @last_seen, @enabled, @dn, @ou, @mon)
+          WHEN NOT MATCHED THEN INSERT (name, fqdn, os_version, last_seen, enabled, distinguished_name, ou_path,
+            monitor_enabled, disk_email_monitor, service_monitor, service_email_monitor, excluded)
+            VALUES (@name, @fqdn, @os, @last_seen, @enabled, @dn, @ou,
+            @mon, @disk, @svc, @csvc, @exc)
           OUTPUT $action AS action;
         `);
       const action = r.recordset[0]?.action;

@@ -919,8 +919,31 @@ export function SettingsPage() {
               checked={value('adsync.default_monitor_enabled', 'true') === 'true'}
               onChange={(checked) => set('adsync.default_monitor_enabled', String(checked))}
             />
+            <CheckField
+              label={t('settings.field.newPcsDisk')}
+              checked={value('adsync.default_disk_email_monitor', 'false') === 'true'}
+              onChange={(checked) => set('adsync.default_disk_email_monitor', String(checked))}
+            />
+            <CheckField
+              label={t('settings.field.newPcsServices')}
+              checked={value('adsync.default_service_monitor', 'false') === 'true'}
+              onChange={(checked) => set('adsync.default_service_monitor', String(checked))}
+            />
+            <CheckField
+              label={t('settings.field.newPcsCritServices')}
+              checked={value('adsync.default_service_email_monitor', 'false') === 'true'}
+              onChange={(checked) => set('adsync.default_service_email_monitor', String(checked))}
+            />
+            <CheckField
+              label={t('settings.field.newPcsExcluded')}
+              checked={value('adsync.default_excluded', 'false') === 'true'}
+              onChange={(checked) => set('adsync.default_excluded', String(checked))}
+            />
           </FieldGroup>
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>
+            {t('settings.field.newPcsDefaultsHelp')}
+          </p>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0' }}>
             {t('settings.field.runAllAlwaysSyncs')}
           </p>
         </Section>
