@@ -428,6 +428,34 @@ service restarts on new dist/, in-memory state cleared</div>
   </ul>
 </div>
 
+<h4><span data-lang="cs">Přizpůsobitelné rozložení dlaždic</span><span data-lang="en">Customizable tile layout</span></h4>
+<div data-lang="en">
+  <p>The homepage tiles can be laid out by the operator. The <strong>✏️ button</strong> (top-right of the cards) enters <strong>edit mode</strong>; the normal view stays clean. In edit mode each tile shows a small ✏️ that opens an editor:</p>
+  <ul>
+    <li><strong>Position</strong> — a cell given as <strong>column letter (A–H) + row number</strong>, e.g. <code>B3</code>. Empty = auto-flow into the next free cell. Pinned tiles hold their cell; the rest flow around them. Editing <strong>freezes</strong> the grid first, so moving one tile never reshuffles the others.</li>
+    <li><strong>Size</strong> — <strong>Full</strong> (normal) or <strong>Half</strong> (half height + smaller font, sub-line hidden) for minor tiles.</li>
+    <li><strong>Stacking</strong> — a cell holds one full tile <em>or</em> <strong>two half tiles stacked</strong>, addressed by an <strong>upper / lower</strong> slot (put both on <code>B3</code>, one upper, one lower). Two halves occupy exactly one full row. Capacity is enforced — no two tiles on the same slot, no half over a full.</li>
+    <li><strong>Per-row heading</strong> — each tile row can carry an optional heading (e.g. "Disks", "Network"), typed inline above the row in edit mode and shown as a section label otherwise.</li>
+    <li><strong>Persistence</strong> — the layout is saved to <code>dashboard.tile_layout</code> and the headings to <code>dashboard.row_titles</code> (via <code>PUT /settings</code>); both restore on refresh.</li>
+  </ul>
+  <div class="callout callout-info">
+    <strong>Why coordinates, not drag-and-drop</strong> — drag-and-drop tiles were tried earlier and reverted; the column-letter + row-number model is deterministic and sticks across refresh. The "Problem PCs" and "Operating systems" tiles are full grid tiles too (their detail tables expand below the grid).
+  </div>
+</div>
+<div data-lang="cs">
+  <p>Dlaždice na úvodní stránce si operátor rozloží sám. <strong>Tlačítko ✏️</strong> (vpravo nahoře nad kartami) zapne <strong>režim úprav</strong>; běžné zobrazení zůstává čisté. V režimu úprav má každá dlaždice malé ✏️, které otevře editor:</p>
+  <ul>
+    <li><strong>Umístění</strong> — buňka zadaná jako <strong>písmeno sloupce (A–H) + číslo řádku</strong>, např. <code>B3</code>. Prázdné = automaticky do první volné buňky. Připíchnuté dlaždice drží svou buňku, zbytek se rozteče okolo. Úprava nejdřív <strong>zmrazí</strong> mřížku, takže přesun jedné dlaždice nikdy nepřeháže ostatní.</li>
+    <li><strong>Velikost</strong> — <strong>Plná</strong> (normální) nebo <strong>Poloviční</strong> (poloviční výška + menší písmo, podtitulek skrytý) pro vedlejší dlaždice.</li>
+    <li><strong>Skládání</strong> — buňka pojme jednu plnou dlaždici <em>nebo</em> <strong>dvě poloviční na sobě</strong>, adresované slotem <strong>horní / dolní</strong> (obě dej na <code>B3</code>, jednu horní, druhou dolní). Dvě poloviční zaberou přesně jeden plný řádek. Hlídá se obsazenost — na jeden slot ne dvě, ani poloviční přes plnou.</li>
+    <li><strong>Nadpis řádku</strong> — každý řádek dlaždic může mít volitelný nadpis (např. „Disky", „Síť"), který se v režimu úprav píše do pole nad řádkem a jinak se zobrazí jako popisek sekce.</li>
+    <li><strong>Uložení</strong> — rozložení se ukládá do <code>dashboard.tile_layout</code> a nadpisy do <code>dashboard.row_titles</code> (přes <code>PUT /settings</code>); obojí se po refreshi obnoví.</li>
+  </ul>
+  <div class="callout callout-info">
+    <strong>Proč souřadnice, ne drag-and-drop</strong> — drag-and-drop dlaždic se kdysi zkoušel a zařízl; model písmeno sloupce + číslo řádku je deterministický a po refreshi drží. Dlaždice „PC v problémech" a „Operační systémy" jsou plnohodnotné dlaždice mřížky (jejich detailní tabulky se rozbalí pod mřížkou).
+  </div>
+</div>
+
 <h3><span data-lang="cs">Záložka Události</span><span data-lang="en">Events tab</span></h3>
 <div data-lang="en">
   <p>Full-width detailed events table:</p>
@@ -1024,6 +1052,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
     <li>Optionally type specific drive letters into the small field next to the checkbox — e.g. <code>C</code> or <code>C,F</code>. Leave it empty to watch all in-scope drives on that PC.</li>
     <li>The letter syntax is the same as the Disks "critical drives" scope: <code>C</code>, <code>C,D</code>, <code>&lt;&gt;C</code> / <code>!C</code> (everything except C), <code>*</code> (all).</li>
     <li><strong>Bulk toggles:</strong> the per-PC monitoring column headers — <strong>📧 Disk</strong>, <strong>🔧 Services</strong>, <strong>🛡 Critical services</strong> and <strong>Exclude</strong> — each carry a small <strong>"✓ all / ✗ none"</strong> control that ticks/unticks that column for <strong>all currently visible (filtered) PCs</strong> at once — e.g. filter to your servers, then ✓ to enable disk alerts on all of them.</li>
+    <li><strong>Monitor and Exclude are mutually exclusive</strong> — a PC is either monitored or excluded, never both. Ticking <strong>Exclude</strong> clears <strong>Monitor</strong>, and enabling <strong>Monitor</strong> un-excludes the PC. Enforced server-side on both the per-row checkboxes and the bulk "✓ all / ✗ none" controls, so the rule can't be bypassed.</li>
   </ul>
 </div>
 <div data-lang="cs">
@@ -1032,6 +1061,7 @@ Start-Process cmd -ArgumentList "/c `"$env:TEMP\install-handlers.cmd`" /machine"
     <li>Volitelně do malého pole vedle checkboxu napiš konkrétní písmena disků — např. <code>C</code> nebo <code>C,F</code>. Prázdné = sledují se všechny disky v rozsahu na daném PC.</li>
     <li>Syntaxe písmen je stejná jako u "critical drives" scope v Discích: <code>C</code>, <code>C,D</code>, <code>&lt;&gt;C</code> / <code>!C</code> (vše kromě C), <code>*</code> (vše).</li>
     <li><strong>Hromadné přepínače:</strong> hlavičky per-PC monitorovacích sloupců — <strong>📧 Disk</strong>, <strong>🔧 Služby</strong>, <strong>🛡 Krit. služby</strong> a <strong>Exclude</strong> — mají každá malý ovladač <strong>"✓ all / ✗ none"</strong>, který naráz zaškrtne/odškrtne daný sloupec pro <strong>všechna právě zobrazená (vyfiltrovaná) PC</strong> — např. vyfiltruj si servery a pak ✓ zapne disk alerty na všech najednou.</li>
+    <li><strong>Monitor a Exclude se vzájemně vylučují</strong> — PC je buď sledované, nebo vyřazené, nikdy obojí. Zaškrtnutí <strong>Exclude</strong> zruší <strong>Monitor</strong>, a zapnutí <strong>Monitor</strong> PC odvyřadí. Vynuceno na serveru u per-řádek checkboxů i hromadných ovladačů "✓ all / ✗ none", takže pravidlo nejde obejít.</li>
   </ul>
 </div>
 
@@ -1722,7 +1752,7 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
 </table>
 
 <h2 id="retention"><span data-lang="cs">Retention policy</span><span data-lang="en">Retention policy</span></h2>
-<p><span data-lang="cs">Každá tabulka, která roste, má retenci. Všechny doby držení jsou nastavitelné v <strong>Nastavení → „🗂 Retenční politika (přehled)"</strong> — jedna tabulka se všemi politikami a editovatelnou dobou. Maže se denně v <code>retention.run_at_hour</code> (default 02:00); <code>0 = navždy</code>. Snapshotové tabulky se přepisují (jeden řádek na klíč), nerostou.</span><span data-lang="en">Every growing table has retention. All keep-durations are editable in <strong>Settings → "🗂 Retention policy (overview)"</strong> — one table with every policy and an inline duration. Purged daily at <code>retention.run_at_hour</code> (default 02:00); <code>0 = forever</code>. Snapshot tables are overwritten in place (one row per key) and don't grow.</span></p>
+<p><span data-lang="cs">Každá tabulka, která roste, má retenci. Všechny doby držení jsou nastavitelné v <strong>Nastavení → „🗂 Retenční politika (přehled)"</strong> — jedna tabulka se všemi politikami a editovatelnou dobou. Maže se denně v <code>retention.run_at_hour</code> (default 02:00); <code>0 = navždy</code>. Snapshotové tabulky se přepisují (jeden řádek na klíč), nerostou. <strong>Ruční spuštění:</strong> v té tabulce má každý řádek tlačítko ▶ (plus Označit / Odznačit / Spustit označené) — i 3 device tabulky (duchové, IP historie, ping vzorky), jinak mazané jen v MikroTik cyklu, jdou spustit zvlášť.</span><span data-lang="en">Every growing table has retention. All keep-durations are editable in <strong>Settings → "🗂 Retention policy (overview)"</strong> — one table with every policy and an inline duration. Purged daily at <code>retention.run_at_hour</code> (default 02:00); <code>0 = forever</code>. Snapshot tables are overwritten in place (one row per key) and don't grow. <strong>Manual run:</strong> every row in that table has a ▶ button (plus Select / Deselect / Run selected) — including the 3 device tables (ghosts, IP history, ping samples), otherwise pruned only by the MikroTik cycle, which are now individually runnable.</span></p>
 <table>
   <tr><th>Data</th><th>Retention (setting)</th><th>Mechanism</th></tr>
   <tr><td><code>events</code></td><td>90 d · <code>events.retention_days</code></td><td><code>sp_purge_old_events</code> — daily runner</td></tr>
@@ -1731,9 +1761,9 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td><code>pc_user_history</code></td><td>90 d · <code>pcUserHistory.retention_days</code></td><td><code>sp_purge_pc_user_history</code></td></tr>
   <tr><td><code>perf_events</code></td><td>180 d · <code>perf.retention_days</code></td><td><code>sp_purge_old_perf</code> <em>(audit 2026-06-26 — byla bez retence)</em></td></tr>
   <tr><td><code>ad_sync_runs</code></td><td>90 d · <code>adsync.runs_retention_days</code></td><td><code>sp_purge_ad_sync_runs</code> <em>(audit 2026-06-26 — byla bez retence)</em></td></tr>
-  <tr><td><code>dhcp_leases</code> (duchové)</td><td>14 d · <code>devices.lease_retention_days</code></td><td>prune v MikroTik cyklu (nemaže identifikovaná zařízení)</td></tr>
-  <tr><td><code>device_ip_history</code></td><td>365 d · <code>devices.history_retention_days</code></td><td>prune v MikroTik cyklu</td></tr>
-  <tr><td><code>device_ping_samples</code></td><td>24 h · <code>devices.loss_window_hours</code></td><td>prune v MikroTik cyklu</td></tr>
+  <tr><td><code>dhcp_leases</code> (duchové)</td><td>14 d · <code>devices.lease_retention_days</code></td><td>prune v MikroTik cyklu (nemaže identifikovaná zařízení) · + ruční krok ▶</td></tr>
+  <tr><td><code>device_ip_history</code></td><td>365 d · <code>devices.history_retention_days</code></td><td>prune v MikroTik cyklu · + ruční krok ▶</td></tr>
+  <tr><td><code>device_ping_samples</code></td><td>24 h · <code>devices.loss_window_hours</code></td><td>prune v MikroTik cyklu · + ruční krok ▶</td></tr>
   <tr><td><code>event_daily_agg</code></td><td>navždy</td><td>agregát (omezený) — bez purge</td></tr>
   <tr><td>snapshoty: <code>disks</code>, <code>port_status</code>, <code>service_problems</code>, <code>critical_service_status</code>, <code>site_data_status</code></td><td>jen poslední per klíč</td><td>MERGE / přepis při sběru — neroste</td></tr>
   <tr><td><code>*_alert_state</code></td><td>dokud trvá výpadek</td><td>recovery maže při zotavení</td></tr>
