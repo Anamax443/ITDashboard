@@ -77,7 +77,7 @@ async function readNum(key: string, fallback: number): Promise<number> {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-export type RetentionStepName = 'events_purge' | 'activity_log_purge' | 'pc_user_history_purge' | 'events_dedup';
+export type RetentionStepName = 'events_purge' | 'activity_log_purge' | 'pc_user_history_purge' | 'perf_purge' | 'ad_sync_runs_purge' | 'events_dedup';
 
 export async function runRetentionOnce(
   triggerSource: 'manual' | 'scheduled' = 'manual',
@@ -105,7 +105,9 @@ async function runRetentionInner(
   const eventsDays = await readNum('events.retention_days', 90);
   const activityDays = await readNum('activity.retention_days', 30);
   const pcUserDays = await readNum('pcUserHistory.retention_days', 90);
-  logActivity('info', 'retention', `Starting (${triggerSource}) — events>${eventsDays}d, activity>${activityDays}d, pc_user_history>${pcUserDays}d`);
+  const perfDays = await readNum('perf.retention_days', 180);
+  const adRunsDays = await readNum('adsync.runs_retention_days', 90);
+  logActivity('info', 'retention', `Starting (${triggerSource}) — events>${eventsDays}d, activity>${activityDays}d, pc_user_history>${pcUserDays}d, perf>${perfDays}d, ad_sync_runs>${adRunsDays}d`);
 
   const steps: RetentionRunReport['steps'] = [];
 
@@ -128,6 +130,20 @@ async function runRetentionInner(
     if (pcUserRes.ok) logActivity('success', 'retention', `pc_user_history purge: ${pcUserRes.rowsAffected} rows removed (${(pcUserRes.durationMs/1000).toFixed(1)}s)`);
     else              logActivity('error',   'retention', `pc_user_history purge failed: ${pcUserRes.error}`);
     steps.push({ name: 'pc_user_history_purge', ok: pcUserRes.ok, rowsAffected: pcUserRes.rowsAffected, durationMs: pcUserRes.durationMs, detail: `> ${pcUserDays}d`, error: pcUserRes.error });
+  }
+
+  if (shouldRun('perf_purge')) {
+    const perfRes = await callPurge('sp_purge_old_perf', perfDays);
+    if (perfRes.ok) logActivity('success', 'retention', `perf_events purge: ${perfRes.rowsAffected} rows removed (${(perfRes.durationMs/1000).toFixed(1)}s)`);
+    else            logActivity('error',   'retention', `perf_events purge failed: ${perfRes.error}`);
+    steps.push({ name: 'perf_purge', ok: perfRes.ok, rowsAffected: perfRes.rowsAffected, durationMs: perfRes.durationMs, detail: `> ${perfDays}d`, error: perfRes.error });
+  }
+
+  if (shouldRun('ad_sync_runs_purge')) {
+    const adRes = await callPurge('sp_purge_ad_sync_runs', adRunsDays);
+    if (adRes.ok) logActivity('success', 'retention', `ad_sync_runs purge: ${adRes.rowsAffected} rows removed (${(adRes.durationMs/1000).toFixed(1)}s)`);
+    else          logActivity('error',   'retention', `ad_sync_runs purge failed: ${adRes.error}`);
+    steps.push({ name: 'ad_sync_runs_purge', ok: adRes.ok, rowsAffected: adRes.rowsAffected, durationMs: adRes.durationMs, detail: `> ${adRunsDays}d`, error: adRes.error });
   }
 
   if (shouldRun('events_dedup')) {

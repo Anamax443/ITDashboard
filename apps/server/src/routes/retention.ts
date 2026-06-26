@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { runRetentionOnce, getLastRetentionReport, getRetentionNextRun, isRetentionRunning, type RetentionStepName } from '../services/retention-runner.js';
 
-const VALID_STEPS: RetentionStepName[] = ['events_purge', 'activity_log_purge', 'pc_user_history_purge', 'events_dedup'];
+const VALID_STEPS: RetentionStepName[] = ['events_purge', 'activity_log_purge', 'pc_user_history_purge', 'perf_purge', 'ad_sync_runs_purge', 'events_dedup'];
 
 export async function registerRetentionRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/retention/status', async () => {
