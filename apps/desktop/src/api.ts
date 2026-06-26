@@ -960,6 +960,10 @@ export const api = {
     if (!r.ok || body.error) throw new Error(body.error || `POST /network/ftp-fetch → ${r.status}`);
     return body.items ?? [];
   },
+  dbRows: (site?: string, limit = 200) => jget<{
+    items: Array<{ site: string; ip_address: string | null; mac_address: string; host_name: string | null; source: string | null; status: string | null; last_seen: string }>;
+    total: number;
+  }>(`/network/db-rows?limit=${limit}${site ? `&site=${encodeURIComponent(site)}` : ''}`),
   reportOverview: () => jget<OverviewReport>('/reports/overview'),
   sendReportEmail: async (machines?: string[]) => {
     const r = await fetch(`${API_BASE}/reports/email`, {

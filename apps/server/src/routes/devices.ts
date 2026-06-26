@@ -261,6 +261,22 @@ export async function registerDevicesRoutes(app: FastifyInstance) {
     });
   });
 
+  // Raw rows straight from dhcp_leases for the Routers page "database listing" —
+  // physical proof the FTP → DB round-trip landed. Newest write first.
+  app.get('/network/db-rows', async (req) => {
+    const q = z.object({ site: z.string().max(64).optional(), limit: z.coerce.number().min(1).max(1000).optional() }).parse(req.query);
+    const limit = q.limit ?? 200;
+    const pool = await getPool();
+    const rows = (await pool.request().input('site', q.site ?? null).input('limit', limit).query(`
+      SELECT TOP (@limit) site, ip_address, mac_address, host_name, source, status, last_seen
+      FROM dhcp_leases
+      WHERE (@site IS NULL OR site = @site)
+      ORDER BY last_seen DESC`)).recordset;
+    const total = (await pool.request().input('site', q.site ?? null)
+      .query<{ n: number }>(`SELECT COUNT(*) AS n FROM dhcp_leases WHERE (@site IS NULL OR site = @site)`)).recordset[0]!.n;
+    return { items: rows, total };
+  });
+
   // Force an FTP pull of the configured FTP sites now and return a per-site
   // communication log (the Routers page "fetch now" + console).
   app.post('/network/ftp-fetch', async (_req, reply) => {

@@ -82,6 +82,7 @@ function RouterCard({ r }: { r: Row }) {
 }
 
 type FetchLog = Awaited<ReturnType<typeof api.ftpFetchNow>>[number];
+type DbRow = Awaited<ReturnType<typeof api.dbRows>>['items'][number];
 
 export function NetworkPage() {
   const { t } = useI18n();
@@ -91,13 +92,22 @@ export function NetworkPage() {
   const [fetching, setFetching] = useState(false);
   const [log, setLog] = useState<FetchLog[] | null>(null);
   const [logCollapsed, setLogCollapsed] = useState(false);
+  const [dbRows, setDbRows] = useState<DbRow[]>([]);
+  const [dbTotal, setDbTotal] = useState(0);
+  const [dbSite, setDbSite] = useState('');
 
+  const loadDb = (site = dbSite) => {
+    api.dbRows(site || undefined, 200)
+      .then((r) => { setDbRows(r.items); setDbTotal(r.total); })
+      .catch(() => { /* keep last */ });
+  };
   const load = () => {
     setLoading(true);
     api.routersStatus()
       .then((r) => { setRows(r); setErr(null); })
       .catch((e) => setErr(String(e instanceof Error ? e.message : e)))
       .finally(() => setLoading(false));
+    loadDb();
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
@@ -122,6 +132,8 @@ export function NetworkPage() {
     background: 'transparent', color: '#cbd5e1', border: '1px solid #334155', borderRadius: 4,
     width: 26, height: 22, cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0,
   };
+  const dbTh: CSSProperties = { textAlign: 'left', padding: '7px 10px', color: 'var(--text-dim)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' };
+  const dbTd: CSSProperties = { padding: '6px 10px', whiteSpace: 'nowrap' };
 
   return (
     <div style={{ padding: 20, overflow: 'auto' }}>
@@ -162,6 +174,45 @@ export function NetworkPage() {
 
       <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
         {rows.map((r) => <RouterCard key={r.site} r={r} />)}
+      </div>
+
+      <div style={{ marginTop: 26 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
+          <h3 style={{ margin: 0 }}>{t('net.dbTitle')}</h3>
+          <span style={{ color: 'var(--text-dim)', fontSize: 13 }}>{t('net.dbCount').replace('{shown}', String(dbRows.length)).replace('{total}', String(dbTotal))}</span>
+          <span style={{ flex: 1 }} />
+          <select value={dbSite} onChange={(e) => { setDbSite(e.target.value); loadDb(e.target.value); }} title={t('net.dbSiteHint')}
+            style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px' }}>
+            <option value="">{t('net.dbAllSites')}</option>
+            {rows.map((r) => <option key={r.site} value={r.site}>{r.site}</option>)}
+          </select>
+        </div>
+        <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'auto', maxHeight: 460 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ position: 'sticky', top: 0, background: 'var(--surface)' }}>
+                <th style={dbTh}>{t('net.dbSite')}</th><th style={dbTh}>IP</th><th style={dbTh}>MAC</th>
+                <th style={dbTh}>Hostname</th><th style={dbTh}>{t('net.dbSource')}</th><th style={dbTh}>Status</th><th style={dbTh}>{t('net.dbLastSeen')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dbRows.map((d, i) => (
+                <tr key={`${d.site}-${d.mac_address}-${i}`} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={dbTd}>{d.site}</td>
+                  <td style={{ ...dbTd, fontFamily: 'Consolas, monospace' }}>{d.ip_address ?? '—'}</td>
+                  <td style={{ ...dbTd, fontFamily: 'Consolas, monospace', color: 'var(--text-dim)' }}>{d.mac_address}</td>
+                  <td style={dbTd}>{d.host_name ?? '—'}</td>
+                  <td style={dbTd}>{d.source ?? '—'}</td>
+                  <td style={dbTd}>{d.status ?? '—'}</td>
+                  <td style={{ ...dbTd, color: 'var(--text-dim)' }}>{fmtTime(d.last_seen)}</td>
+                </tr>
+              ))}
+              {dbRows.length === 0 && (
+                <tr><td style={{ ...dbTd, color: 'var(--text-dim)' }} colSpan={7}>—</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
