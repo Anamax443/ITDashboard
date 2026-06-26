@@ -35,14 +35,14 @@ function RouterCard({ r }: { r: Row }) {
   const good = r.ftp && r.stale === false;
   const accent = bad ? 'var(--critical)' : good ? 'var(--ok)' : 'var(--text-dim)';
   return (
-    <div style={{ background: 'var(--card, #fff)', border: '1px solid var(--border, #e2e8f0)', borderLeft: `4px solid ${accent}`, borderRadius: 10, padding: '14px 16px' }}>
+    <div style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)', borderLeft: `4px solid ${accent}`, borderRadius: 10, padding: '14px 16px' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 17, fontWeight: 700 }}>{r.site}</span>
         <span style={{ color: 'var(--text-dim)', fontFamily: 'Consolas, monospace', fontSize: 13 }}>{r.ip}</span>
         <span style={{ flex: 1 }} />
         {r.ftp
           ? <Badge text="FTP" color="#fff" bg="var(--ok)" />
-          : <Badge text={t('net.restOnly')} color="var(--text-dim)" bg="var(--hover, #f1f5f9)" />}
+          : <Badge text={t('net.restOnly')} color="var(--text-dim)" bg="var(--surface-hover)" />}
         {r.muted && <Badge text={t('net.muted')} color="#92400e" bg="#fef3c7" />}
         {bad
           ? <Badge text={t('net.stale')} color="#fff" bg="var(--critical)" />

@@ -209,6 +209,16 @@ export function App() {
       api.computers(),
       api.timeline(filterHours),
       api.topComputers(filterHours, 10),
+      // Device-inventory data that drives homepage tiles (printers, devices,
+      // loss/latency, ports, disks, services). Previously fetched only once on
+      // mount, so those tiles went stale until an app reload — which made the
+      // Přehled printer count disagree with the freshly-fetched Souhrn page.
+      api.devices(),
+      api.disks(),
+      api.portStatus(),
+      api.printerSupplies(),
+      api.serviceProblems(),
+      api.criticalServices(),
     ]);
     if (results[0].status === 'fulfilled') setSummary(results[0].value);
     if (results[1].status === 'fulfilled') setEvents(results[1].value.items);
@@ -216,8 +226,14 @@ export function App() {
     if (results[3].status === 'fulfilled') setComputers(results[3].value.items);
     if (results[4].status === 'fulfilled') setTimeline(results[4].value.items);
     if (results[5].status === 'fulfilled') setTopComputers(results[5].value.items);
+    if (results[6].status === 'fulfilled') setDevices(results[6].value.items);
+    if (results[7].status === 'fulfilled') setDisks(results[7].value.items);
+    if (results[8].status === 'fulfilled') setPorts(results[8].value.items);
+    if (results[9].status === 'fulfilled') setPrinterSupplies(results[9].value);
+    if (results[10].status === 'fulfilled') setServiceProblems(results[10].value.items);
+    if (results[11].status === 'fulfilled') setCriticalServices(results[11].value.items);
 
-    const errs = results.map((r, i) => r.status === 'rejected' ? `[${['summary','events','topIds','computers','timeline','topComputers'][i]}] ${r.reason}` : null).filter(Boolean);
+    const errs = results.map((r, i) => r.status === 'rejected' ? `[${['summary','events','topIds','computers','timeline','topComputers','devices','disks','ports','supplies','services','critsvc'][i]}] ${r.reason}` : null).filter(Boolean);
     setError(errs.length > 0 ? errs.join(' · ') : null);
     setLastFetch(new Date());
   }, [filterComputer, filterLevel, filterHours]);
