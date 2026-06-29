@@ -18,11 +18,23 @@ const REPORT_CSS = `
 .cr-wrap .cr-kpi .v{font-family:Consolas,monospace;font-weight:700;font-size:15px;color:#111;word-break:break-word}
 .cr-wrap .cr-kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#777;margin-top:4px}
 .cr-wrap h2{font-size:14px;margin:18px 0 8px;color:#b91c1c;border-bottom:1px solid #eee;padding-bottom:4px}
-.cr-wrap pre{background:#0b0f14;color:#d6e9d6;font-family:Consolas,monospace;font-size:11px;line-height:1.5;padding:14px;border-radius:8px;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
+.cr-wrap pre{background:#f4f6f8;color:#1b2733;border:1px solid #e3e8ee;font-family:Consolas,monospace;font-size:11px;line-height:1.5;padding:14px;border-radius:8px;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
 .cr-wrap .cr-note{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;font-size:12px}
 .cr-wrap ul{margin:8px 0;padding-left:20px}
 .cr-wrap .foot{margin-top:24px;border-top:1px solid #eee;padding-top:8px;font-size:10px;color:#999}
-@media print{@page{margin:12mm}.cr-wrap h2{break-after:avoid}.cr-wrap .cr-kpis,.cr-wrap pre{break-inside:avoid}}
+/* theme toggle (screen only) — default is light/printable */
+.cr-toggle{position:fixed;top:12px;right:12px;z-index:9;font:600 12px 'Segoe UI',Arial,sans-serif;padding:6px 12px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+html[data-dark]{background:#0b0f14}
+html[data-dark] .cr-wrap{background:#0b0f14;color:#dbe4ee}
+html[data-dark] .cr-wrap h1{color:#fff}
+html[data-dark] .cr-wrap .cr-kpi{background:#121821;border-color:#243040}
+html[data-dark] .cr-wrap .cr-kpi .v{color:#fff}
+html[data-dark] .cr-wrap .cr-kpi .l{color:#8aa}
+html[data-dark] .cr-wrap .cr-note{background:#171307;border-color:#5a4a1e;color:#ecdfc4}
+html[data-dark] .cr-wrap pre{background:#0b0f14;color:#d6e9d6;border-color:#1c2733}
+html[data-dark] .cr-wrap .foot{color:#667}
+html[data-dark] .cr-toggle{background:#1b2430;color:#cbd5e1;border-color:#33414f}
+@media print{@page{margin:12mm}.cr-toggle{display:none}.cr-wrap h2{break-after:avoid}.cr-wrap .cr-kpis,.cr-wrap pre{break-inside:avoid}html[data-dark] .cr-wrap{background:#fff!important;color:#111!important}html[data-dark] .cr-wrap pre{background:#f4f6f8!important;color:#1b2733!important}html[data-dark] .cr-wrap .cr-note{background:#fff7ed!important;color:#111!important}}
 `;
 
 // Short per-bugcheck hint (honest, generic) for the report's "co dál".
@@ -37,6 +49,72 @@ const BUGCHECK_HINT: Record<string, string> = {
   '0x139': 'Kernel security check — poškození struktur, často ovladač/HW.',
   '0x124': 'Hardwarová chyba (WHEA) — CPU/RAM/sběrnice/teploty. Zkontrolovat HW.',
 };
+
+// Modules that ARE Windows itself — a stack made only of these means the fault
+// is in the OS, not a third-party driver (don't blame "a driver" then).
+const KERNEL_MODS = new Set([
+  'nt', 'ntoskrnl', 'hal', 'win32k', 'win32kbase', 'win32kfull', 'win32kns',
+  'ci', 'clfs', 'pshed', 'ksecdd', 'cng', 'fltmgr', 'ndis', 'netio', 'tcpip',
+]);
+const modBase = (s?: string | null) =>
+  ((s ?? '').toLowerCase().split('!')[0] ?? '').replace(/\.(sys|dll|exe)$/, '').trim();
+const isKernelMod = (s?: string | null) => KERNEL_MODS.has(modBase(s));
+
+// Plain-language "what happened" per STOP family (no jargon).
+const BUGCHECK_PLAIN: Record<string, string> = {
+  '0x133': 'Windows nestihl včas dokončit interní úlohu, a když překročila bezpečnostní časový limit jádra, systém se restartoval.',
+  '0xd1': 'Ovladač některého zařízení sáhl do paměti, kam neměl.',
+  '0x1a': 'Došlo k poškození správy paměti.',
+  '0x50': 'Systém se pokusil použít neplatné místo v paměti.',
+  '0x7e': 'V jádře systému nastala neošetřená chyba.',
+  '0x3b': 'Chyba uvnitř systémové služby (často grafika nebo antivirus).',
+  '0xc2': 'Některý ovladač špatně pracoval s pamětí.',
+  '0x139': 'Windows zachytil poškození svých vnitřních datových struktur.',
+  '0x124': 'Hardwarová chyba — procesor, paměť nebo sběrnice.',
+};
+
+type CrashExplanation = { plain: string; tech: string; actions: string[] };
+
+// Derive a manager-readable summary + a technical breakdown from the dump fields.
+function buildExplanation(c: CrashDetail, repeats: number): CrashExplanation {
+  const stop = (c.stop_code ?? '').toLowerCase();
+  const hot = c.hot_function ?? '';
+  const named3rd = !!c.culprit_module && !isKernelMod(c.culprit_module);
+  const kernelHot = isKernelMod(c.culprit_module ?? hot);
+
+  // --- plain language ---
+  let what = BUGCHECK_PLAIN[stop] ?? 'Systém se neočekávaně zastavil (modrá obrazovka) a restartoval.';
+  if (stop === '0x133' && /MiDelete(Subsection|Segment)Pages/i.test(hot)) {
+    what = 'Při zavírání velké aplikace nebo souboru uvolňoval Windows rozsáhlou oblast paměti tak dlouho, že to překročilo bezpečnostní časový limit jádra a počítač se restartoval.';
+  }
+  const blameNote =
+    named3rd ? '' :
+    kernelHot ? ' Nejde o chybu uživatele ani o cizí program — problém je uvnitř samotného Windows.' :
+    ' Nejde o chybu uživatele.';
+  const plain = `Počítač ${c.computer_name} se sám restartoval kvůli chybě systému. ${what}${blameNote}`;
+
+  // --- technical ---
+  const head = `${c.stop_code ?? '?'} ${c.bugcheck_name ?? ''}`.trim();
+  let blame: string;
+  if (named3rd) blame = `Ve stacku figuruje konkrétní ovladač ${c.culprit_module} — pravděpodobný viník.`;
+  else if (kernelHot) blame = `Stack je celý v jádře Windows (${modBase(c.culprit_module ?? hot)}), žádný cizí (3rd-party) modul → nejde o cizí ovladač, ale o chování/limit samotného systému, případně nepřímý důsledek zátěže nebo staršího buildu.`;
+  else blame = 'Z minidumpu se konkrétní viník nedal jednoznačně určit (ve stacku není žádný 3rd-party modul).';
+  const hint = BUGCHECK_HINT[stop] ?? '';
+  const repeatNote = repeats > 1 ? ` Tento počítač má ${repeats} zaznamenaných pádů — řešit přednostně a sledovat opakování.` : '';
+  const tech = `STOP ${head}. Hot funkce: ${hot || '—'}. ${blame} ${hint}${repeatNote}`.trim();
+
+  // --- actions ---
+  const actions: string[] = [];
+  if (named3rd) actions.push(`Aktualizovat / přeinstalovat ovladač ${c.culprit_module} od výrobce zařízení.`);
+  else if (kernelHot) {
+    actions.push('Nainstalovat poslední kumulativní aktualizaci Windows (oprava bývá přímo v jádře).');
+    actions.push('Aktualizovat ovladače čipsetu, úložiště a GPU od výrobce.');
+  } else actions.push('Aktualizovat Windows a ovladače (úložiště / síťovka / GPU).');
+  if (stop === '0x124' || stop === '0x1a') actions.push('Otestovat paměť (mdsched) a zkontrolovat teploty / hardware.');
+  actions.push('Sledovat opakování napříč flotilou na záložce Pády.');
+
+  return { plain, tech, actions };
+}
 
 export function CrashesPage() {
   const { t } = useI18n();
@@ -78,13 +156,15 @@ export function CrashesPage() {
   for (const c of items) { const k = c.computer_name ?? '?'; byPc.set(k, (byPc.get(k) ?? 0) + 1); }
   const top = (m: Map<string, number>, n = 4) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n);
   const repeat = top(byPc).filter(([, n]) => n > 1);
+  const expl = sel ? buildExplanation(sel, byPc.get(sel.computer_name ?? '?') ?? 1) : null;
 
   // --- white report (print / save) ---
   const buildReportHtml = () => {
     const body = reportRef.current ? reportRef.current.outerHTML : '';
-    return '<!DOCTYPE html>\n<html lang="cs"><head><meta charset="UTF-8">'
+    const toggle = '<button class="cr-toggle" onclick="document.documentElement.toggleAttribute(\'data-dark\')" title="Přepnout světlý / tmavý režim">◐ Světlý / tmavý</button>';
+    return '<!DOCTYPE html>\n<html lang="cs"><head><meta charset="utf-8">'
       + `<title>${t('crash.report.title')} — ${sel?.computer_name ?? ''}</title>`
-      + '<style>' + REPORT_CSS + '</style></head><body>' + body + '</body></html>';
+      + '<style>' + REPORT_CSS + '</style></head><body>' + toggle + body + '</body></html>';
   };
   const printReport = () => {
     const w = window.open('', '_blank', 'width=1000,height=800');
@@ -93,7 +173,8 @@ export function CrashesPage() {
     setTimeout(() => w.print(), 350);
   };
   const saveReport = () => {
-    const blob = new Blob([buildReportHtml()], { type: 'text/html;charset=utf-8' });
+    // BOM so the saved file is unambiguously UTF-8 when opened from disk (else mojibake).
+    const blob = new Blob(['﻿' + buildReportHtml()], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -194,6 +275,12 @@ export function CrashesPage() {
               <span><span style={{ color: 'var(--text-dim)' }}>hot </span>{sel.hot_function ?? '—'}</span>
             </div>
             {sel.analyze_error && <div style={{ color: 'var(--critical)', fontSize: 12, marginBottom: 8 }}>⚠ {sel.analyze_error}</div>}
+            {expl && (
+              <div style={{ background: 'rgba(120,130,150,.06)', border: '1px solid var(--border)', borderRadius: 6, padding: '10px 12px', marginBottom: 10, fontSize: 12.5, lineHeight: 1.55 }}>
+                <div style={{ marginBottom: 6 }}>{expl.plain}</div>
+                <div style={{ color: 'var(--text-dim)' }}>{expl.tech}</div>
+              </div>
+            )}
             <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>{t('crash.detail.stack')}</div>
             <pre style={{ background: '#05070a', color: '#9fe6c4', fontFamily: 'Consolas, monospace', fontSize: 11.5, lineHeight: 1.5, padding: 12, borderRadius: 6, maxHeight: 360, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{sel.analyze_text ?? '—'}</pre>
           </div>
@@ -220,13 +307,19 @@ export function CrashesPage() {
               <div className="cr-kpi"><div className="v">{sel.culprit_process ?? '—'}</div><div className="l">Proces</div></div>
               <div className="cr-kpi"><div className="v">{sel.culprit_module ?? sel.hot_function ?? '—'}</div><div className="l">Modul / hot</div></div>
             </div>
-            <h2>Doporučení</h2>
+            <h2>Co se stalo</h2>
+            <div className="cr-note">{expl?.plain}</div>
+            <h2>Technický rozbor</h2>
             <div className="cr-note">
-              {(sel.stop_code && BUGCHECK_HINT[sel.stop_code]) || 'Z dumpu vytaženy STOP kód, stack a kontext. Pro hlubší rozbor watchdog-typů spusť plný !analyze (starší Debugging Tools). Aktualizovat ovladače a Windows; sledovat opakování napříč flotilou.'}
+              {expl?.tech}
               <ul>
                 <li>Soubor: <b>{sel.source_filename}</b> ({sel.size_bytes ? Math.round(sel.size_bytes / 1024) + ' kB' : '—'})</li>
                 <li>Vinící proces: <b>{sel.culprit_process ?? '—'}</b> · modul: <b>{sel.culprit_module ?? '—'}</b> · hot: <b>{sel.hot_function ?? '—'}</b></li>
               </ul>
+            </div>
+            <h2>Doporučený postup</h2>
+            <div className="cr-note">
+              <ul>{expl?.actions.map((a, i) => <li key={i}>{a}</li>)}</ul>
             </div>
             <h2>Výstup ladění (cdb)</h2>
             <pre>{sel.analyze_text ?? '—'}</pre>
