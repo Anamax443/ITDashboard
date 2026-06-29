@@ -121,6 +121,7 @@ a.external { color: var(--accent); }
     <li><a href="#services">Services collector + policy</a></li>
     <li><a href="#critical-services"><span data-lang="cs">Kritické služby</span><span data-lang="en">Critical services</span></a></li>
     <li><a href="#perf">Perf events (Diagnostics-Performance)</a></li>
+    <li><a href="#crashes">Pády (BSOD) — crash dumps</a></li>
     <li><a href="#ad-sync">AD sync</a></li>
     <li><a href="#scripts">Script runner</a></li>
     <li><a href="#settings"><span data-lang="cs">Nastavení</span><span data-lang="en">Settings</span></a></li>
@@ -1543,6 +1544,30 @@ This is the <strong>observer-not-executor</strong> pattern applied to telemetry:
 </div>
 <div class="callout callout-info" data-lang="cs">
 Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetrii: ITDashboard nikdy neinstaluje agenta, nikdy nezapíná polling na cíli a nikdy nedrží pravdu cíle — jen čte to, co Windows samo rozhodlo zaznamenat, na svém vlastním schedulu.
+</div>
+
+<h2 id="crashes"><span data-lang="cs">💥 Pády (BSOD) — sběr a analýza minidumpů</span><span data-lang="en">💥 Crashes (BSOD) — minidump collection &amp; analysis</span></h2>
+<div data-lang="en">
+  <p>Turns "a PC crashed" into "a PC crashed because <em>X</em>" across the fleet — agentless, from the data ITDashboard already has access to. <strong>Off by default</strong> (enable in Settings → "Sběr pádů (BSOD)").</p>
+  <ul>
+    <li><strong>Collection</strong> — the app server reads <code>\\PC\C$\Windows\Minidump\*.dmp</code> from monitored, reachable PCs (TCP/445 pre-flight, dedup by computer + filename), and stores each new minidump as a blob in the DB with <code>status=pending</code>. It only touches the small minidumps, never <code>C:\Windows\MEMORY.DMP</code>, and leaves the on-client file for Windows to clean — the DB is the durable store. Reads the client <code>C$</code> via the service account's local-admin (Server Admins) membership; no extra privilege.</li>
+    <li><strong>Analysis</strong> — a separate worker materializes each pending blob to a temp file and runs <strong>cdb</strong> (Debugging Tools for Windows on the server). It extracts the <strong>STOP code</strong>, bug-check name, the <strong>hot function</strong>, and the <strong>offending process / module</strong>. (The newest cdb's headless <code>!analyze</code> is broken, so a sync recipe <code>.bugcheck; kc; lm; !dpcwatchdog; .thread; !thread; !process</code> is used instead.)</li>
+    <li><strong>The Pády tab</strong> — fleet <strong>aggregations</strong> (STOP breakdown, top culprit process/module, repeat offenders), a table (PC · time · STOP · bug-check · culprit · status), and a per-crash <strong>detail</strong> with the full cdb output and a <code>.dmp</code> download.</li>
+    <li><strong>"Analýza pádu" report</strong> — a white, theme-independent printable report per crash (🖨 Print / PDF + ⬇ Save HTML), same approach as the Manager Summary / Presentation.</li>
+    <li><strong>💥 dashboard tile</strong> — PCs with a crash / total dumps; opens the tab.</li>
+  </ul>
+  <div class="callout callout-info"><strong>Rebuild prerequisite</strong> — Debugging Tools (<code>cdb.exe</code>) must be on the app server (Win SDK: <code>winsdksetup.exe /features OptionId.WindowsDesktopDebuggers /quiet</code>) and the service account needs read access to the client <code>C$</code>. Settings expose the cdb path, symbol path and intervals.</div>
+</div>
+<div data-lang="cs">
+  <p>Změní „PC spadlo" na „PC spadlo kvůli <em>X</em>" napříč flotilou — bez agenta, z dat, ke kterým už ITDashboard má přístup. <strong>Defaultně vypnuto</strong> (zapnout v Nastavení → „Sběr pádů (BSOD)").</p>
+  <ul>
+    <li><strong>Sběr</strong> — server čte <code>\\PC\C$\Windows\Minidump\*.dmp</code> z monitorovaných dostupných PC (TCP/445 pre-flight, dedup podle PC + jména souboru) a každý nový minidump uloží jako blob do DB se stavem <code>pending</code>. Sahá jen na malé minidumpy, nikdy na <code>C:\Windows\MEMORY.DMP</code>, a klientský soubor nechává Windows uklidit — DB je trvalé úložiště. Klientský <code>C$</code> čte přes lokální-admin (skupina Server Admins) service accountu; žádná eskalace práv.</li>
+    <li><strong>Analýza</strong> — samostatný worker zhmotní každý pending blob do temp souboru a spustí <strong>cdb</strong> (Debugging Tools na serveru). Vytáhne <strong>STOP kód</strong>, název bugchecku, <strong>horkou funkci</strong> a <strong>vinící proces / modul</strong>. (Nejnovější cdb má headless <code>!analyze</code> rozbitý, proto se používá sync recept <code>.bugcheck; kc; lm; !dpcwatchdog; .thread; !thread; !process</code>.)</li>
+    <li><strong>Záložka Pády</strong> — <strong>agregace</strong> (STOP rozpad, top vinící proces/modul, opakované), tabulka (PC · čas · STOP · bugcheck · viník · stav) a <strong>detail</strong> pádu s celým výstupem cdb a stažením <code>.dmp</code>.</li>
+    <li><strong>Report „Analýza pádu"</strong> — bílý, na motivu nezávislý tisknutelný report per pád (🖨 Tisk / PDF + ⬇ Uložit HTML), stejný přístup jako Souhrn / Prezentace.</li>
+    <li><strong>💥 dlaždice</strong> na Přehledu — PC s pádem / celkem dumpů; otevře záložku.</li>
+  </ul>
+  <div class="callout callout-info"><strong>Předpoklad pro znovupostavení</strong> — na serveru musí být Debugging Tools (<code>cdb.exe</code>) (Win SDK: <code>winsdksetup.exe /features OptionId.WindowsDesktopDebuggers /quiet</code>) a service account potřebuje čtení klientského <code>C$</code>. V Nastavení je cesta k cdb, symbol path a intervaly.</div>
 </div>
 
 <h2 id="ad-sync"><span data-lang="cs">AD sync</span><span data-lang="en">AD sync</span></h2>

@@ -27,6 +27,7 @@ Navigation tabs (Dashboard, Events, Computers, Services, Critical Services, Port
 - **Services** — Auto + non-Running detection with policy/drift, by-PC + by-service views, GPO PS script export. The default "Only ExitCode != 0" filter is **off** and exit-code classification goes through the shared `isServiceCrash` predicate so the tab matches the dashboard tile + the broad alert (see **### Services tab — exit-code-agnostic drift, shared `isServiceCrash`**)
 - **Critical Services** — sortable service×machine table of the configured critical services in their real state (Running/Stopped colour, offline machine = stale amber, "only not-running" filter); confirms the critical services actually run, not just flags stopped ones
 - **Perf** — Diagnostics-Performance channel: summary cards, top culprits, most-affected PCs, recent slow boot/shutdown/standby/resume events
+- **Pády / Crashes (💥)** — collected kernel minidumps with their parsed analysis (STOP code, bug-check name, hot function, offending process/module), fleet aggregations (STOP breakdown / top culprit / repeat offenders), per-crash detail with the full cdb output + `.dmp` download, and a white printable "crash analysis" report (see **### Crash-dump collection & analysis**)
 - **Activity** — terminal-style live log (filter, pause, copy)
 - **Settings** — periodic check frequency + enabled checks + disk thresholds (applied live, no restart). Email config is restructured into a standalone **"Email setup (SMTP)"** section holding the shared relay/From/recipients/dashboard URL; each agenda below (disk / services / ports / reports) carries only its own enable/throttle + an optional per-agenda recipient-override field (see **### Per-agenda email recipients with shared fallback**)
 
@@ -61,6 +62,8 @@ Navigation tabs (Dashboard, Events, Computers, Services, Critical Services, Port
   - **UniFi collector** — a standalone timer that logs in to a UniFi controller over `node:https` (cookie session, self-signed cert accepted), reads `/api/s/<site>/stat/sta`, and merges every connected client into `dhcp_leases` by MAC (`source='unifi'`). Resolves the real MAC for hosts the scan could only key as synthetic `IP-<ip>` (then `dedupSyntheticByIp()`); `dynamic=NULL` (the controller doesn't report static-vs-DHCP). DB-driven config; password encrypted via `secret-crypto`. Migration 053.
   - **Shared-printers collector** — enumerates printer-type SMB shares via `net view \\<pc>` on reachable PCs (works where WMI is denied) and stores them as `source='share'` device rows.
   - **Printer supplies collector** — a standalone timer that probes printer-categorized devices over SNMP Printer-MIB (+ a Brother/Epson HTTP fallback) and records ink/toner/maintenance/drum/belt levels in `printer_supplies`. See **### Printer supply collection — SNMP Printer-MIB + HTTP fallback**
+  - **Crash-dump collector** (`crash-dump-collector.ts`) — own timer (`crash.interval_sec`); reads `\\PC\C$\Windows\Minidump\*.dmp` from monitored reachable PCs (TCP/445 pre-flight, dedup by computer+filename), stores each new minidump as a blob in `crash_dumps` (status='pending'). Off by default (`crash.enabled`). See **### Crash-dump collection & analysis**
+  - **Crash analyzer worker** (`crash-analyzer-worker.ts`) — separate timer (`crash.analyzer_interval_sec`); takes `pending` dumps, materializes the blob to a temp file, runs cdb, stores the parsed result + full output, deletes the temp
   - **Retention purge** — a daily runner (`retention-runner.ts`) executes the `sp_purge_*` procs (events / activity_log / pc_user_history / perf_events / ad_sync_runs + events de-dup) at the configured hour. The Settings "Retenční politika" table now also offers a **per-row manual run** (▶ per row + Označit/Odznačit/Spustit označené); the 3 device-inventory tables (`dhcp_leases` ghosts, `device_ip_history`, `device_ping_samples`) — pruned inline by the collector — are exposed here as discrete steps that replicate the collector's exact DELETE queries (`POST /api/retention/run { steps }`)
 
 ### Database (MSSQL on the SQL host — `SQL_HOST` / `SQL_INSTANCE`, DB `SQL_DATABASE`)
@@ -83,6 +86,7 @@ Tables:
 - `printer_supplies` — per-printer supply levels (migration 048); PK `(mac_address, supply_key)` (`K`/`C`/`M`/`Y`/`MAINT`/`DRUM`/`BELT`/…), columns `description`, `colorant`, `supply_type`, `level_pct`, `level_raw`, `max_raw`, `part_code`, `model`, `source` (`snmp`/`http`), `collected_at`. Populated by the printer-supplies collector (SNMP Printer-MIB + HTTP fallback), which prunes supplies that disappear from a device. See **### Printer supply collection — SNMP Printer-MIB + HTTP fallback**
 - `site_data_status` — per-site FTP freshness snapshot (migration 056): the two export-file header timestamps, parsed lease/ARP counts, `fetched_at`, `last_error`, and `file_changed_at` (real-UTC, moved only when the newest file timestamp increases). Drives the data-freshness alert + `GET /devices/site-status`. See **### MikroTik FTP file source + per-site data-freshness alert**
 - `data_freshness_alert_state` — per-site debounce/throttle state for the data-freshness / availability email agenda (migration 057); mirrors `printer_alert_state`.
+- `crash_dumps` — collected kernel minidumps + analysis (migration 061): `computer_id`, `computer_name`, `source_filename` (e.g. `062226-13765-01.dmp`), `occurred_at` (dump mtime ≈ crash time), `size_bytes`, `status` (`pending`/`analyzed`/`failed`), parsed `stop_code` / `bugcheck_name` / `hot_function` / `culprit_process` / `culprit_module`, `analyze_text` (full cdb output), `analyze_error`, `dmp_blob` (VARBINARY(MAX) — the raw minidump), `ingested_at`, `analyzed_at`; UNIQUE `(computer_id, source_filename)` is the dedup key, `status` is the work queue between collector and analyzer. See **### Crash-dump collection & analysis**
 - `settings` — key-value, edited via Settings tab
 - `collector_runs` — eventlog collector run audit
 - `ad_sync_runs` — AD sync audit
@@ -415,6 +419,56 @@ The **Printer status** tab / **🖨 Náplně** dashboard tile read per-printer *
 **Collector + storage.** `services/printer-supplies-collector.ts` resolves its config from Settings, probes **only devices the operator categorized `printer`**, merges the SNMP rows with the per-vendor HTTP supplement, and **upserts/prunes** the `printer_supplies` table (MERGE by `(mac, supply_key)`; a supply that disappears from the device is pruned). It runs on its **own self-rescheduling timer** (the same idle-while-disabled pattern as the other standalone collectors) and never throws. Settings (seeded by migration 048): `printer_supplies.enabled` (default ON), `.interval_sec` (900), `.snmp_community` (`public`), `.low_pct` (15), `.http_fallback` (ON) — DB-tunable; a Settings UI panel for them is an open follow-up. Routes: `GET /printer-supplies` (grouped per printer, joined to `dhcp_leases`/`device_categories`, returns the `lowPct` threshold), `POST /printer-supplies/run` (manual). The page is a card per printer (colour supply bars + %, badge OK / Dochází / Prázdná, part-codes, drum/belt); the whole card opens the printer EWS via the cert-bypass proxy and a bottom-row link opens the raw `http://IP`; the tile drills in pre-filtered to problems; a light supply flag (● NN%) shows on confirmed-printer rows in the Devices tab.
 
 This stays on the right side of **Observer, not executor** — it reads and shows supply levels, it does not act on the printer.
+
+### Crash-dump collection & analysis (migration 061)
+
+Turns "PC crashed" into "PC crashed because X" across the fleet, agentless, from data
+the service already has access to. **Off by default** (`crash.enabled='0'`).
+
+**Pipeline (two decoupled timers + a worker queue):**
+1. **Collector** (`crash-dump-collector.ts`) — lists `\\PC\C$\Windows\Minidump\*.dmp` on
+   monitored, reachable PCs (a TCP/445 pre-flight fails fast on unreachable boxes). It reads
+   each NEW minidump (dedup by `(computer_id, source_filename)`) straight into a buffer and
+   INSERTs it into `crash_dumps` as a `VARBINARY(MAX)` blob with `status='pending'`. It only
+   touches the small `Minidump\*.dmp` files — never `C:\Windows\MEMORY.DMP` — caps absurd sizes
+   (>64 MB) out, and **leaves the on-client file** for Windows to clean (the DB is the durable
+   store; dedup stops re-ingest on the next cycle).
+2. **Analyzer worker** (`crash-analyzer-worker.ts`) — a SEPARATE timer so a slow cdb never
+   stalls collection. Takes `pending` rows, **materializes the blob to a temp file** under the
+   OS temp dir, runs cdb, parses, UPDATEs the row (`analyzed`/`failed`), and **deletes the temp**.
+   The `crash_dumps.status` column is the queue between the two.
+3. **cdb wrapper + parser** (`crash-analyze.ts`).
+
+**cdb invocation — DON'T use `!analyze`.** The newest cdb (10.0.28000, installed via the Win11
+SDK Debugging Tools) has a **broken headless `!analyze`** (the Extensions-Gallery analyze runs
+async and emits nothing through `-c` / stdin / `-logo`). The sync commands work and are enough:
+```
+cdb -z <dump> -y "srv*C:\symbols*https://msdl.microsoft.com/download/symbols" \
+    -c ".bugcheck; kc 100; lm 1m; !dpcwatchdog; .thread; !thread; !process -1 0; q"
+```
+The parser extracts: **STOP code** (`Bugcheck code …`), **bug-check name** (lookup table),
+**hot function** (`!dpcwatchdog` "functions that exist often" — the long-running DPC),
+**offending process** (`!thread`/`!process` → `Image: …`), and the first non-nt/hal module in
+the stack. Proven live on a real 0x133 (DPC_WATCHDOG_VIOLATION): process `msedgewebview2.exe`
+closing a large memory section → `nt!MiDeleteSubsectionPages` 97/97 → no third-party driver.
+
+**Routes** (`routes/crashes.ts`): `GET /crashes` (list, no blob), `GET /crashes/:id` (detail
+incl. `analyze_text`), `GET /crashes/:id/dmp` (download the raw `.dmp`), `POST /crashes/run`
+(on-demand collect+analyze — NOT gated by `crash.enabled`, for manual testing).
+
+**Settings** (seeded by migration 061): `crash.enabled` (0), `crash.interval_sec` (3600),
+`crash.analyzer_interval_sec` (300), `crash.cdb_path`, `crash.symbol_path`,
+`crash.blob_retention_days` (180).
+
+**Rebuild prerequisites:** (a) **Debugging Tools for Windows** (`cdb.exe`) on the app server —
+no winget on the server, so install via the Win11 SDK:
+`winsdksetup.exe /features OptionId.WindowsDesktopDebuggers /quiet /norestart`; (b) the service
+account (`svc-itdashboard`) must be able to read client `C$` — it already is via the **Server
+Admins** AD group (member of clients' local Administrators). The app server reaches `msdl.microsoft.com:443`
+for symbols. UI = `CrashesPage.tsx` (Pády tab: aggregations + table + detail + white printable
+"Analýza pádu" report via the Manager-Summary serialiser) + a 💥 dashboard tile + a Settings
+section. **Verify-core** (transport, blob write+readback, analysis, full attribution) was done
+live end-to-end before building.
 
 ### Database overview route
 
