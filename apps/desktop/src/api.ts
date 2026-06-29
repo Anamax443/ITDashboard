@@ -1039,7 +1039,30 @@ export const api = {
     if (!r.ok) throw new Error(`POST /computers/monitor/bulk → ${r.status}`);
     return r.json() as Promise<{ updated: number; monitor: boolean }>;
   },
+  crashes: () => jget<{ items: CrashItem[]; running: boolean }>('/crashes'),
+  crashDetail: (id: number) => jget<CrashDetail>(`/crashes/${id}`),
+  crashRun: () => jpost<{ ok: boolean; collect: { pcs: number; collected: number; skipped: number } | null; analyze: { analyzed: number; failed: number } | null }>('/crashes/run'),
+  crashDmpUrl: (id: number) => `${API_BASE}/crashes/${id}/dmp`,
 };
+
+export interface CrashItem {
+  id: number;
+  computer_id: number;
+  computer_name: string | null;
+  source_filename: string;
+  occurred_at: string | null;
+  size_bytes: number | null;
+  status: string;            // pending | analyzed | failed
+  stop_code: string | null;
+  bugcheck_name: string | null;
+  hot_function: string | null;
+  culprit_process: string | null;
+  culprit_module: string | null;
+  analyze_error: string | null;
+  ingested_at: string;
+  analyzed_at: string | null;
+}
+export interface CrashDetail extends CrashItem { analyze_text: string | null; }
 
 export interface VersionInfo {
   sha: string;

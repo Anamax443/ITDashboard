@@ -102,13 +102,15 @@ interface Props {
   onClickProblemPcs?: () => void;
   osBreakdown?: { count: number; totalPcs: number; stale: number } | null;
   onClickOs?: () => void;
+  crashes?: { pcs: number; total: number } | null;
+  onClickCrashes?: () => void;
 }
 
 export function SummaryCards({
   summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, esetPcRunning = 0, esetPcTotal = 0, esetSrvRunning = 0, esetSrvTotal = 0, onClickEset, portsWithIssues = 0, portsTotal = 0, onClickPorts, printersOffline = 0, printersTotal = 0, onClickPrinters, routersTotal = 0, routersStale = 0, onClickRouters, degradedDevices = 0, devicesTotal = 0, onClickDegraded, devicesUnidentified = 0, onClickDevices, suppliesLow = 0, suppliesTotal = 0, onClickSupplies, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
   onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
-  problemPcs, onClickProblemPcs, osBreakdown, onClickOs,
+  problemPcs, onClickProblemPcs, osBreakdown, onClickOs, crashes, onClickCrashes,
 }: Props) {
   const { t } = useI18n();
   const [layout, setLayout] = useState<TileLayout>(() => loadLayout(settings['dashboard.tile_layout']));
@@ -190,6 +192,7 @@ export function SummaryCards({
     { id: 'computers', el: <Card label={t('cards.computers')} value={`${enabledCount}/${total}`} kind="info" onClick={onClickComputers} /> },
     ...(problemPcs ? [{ id: 'problemPcs', el: <Card label={`🩺 ${t('health.reinstall')}`} value={problemPcs.count} sub={`${t('health.score')} ≥ ${problemPcs.threshold} · ${problemPcs.windowDays} d`} kind={problemPcs.count > 0 ? 'critical' as const : 'ok' as const} onClick={onClickProblemPcs} badge={problemPcs.snoozed > 0 ? `💤 ${problemPcs.snoozed}` : undefined} /> }] : []),
     ...(osBreakdown ? [{ id: 'osBreakdown', el: <Card label={`📊 ${t('os.title')}`} value={osBreakdown.count} sub={`${osBreakdown.totalPcs} PC${osBreakdown.stale > 0 ? ` · ${osBreakdown.stale} ${t('os.stale')}` : ''}`} kind="info" onClick={onClickOs} /> }] : []),
+    ...(crashes ? [{ id: 'crashes', el: <Card label={`💥 ${t('cards.crashes')}`} value={crashes.total === 0 ? '—' : crashes.pcs} sub={crashes.total === 0 ? t('cards.crashesNone') : `${crashes.total} ${t('cards.crashesDumps')}`} kind={crashes.total > 0 ? 'critical' as const : 'ok' as const} onClick={onClickCrashes} /> }] : []),
   ];
 
   // --- Tile placement ---------------------------------------------------------

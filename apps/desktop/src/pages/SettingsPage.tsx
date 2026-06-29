@@ -952,6 +952,35 @@ export function SettingsPage() {
         </div>
 
         <Section
+          title={t('settings.section.crash')}
+          description={t('settings.section.crashDesc')}
+        >
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.crashEnabled')}
+              checked={value('crash.enabled', '0') === '1'}
+              onChange={(checked) => set('crash.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.crashInterval')}>
+              <NumberInput v={value('crash.interval_sec', '3600')} onChange={(v) => set('crash.interval_sec', v)} suffix={t('settings.unit.seconds')} />
+            </Field>
+            <Field label={t('settings.field.crashAnalyzerInterval')}>
+              <NumberInput v={value('crash.analyzer_interval_sec', '300')} onChange={(v) => set('crash.analyzer_interval_sec', v)} suffix={t('settings.unit.seconds')} />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.crashCdbPath')}>
+            <input value={value('crash.cdb_path', '')} onChange={(e) => set('crash.cdb_path', e.target.value)} style={{ ...fieldStyle, width: '100%', fontFamily: 'Consolas, monospace' }} />
+          </Field>
+          <Field label={t('settings.field.crashSymbolPath')}>
+            <input value={value('crash.symbol_path', '')} onChange={(e) => set('crash.symbol_path', e.target.value)} style={{ ...fieldStyle, width: '100%', fontFamily: 'Consolas, monospace' }} />
+          </Field>
+          <Field label={t('settings.field.crashRetention')}>
+            <NumberInput v={value('crash.blob_retention_days', '180')} onChange={(v) => set('crash.blob_retention_days', v)} suffix={t('settings.unit.days')} />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>{t('settings.crash.help')}</p>
+        </Section>
+
+        <Section
           title={t('settings.section.adsync')}
           description={t('settings.section.adsyncDesc')}
         >

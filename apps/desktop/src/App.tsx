@@ -24,6 +24,7 @@ import { ManagerSummaryPage } from './pages/ManagerSummaryPage.js';
 import { PrinterSuppliesPage } from './pages/PrinterSuppliesPage.js';
 import { DatabasePage } from './pages/DatabasePage.js';
 import { PerfPage } from './pages/PerfPage.js';
+import { CrashesPage } from './pages/CrashesPage.js';
 import { HelpBox } from './components/HelpBox.js';
 import { AccessDenied } from './components/AccessDenied.js';
 import { useI18n, useTheme } from './i18n.js';
@@ -31,7 +32,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'deviceprinters' | 'printers' | 'network' | 'database' | 'perf' | 'activity' | 'settings' | 'presentation';
+type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'deviceprinters' | 'printers' | 'network' | 'database' | 'perf' | 'activity' | 'crashes' | 'settings' | 'presentation';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -82,6 +83,7 @@ export function App() {
   // their detail panels expand below, toggled from here.
   const [healthOpen, setHealthOpen] = useState(false);
   const [osOpen, setOsOpen] = useState(false);
+  const [crashStats, setCrashStats] = useState<{ pcs: number; total: number } | null>(null);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
   const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'failing' | 'inactive' | null>(null);
   const [computersOsFilter, setComputersOsFilter] = useState<{ bucket: string; stale: boolean | null } | null>(null);
@@ -112,6 +114,7 @@ export function App() {
     api.perfSummary(7).then(setPerfSummary).catch(() => {});
     api.inactiveStats().then(setInactiveStats).catch(() => {});
     api.pcHealth().then(setPcHealth).catch(() => {});
+    api.crashes().then((r) => setCrashStats({ pcs: new Set(r.items.map((c) => c.computer_id)).size, total: r.items.length })).catch(() => {});
     // Re-pull settings-derived data when Settings page broadcasts a save.
     const onSettingsSaved = (e: Event) => {
       const detail = (e as CustomEvent<{ changedKeys: string[] }>).detail;
@@ -283,6 +286,7 @@ export function App() {
             <button className={view === 'network' ? 'active' : ''} onClick={() => setView('network')}>{t('nav.network')}</button>
             <button className={view === 'database' ? 'active' : ''} onClick={() => setView('database')}>{t('nav.database')}</button>
             <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>{t('nav.perf')}</button>
+            <button className={view === 'crashes' ? 'active' : ''} onClick={() => setView('crashes')}>💥 {t('nav.crashes')}</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>{t('nav.activity')}</button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>{t('nav.settings')}</button>
             <a
@@ -412,6 +416,8 @@ export function App() {
             onClickProblemPcs={() => setHealthOpen((o) => !o)}
             osBreakdown={(() => { const s = summarizeOs(computers, inactiveStats?.thresholdDays ?? 90); return { count: s.length, totalPcs: s.reduce((a, x) => a + x.total, 0), stale: s.reduce((a, x) => a + x.stale, 0) }; })()}
             onClickOs={() => setOsOpen((o) => !o)}
+            crashes={crashStats}
+            onClickCrashes={() => setView('crashes')}
           />
           <HealthCards
             data={pcHealth}
@@ -534,6 +540,12 @@ export function App() {
       {view === 'perf' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <PerfPage onJumpToComputer={jumpToComputer} />
+        </div>
+      )}
+
+      {view === 'crashes' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <CrashesPage />
         </div>
       )}
 
