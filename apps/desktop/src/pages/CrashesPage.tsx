@@ -48,7 +48,14 @@ const BUGCHECK_HINT: Record<string, string> = {
   '0xc2': 'Špatné použití pool paměti ovladačem — viz vinící modul.',
   '0x139': 'Kernel security check — poškození struktur, často ovladač/HW.',
   '0x124': 'Hardwarová chyba (WHEA) — CPU/RAM/sběrnice/teploty. Zkontrolovat HW.',
+  '0x13a': 'Poškození kernel heapu/poolu. Stack ukazuje, KDE se poškození zjistilo (typicky při uvolňování paměti), ne KDO ho způsobil — viník už „odešel". Příčina je obvykle vadný ovladač (zápis mimo přidělenou paměť / use-after-free), méně často vadná RAM.',
+  '0x19': 'Poškození pool hlavičky. Viník typicky vadný ovladač; stack ukazuje místo detekce, ne příčinu.',
 };
+
+// Corruption-class bugchecks: the fault is DETECTED later by an innocent code
+// path, so an all-nt stack does NOT exonerate third-party drivers — it usually
+// means a driver (or bad RAM) corrupted memory and the culprit already left.
+const CORRUPTION_STOPS = new Set(['0x13a', '0x19', '0xc2', '0x139', '0x1a']);
 
 // Modules that ARE Windows itself — a stack made only of these means the fault
 // is in the OS, not a third-party driver (don't blame "a driver" then).
@@ -71,6 +78,8 @@ const BUGCHECK_PLAIN: Record<string, string> = {
   '0xc2': 'Některý ovladač špatně pracoval s pamětí.',
   '0x139': 'Windows zachytil poškození svých vnitřních datových struktur.',
   '0x124': 'Hardwarová chyba — procesor, paměť nebo sběrnice.',
+  '0x13a': 'Windows zjistil poškození vnitřní paměti (heap) a kvůli ochraně dat se restartoval.',
+  '0x19': 'Windows našel poškozený blok systémové paměti (pool).',
 };
 
 type CrashExplanation = { plain: string; tech: string; actions: string[] };
@@ -81,6 +90,7 @@ function buildExplanation(c: CrashDetail, repeats: number): CrashExplanation {
   const hot = c.hot_function ?? '';
   const named3rd = !!c.culprit_module && !isKernelMod(c.culprit_module);
   const kernelHot = isKernelMod(c.culprit_module ?? hot);
+  const corruption = CORRUPTION_STOPS.has(stop);
 
   // --- plain language ---
   let what = BUGCHECK_PLAIN[stop] ?? 'Systém se neočekávaně zastavil (modrá obrazovka) a restartoval.';
@@ -89,6 +99,7 @@ function buildExplanation(c: CrashDetail, repeats: number): CrashExplanation {
   }
   const blameNote =
     named3rd ? '' :
+    corruption ? ' Nejde o chybu uživatele; pravděpodobnou příčinou je některý ovladač (méně často vadná paměť).' :
     kernelHot ? ' Nejde o chybu uživatele ani o cizí program — problém je uvnitř samotného Windows.' :
     ' Nejde o chybu uživatele.';
   const plain = `Počítač ${c.computer_name} se sám restartoval kvůli chybě systému. ${what}${blameNote}`;
@@ -97,6 +108,7 @@ function buildExplanation(c: CrashDetail, repeats: number): CrashExplanation {
   const head = `${c.stop_code ?? '?'} ${c.bugcheck_name ?? ''}`.trim();
   let blame: string;
   if (named3rd) blame = `Ve stacku figuruje konkrétní ovladač ${c.culprit_module} — pravděpodobný viník.`;
+  else if (corruption) blame = 'Stack je celý v jádře (nt), ale u poškození paměti to viníka NEočišťuje — ukazuje jen místo, kde se poškození zjistilo (typicky úklid/uvolnění paměti), ne kdo ho způsobil. Reálná příčina je obvykle vadný kernel ovladač (zápis mimo přidělenou oblast / use-after-free), méně často vadná RAM. Podezřelé jsou hlavně 3rd-party ovladače z výpisu modulů (antivirus, VPN/endpoint, síťovka).';
   else if (kernelHot) blame = `Stack je celý v jádře Windows (${modBase(c.culprit_module ?? hot)}), žádný cizí (3rd-party) modul → nejde o cizí ovladač, ale o chování/limit samotného systému, případně nepřímý důsledek zátěže nebo staršího buildu.`;
   else blame = 'Z minidumpu se konkrétní viník nedal jednoznačně určit (ve stacku není žádný 3rd-party modul).';
   const hint = BUGCHECK_HINT[stop] ?? '';
@@ -106,11 +118,14 @@ function buildExplanation(c: CrashDetail, repeats: number): CrashExplanation {
   // --- actions ---
   const actions: string[] = [];
   if (named3rd) actions.push(`Aktualizovat / přeinstalovat ovladač ${c.culprit_module} od výrobce zařízení.`);
-  else if (kernelHot) {
+  else if (corruption) {
+    actions.push('Zapnout Driver Verifier na podezřelé 3rd-party ovladače (verifier /standard + special pool) → zachytí ovladač, který paměť poškozuje.');
+    actions.push('Aktualizovat ovladače antivirusu / endpoint ochrany, VPN, síťovky a GPU.');
+  } else if (kernelHot) {
     actions.push('Nainstalovat poslední kumulativní aktualizaci Windows (oprava bývá přímo v jádře).');
     actions.push('Aktualizovat ovladače čipsetu, úložiště a GPU od výrobce.');
   } else actions.push('Aktualizovat Windows a ovladače (úložiště / síťovka / GPU).');
-  if (stop === '0x124' || stop === '0x1a') actions.push('Otestovat paměť (mdsched) a zkontrolovat teploty / hardware.');
+  if (corruption || stop === '0x124' || stop === '0x1a') actions.push('Otestovat paměť (mdsched / memtest) a zkontrolovat teploty / hardware.');
   actions.push('Sledovat opakování napříč flotilou na záložce Pády.');
 
   return { plain, tech, actions };
