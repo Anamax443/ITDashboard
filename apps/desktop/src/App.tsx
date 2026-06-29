@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem, PrinterSuppliesResult } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem, PrinterSuppliesResult, CommsResult } from './api.js';
 import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions, deviceDegraded, deviceProblemThresholds, isSnoozeActive, summarizeOs } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { HealthCards } from './components/HealthCards.js';
@@ -8,6 +8,7 @@ import { EventsTable } from './components/EventsTable.js';
 import { TopEventIds } from './components/TopEventIds.js';
 import { ComputersList } from './components/ComputersList.js';
 import { CollectorStatus } from './components/CollectorStatus.js';
+import { CommsHealth } from './components/CommsHealth.js';
 import { OsBreakdownChart } from './components/OsBreakdownChart.js';
 import { TimelineChart } from './components/TimelineChart.js';
 import { TopComputersChart } from './components/TopComputersChart.js';
@@ -84,6 +85,8 @@ export function App() {
   const [healthOpen, setHealthOpen] = useState(false);
   const [osOpen, setOsOpen] = useState(false);
   const [crashStats, setCrashStats] = useState<{ pcs: number; total: number } | null>(null);
+  const [comms, setComms] = useState<CommsResult | null>(null);
+  const [commsOpen, setCommsOpen] = useState(false);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
   const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'failing' | 'inactive' | null>(null);
   const [computersOsFilter, setComputersOsFilter] = useState<{ bucket: string; stale: boolean | null } | null>(null);
@@ -115,6 +118,7 @@ export function App() {
     api.inactiveStats().then(setInactiveStats).catch(() => {});
     api.pcHealth().then(setPcHealth).catch(() => {});
     api.crashes().then((r) => setCrashStats({ pcs: new Set(r.items.map((c) => c.computer_id)).size, total: r.items.length })).catch(() => {});
+    api.comms().then(setComms).catch(() => {});
     // Re-pull settings-derived data when Settings page broadcasts a save.
     const onSettingsSaved = (e: Event) => {
       const detail = (e as CustomEvent<{ changedKeys: string[] }>).detail;
@@ -211,6 +215,9 @@ export function App() {
   }, []);
 
   const refresh = useCallback(async () => {
+    // Communication health is its own lightweight aggregate — fire-and-forget so
+    // it refreshes on the dashboard cadence without joining the indexed batch below.
+    void api.comms().then(setComms).catch(() => {});
     const results = await Promise.allSettled([
       api.summary(),
       api.events({
@@ -418,7 +425,10 @@ export function App() {
             onClickOs={() => setOsOpen((o) => !o)}
             crashes={crashStats}
             onClickCrashes={() => setView('crashes')}
+            comms={comms}
+            onClickComms={() => setCommsOpen((o) => !o)}
           />
+          <CommsHealth data={comms} open={commsOpen} onOpenChange={setCommsOpen} />
           <HealthCards
             data={pcHealth}
             hideSummary

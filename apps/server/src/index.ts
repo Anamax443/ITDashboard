@@ -26,6 +26,7 @@ import { registerDeviceWebProxyRoutes } from './routes/device-web-proxy.js';
 import { registerPrinterSuppliesRoutes } from './routes/printer-supplies.js';
 import { registerDatabaseRoutes } from './routes/database.js';
 import { registerCrashRoutes } from './routes/crashes.js';
+import { registerSystemRoutes } from './routes/system.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
 import { startReachabilitySchedule } from './services/reachability-collector.js';
@@ -80,6 +81,7 @@ await registerDeviceWebProxyRoutes(app);
 await registerPrinterSuppliesRoutes(app);
 await registerDatabaseRoutes(app);
 await registerCrashRoutes(app);
+await registerSystemRoutes(app);
 await registerFrontendRoutes(app);
 
 // Load the access-check whitelist BEFORE we start accepting connections, so

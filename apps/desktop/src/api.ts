@@ -810,6 +810,7 @@ export const api = {
   refreshPc: (computerId: number) => jpost<SingleRefreshResult>(`/computers/${computerId}/refresh`),
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
+  comms: () => jget<CommsResult>('/system/comms'),
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),
   collectorRunAll: () => jpost<CollectorRunAllResult>('/collector/run-all'),
   reachabilityRun: () => jpost<{ pcs: number; reachable: number; unreachable: number; durationMs: number }>('/reachability/run'),
@@ -1115,6 +1116,23 @@ export interface CollectorStatus {
     events_added: number | null;
     trigger_source: string | null;
   } | null;
+}
+
+export interface CommChannel {
+  key: string;
+  enabled: boolean;
+  ok: boolean;
+  detail: string;
+  lastOk: string | null;
+  lastError: string | null;
+  ts: string | null;
+}
+export interface CommsResult {
+  overall: 'ok' | 'degraded' | 'down';
+  okCount: number;
+  total: number;
+  channels: CommChannel[];
+  checkedAt: string;
 }
 
 export interface CollectorRunResult {

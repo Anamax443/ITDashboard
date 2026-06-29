@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Summary, ComputerItem, DiskSummary, ServiceProblem, PerfSummary, InactiveStats } from '../api.js';
+import type { Summary, ComputerItem, DiskSummary, ServiceProblem, PerfSummary, InactiveStats, CommsResult } from '../api.js';
 import { api, serviceWhitelist, isServiceWhitelisted } from '../api.js';
 import { useI18n } from '../i18n.js';
 
@@ -104,13 +104,15 @@ interface Props {
   onClickOs?: () => void;
   crashes?: { pcs: number; total: number } | null;
   onClickCrashes?: () => void;
+  comms?: CommsResult | null;
+  onClickComms?: () => void;
 }
 
 export function SummaryCards({
   summary, computers, diskSummary, monitoredDiskSummary, diskAlertsEnabled, monitoredServiceSummary, serviceAlertsEnabled, serviceProblems, settings, criticalServicesDown = 0, criticalServicesTotal = 0, onClickCriticalServices, esetPcRunning = 0, esetPcTotal = 0, esetSrvRunning = 0, esetSrvTotal = 0, onClickEset, portsWithIssues = 0, portsTotal = 0, onClickPorts, printersOffline = 0, printersTotal = 0, onClickPrinters, routersTotal = 0, routersStale = 0, onClickRouters, degradedDevices = 0, devicesTotal = 0, onClickDegraded, devicesUnidentified = 0, onClickDevices, suppliesLow = 0, suppliesTotal = 0, onClickSupplies, perfSummary, inactiveStats,
   onClickCritical, onClickError, onClickWarning, onClickComputers,
   onClickDiskCritical, onClickDiskWarning, onClickMonitoredDisks, onClickMonitoredServices, onClickUnreachable, onClickServices, onClickPerf, onClickInactive,
-  problemPcs, onClickProblemPcs, osBreakdown, onClickOs, crashes, onClickCrashes,
+  problemPcs, onClickProblemPcs, osBreakdown, onClickOs, crashes, onClickCrashes, comms, onClickComms,
 }: Props) {
   const { t } = useI18n();
   const [layout, setLayout] = useState<TileLayout>(() => loadLayout(settings['dashboard.tile_layout']));
@@ -193,6 +195,7 @@ export function SummaryCards({
     ...(problemPcs ? [{ id: 'problemPcs', el: <Card label={`🩺 ${t('health.reinstall')}`} value={problemPcs.count} sub={`${t('health.score')} ≥ ${problemPcs.threshold} · ${problemPcs.windowDays} d`} kind={problemPcs.count > 0 ? 'critical' as const : 'ok' as const} onClick={onClickProblemPcs} badge={problemPcs.snoozed > 0 ? `💤 ${problemPcs.snoozed}` : undefined} /> }] : []),
     ...(osBreakdown ? [{ id: 'osBreakdown', el: <Card label={`📊 ${t('os.title')}`} value={osBreakdown.count} sub={`${osBreakdown.totalPcs} PC${osBreakdown.stale > 0 ? ` · ${osBreakdown.stale} ${t('os.stale')}` : ''}`} kind="info" onClick={onClickOs} /> }] : []),
     ...(crashes ? [{ id: 'crashes', el: <Card label={`💥 ${t('cards.crashes')}`} value={crashes.total === 0 ? '—' : crashes.pcs} sub={crashes.total === 0 ? t('cards.crashesNone') : `${crashes.total} ${t('cards.crashesDumps')}`} kind={crashes.total > 0 ? 'critical' as const : 'ok' as const} onClick={onClickCrashes} /> }] : []),
+    ...(comms ? [{ id: 'comms', el: <Card label={`📶 ${t('cards.comms')}`} value={comms.overall === 'ok' ? '✓' : `${comms.okCount}/${comms.total}`} sub={comms.overall === 'down' ? t('cards.commsDbDown') : comms.overall === 'ok' ? `${comms.total} ${t('cards.commsOk')}` : `${comms.total - comms.okCount} ${t('cards.commsDown')}`} kind={comms.overall === 'down' ? 'critical' as const : comms.overall === 'degraded' ? 'warning' as const : 'ok' as const} onClick={onClickComms} /> }] : []),
   ];
 
   // --- Tile placement ---------------------------------------------------------
