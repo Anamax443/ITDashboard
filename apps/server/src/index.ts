@@ -25,6 +25,7 @@ import { registerDevicesRoutes } from './routes/devices.js';
 import { registerDeviceWebProxyRoutes } from './routes/device-web-proxy.js';
 import { registerPrinterSuppliesRoutes } from './routes/printer-supplies.js';
 import { registerDatabaseRoutes } from './routes/database.js';
+import { registerCrashRoutes } from './routes/crashes.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
 import { startReachabilitySchedule } from './services/reachability-collector.js';
@@ -35,6 +36,8 @@ import { startSharedPrintersSchedule } from './services/shared-printers-collecto
 import { startUnifiSchedule } from './services/unifi-collector.js';
 import { refreshIpGuard } from './services/ip-guard.js';
 import { startRetentionSchedule } from './services/retention-runner.js';
+import { startCrashDumpSchedule } from './services/crash-dump-collector.js';
+import { startCrashAnalyzerSchedule } from './services/crash-analyzer-worker.js';
 
 const PORT = Number(process.env.API_PORT ?? 4000);
 const BIND = process.env.API_BIND ?? '0.0.0.0';
@@ -76,6 +79,7 @@ await registerDevicesRoutes(app);
 await registerDeviceWebProxyRoutes(app);
 await registerPrinterSuppliesRoutes(app);
 await registerDatabaseRoutes(app);
+await registerCrashRoutes(app);
 await registerFrontendRoutes(app);
 
 // Load the access-check whitelist BEFORE we start accepting connections, so
@@ -96,6 +100,8 @@ app.listen({ port: PORT, host: BIND }).then(async () => {
   await startSharedPrintersSchedule();
   await startUnifiSchedule();
   await startRetentionSchedule();
+  await startCrashDumpSchedule();
+  await startCrashAnalyzerSchedule();
 }).catch((err) => {
   app.log.error(err);
   process.exit(1);
