@@ -292,7 +292,9 @@ export function App() {
             <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>{t('nav.services')}</button>
             <button className={view === 'critsvc' ? 'active' : ''} onClick={() => setView('critsvc')}>{t('nav.critsvc')}</button>
             <button className={view === 'ports' ? 'active' : ''} onClick={() => setView('ports')}>{t('nav.ports')}</button>
-            <button className={view === 'svcports' ? 'active' : ''} onClick={() => setView('svcports')}>{t('nav.svcports')}</button>
+            {/* "Porty poboček" parked until the SD-WAN printer-network separation lands —
+                target is a moving printer segment, not a fixed server. Code/endpoints/view
+                stay; restore this button + set svcports.enabled=1 to revive. */}
             <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}>{t('nav.devices')}</button>
             <button className={view === 'deviceprinters' ? 'active' : ''} onClick={() => setView('deviceprinters')}>{t('nav.devicePrinters')}</button>
             <button className={view === 'printers' ? 'active' : ''} onClick={() => setView('printers')}>{t('nav.printers')}</button>
