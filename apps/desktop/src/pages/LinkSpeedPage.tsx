@@ -88,6 +88,13 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   });
   const toggleSort = (k: SortKey) => { if (sortKey === k) setSortDir((d) => (d === 1 ? -1 : 1)); else { setSortKey(k); setSortDir(1); } };
 
+  // Visual summary over the LATEST measurement per target (history is newest-first).
+  const latestPerTarget = (() => { const m = new Map<string, LinkSpeedHistoryRow>(); for (const r of history) if (!m.has(r.target)) m.set(r.target, r); return [...m.values()]; })();
+  const counts = { ok: 0, problem: 0, offline: 0, error: 0 };
+  for (const r of latestPerTarget) counts[cat(r)]++;
+  const bars = latestPerTarget.filter((r) => r.up_mbps != null && r.down_mbps != null).map((r) => ({ r, mbps: Math.min(r.up_mbps!, r.down_mbps!) })).sort((a, b) => a.mbps - b.mbps).slice(0, 10);
+  const barMax = Math.max(1000, ...bars.map((b) => b.mbps));
+
   const ipLink = (target: string) => {
     const onClick = onJumpToComputer ? () => onJumpToComputer(nameOf(target) || target) : undefined;
     return <span onClick={onClick} style={onClick ? { color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' } : undefined} title={onClick ? t('linkspeed.toComputers') : undefined}>{target}</span>;
@@ -152,6 +159,28 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
         </div>
         {error && <div style={{ color: 'var(--critical)', marginBottom: 10 }}>⚠ {error}</div>}
         {running && status && <div style={{ fontSize: 12, marginBottom: 10 }}>{t('linkspeed.progress')}: <b>{status.done}/{status.total}</b>{status.current ? ` · ${status.current}` : ''} <span style={{ color: 'var(--text-dim)' }}>({status.sizeMB} MB)</span></div>}
+
+        {latestPerTarget.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, margin: '0 0 6px' }}>{t('linkspeed.overview')}</h3>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: bars.length ? 10 : 0 }}>
+              {([['ok', 'var(--ok)', 'OK'], ['problem', 'var(--critical)', t('linkspeed.problem')], ['offline', 'var(--text-dim)', 'offline'], ['error', 'var(--warning)', t('linkspeed.f.error')]] as const).map(([k, c, lab]) => (
+                <span key={k} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)' }}><b style={{ color: c }}>{counts[k as keyof typeof counts]}</b> {lab}</span>
+              ))}
+            </div>
+            {bars.length > 0 && <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>{t('linkspeed.slowest')}</div>}
+            {bars.map((b) => { const v = verdict(b.r.up_mbps, b.r.down_mbps, b.r.error); return (
+              <div key={b.r.target} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, fontSize: 11.5 }}>
+                <span style={{ width: 110, fontFamily: 'Consolas, monospace' }}>{b.r.target}</span>
+                <span style={{ width: 130, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameOf(b.r.target)}</span>
+                <div style={{ flex: 1, maxWidth: 340, background: 'rgba(120,130,150,.12)', borderRadius: 4, height: 12 }}>
+                  <div style={{ width: `${Math.min(100, b.mbps / barMax * 100)}%`, background: v.color, height: '100%', borderRadius: 4 }} />
+                </div>
+                <span style={{ width: 72, textAlign: 'right', fontFamily: 'Consolas, monospace', color: v.color }}>{b.mbps} Mb/s</span>
+              </div>
+            ); })}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', margin: '6px 0 8px' }}>
           <h3 style={{ fontSize: 14, margin: 0 }}>{t('linkspeed.history')}</h3>

@@ -815,6 +815,7 @@ export const api = {
   servicePorts: () => jget<ServicePortMatrix>('/system/service-ports'),
   linkSpeedStatus: () => jget<LinkSpeedStatus>('/system/linkspeed/status'),
   linkSpeedStop: () => jpost<{ stopped: boolean }>('/system/linkspeed/stop'),
+  linkSpeedSummary: () => jget<LinkSpeedSummary>('/system/linkspeed/summary'),
   linkSpeedHistory: (limit = 300) => jget<{ okMbps: number; items: LinkSpeedHistoryRow[] }>(`/system/linkspeed/history?limit=${limit}`),
   linkSpeedRun: async (targets: string, sizeMB?: number) => {
     const r = await fetch(`${API_BASE}/system/linkspeed/run`, {
@@ -1220,6 +1221,12 @@ export interface LinkSpeedHistoryRow {
   up_mbps: number | null; down_mbps: number | null;
   up_ms: number | null; down_ms: number | null;
   size_mb: number; error: string | null; measured_at: string;
+}
+
+export interface LinkSpeedSummary {
+  okMbps: number; total: number; measuredCount: number;
+  ok: number; slow: number; offline: number; error: number;
+  slowest: { target: string; mbps: number }[]; lastAt: string | null;
 }
 
 export interface CollectorRunResult {

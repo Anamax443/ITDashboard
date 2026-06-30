@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, API_BASE } from './api.js';
-import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem, PrinterSuppliesResult, CommsResult, WanStatus } from './api.js';
+import type { Summary, EventItem, TopEventId, ComputerItem, TimelineBucket, TopComputer, VersionInfo, DiskItem, ServiceProblem, PerfSummary, InactiveStats, PcHealthResult, CriticalServiceStatus, PortStatusComputer, DeviceItem, PrinterSuppliesResult, CommsResult, WanStatus, LinkSpeedSummary } from './api.js';
 import { parseDiskThresholds, summarizeDisks, summarizeMonitoredDisks, summarizeMonitoredServices, serviceMatchesExceptions, deviceDegraded, deviceProblemThresholds, isSnoozeActive, summarizeOs } from './api.js';
 import { SummaryCards } from './components/SummaryCards.js';
 import { HealthCards } from './components/HealthCards.js';
@@ -91,6 +91,7 @@ export function App() {
   const [comms, setComms] = useState<CommsResult | null>(null);
   const [commsOpen, setCommsOpen] = useState(false);
   const [wan, setWan] = useState<WanStatus | null>(null);
+  const [linkspeedSummary, setLinkspeedSummary] = useState<LinkSpeedSummary | null>(null);
   const [settingsMap, setSettingsMap] = useState<Record<string, string>>({});
   const [computersPreFilter, setComputersPreFilter] = useState<'disk-critical' | 'disk-warning' | 'disk-email' | 'service-email' | 'failing' | 'inactive' | null>(null);
   const [computersOsFilter, setComputersOsFilter] = useState<{ bucket: string; stale: boolean | null } | null>(null);
@@ -124,6 +125,7 @@ export function App() {
     api.crashes().then((r) => setCrashStats({ pcs: new Set(r.items.map((c) => c.computer_id)).size, total: r.items.length })).catch(() => {});
     api.comms().then(setComms).catch(() => {});
     api.wan().then(setWan).catch(() => {});
+    api.linkSpeedSummary().then(setLinkspeedSummary).catch(() => {});
     // Re-pull settings-derived data when Settings page broadcasts a save.
     const onSettingsSaved = (e: Event) => {
       const detail = (e as CustomEvent<{ changedKeys: string[] }>).detail;
@@ -224,6 +226,7 @@ export function App() {
     // it refreshes on the dashboard cadence without joining the indexed batch below.
     void api.comms().then(setComms).catch(() => {});
     void api.wan().then(setWan).catch(() => {});
+    void api.linkSpeedSummary().then(setLinkspeedSummary).catch(() => {});
     const results = await Promise.allSettled([
       api.summary(),
       api.events({
@@ -437,6 +440,8 @@ export function App() {
             onClickCrashes={() => setView('crashes')}
             comms={comms}
             onClickComms={() => setCommsOpen((o) => !o)}
+            linkspeed={linkspeedSummary}
+            onClickLinkspeed={() => setView('linkspeed')}
           />
           <WanHealth data={wan} />
           <CommsHealth data={comms} open={commsOpen} onOpenChange={setCommsOpen} />

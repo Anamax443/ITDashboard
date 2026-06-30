@@ -246,4 +246,31 @@ export async function registerSystemRoutes(app: FastifyInstance) {
   });
 
   app.post('/system/linkspeed/stop', async () => ({ stopped: stopLinkSpeed() }));
+
+  // Summary over the LATEST measurement per target (for the homepage tile + the page
+  // visual): how many links are OK / slow / offline / errored, and the slowest few.
+  app.get('/system/linkspeed/summary', async () => {
+    const s = await getAllSettings();
+    const okMbps = Number(s['linkspeed.ok_mbps']) || 200;
+    const pool = await getPool();
+    const rows = (await pool.request().query<{ target: string; up_mbps: number | null; down_mbps: number | null; error: string | null; measured_at: Date }>(`
+      WITH latest AS (
+        SELECT target, up_mbps, down_mbps, error, measured_at,
+               ROW_NUMBER() OVER (PARTITION BY target ORDER BY measured_at DESC, id DESC) AS rn
+        FROM link_speed_results)
+      SELECT target, up_mbps, down_mbps, error, measured_at FROM latest WHERE rn = 1`)).recordset;
+    let ok = 0, slow = 0, offline = 0, errc = 0;
+    const measured: { target: string; mbps: number }[] = [];
+    let lastAt: Date | null = null;
+    for (const r of rows) {
+      if (!lastAt || r.measured_at > lastAt) lastAt = r.measured_at;
+      if (r.error) { if (/offline/i.test(r.error)) offline++; else errc++; continue; }
+      if (r.up_mbps == null || r.down_mbps == null) { errc++; continue; }
+      const lo = Math.min(r.up_mbps, r.down_mbps);
+      measured.push({ target: r.target, mbps: lo });
+      if (lo >= okMbps) ok++; else slow++;
+    }
+    measured.sort((a, b) => a.mbps - b.mbps);
+    return { okMbps, total: rows.length, measuredCount: measured.length, ok, slow, offline, error: errc, slowest: measured.slice(0, 8), lastAt: lastAt ? new Date(lastAt).toISOString() : null };
+  });
 }
