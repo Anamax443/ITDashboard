@@ -21,9 +21,9 @@ export function ServicePortsMatrix() {
   useEffect(() => { load(); const tmr = setInterval(load, 30_000); return () => clearInterval(tmr); }, []);
 
   const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
-  const cellOf = (site: string, label: string): SvcCell => data?.cells?.[site]?.[label] ?? { total: 0, open: 0, closed: [] };
+  const cellOf = (site: string, label: string): SvcCell => data?.cells?.[site]?.[label] ?? { online: 0, open: 0, offline: 0, closed: [] };
   const statusColor = (c: SvcCell) =>
-    c.total === 0 ? 'var(--text-dim)' : c.open === c.total ? 'var(--ok)' : c.open === 0 ? 'var(--critical)' : 'var(--warning)';
+    c.online === 0 ? 'var(--text-dim)' : c.open === c.online ? 'var(--ok)' : c.open === 0 ? 'var(--critical)' : 'var(--warning)';
   const closedTitle = (c: SvcCell) =>
     c.closed.length ? `${t('svcports.closed')}: ${c.closed.map((d) => d.ip + (d.name ? ` (${d.name})` : '')).join(', ')}` : '';
 
@@ -62,12 +62,12 @@ export function ServicePortsMatrix() {
                     const c = cellOf(site, ch.label);
                     return (
                       <td key={ch.label} title={closedTitle(c)} style={{ padding: '7px 14px', textAlign: 'center' }}>
-                        {c.total === 0 ? (
+                        {c.online === 0 && c.offline === 0 ? (
                           <span style={{ color: 'var(--text-dim)' }}>—</span>
                         ) : (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'Consolas, monospace' }}>
-                            <span style={{ color: statusColor(c), fontSize: 13 }}>●</span>
-                            <b style={{ color: statusColor(c) }}>{c.open}/{c.total}</b>
+                            {c.online > 0 && <><span style={{ color: statusColor(c), fontSize: 13 }}>●</span><b style={{ color: statusColor(c) }}>{c.open}/{c.online}</b></>}
+                            {c.offline > 0 && <span style={{ color: 'var(--text-dim)' }}>{c.online > 0 ? '· ' : ''}{c.offline} off</span>}
                           </span>
                         )}
                       </td>
@@ -85,6 +85,7 @@ export function ServicePortsMatrix() {
           <span><span style={{ color: 'var(--ok)' }}>●</span> {t('svcports.legendOk')}</span>
           <span><span style={{ color: 'var(--warning)' }}>●</span> {t('svcports.legendSome')}</span>
           <span><span style={{ color: 'var(--critical)' }}>●</span> {t('svcports.legendNone')}</span>
+          <span style={{ color: 'var(--text-dim)' }}>N off = {t('svcports.legendOffline')}</span>
           <span style={{ color: 'var(--text-dim)' }}>— {t('svcports.legendEmpty')}</span>
           <span style={{ marginLeft: 'auto' }}>{t('svcports.checkedAt')} {fmt(data?.checkedAt ?? null)}</span>
         </div>

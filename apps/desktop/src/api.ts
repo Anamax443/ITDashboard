@@ -1172,7 +1172,7 @@ export interface WanStatus {
 }
 
 export interface SvcCheck { label: string; port: number; category: string; }
-export interface SvcCell { total: number; open: number; closed: { ip: string; name: string | null }[]; }
+export interface SvcCell { online: number; open: number; offline: number; closed: { ip: string; name: string | null }[]; }
 export interface ServicePortMatrix {
   enabled: boolean;
   intervalSec: number;
