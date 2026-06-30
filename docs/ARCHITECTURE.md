@@ -1,5 +1,7 @@
 # Architecture
 
+> **Document state:** 2026-06-30 · live commit `e0db733` · migrations 001–064.
+
 ## Components
 
 > **Reference deployment** — the project ships with no environment-specific values baked into code; everything below is the *current operator's* concrete deployment, recorded here for reference only. To run elsewhere you change config (`apps/server/.env` + GitHub Actions Variables), not code. See **## Configuration & portability**.
@@ -20,14 +22,14 @@
 - Scripts don't execute locally — client calls `POST /scripts/:slug/run` and API spawns them on the server.
 
 Navigation tabs (Dashboard, Events, Computers, Services, Critical Services, Ports, Devices, **Printer status**, Database, Perf, Activity, Settings):
-- **Dashboard** — collector status, summary cards (clickable drill-down, incl. a "Critical services" tile → opens the Critical Services tab, and a "🖨 Náplně/Supplies" tile → opens Printer status pre-filtered to low/empty), the "Problem PCs" and "📊 Operating systems" tiles (now first-class grid tiles whose detail tables expand below), timeline chart, top noisy PCs chart, top event IDs, computers summary. **Customizable layout** — an ✏️ edit mode places every tile by column-letter + row-number at full/half size, stacks two halves per cell (upper/lower slot), and adds optional per-row headings; persisted in `dashboard.tile_layout` / `dashboard.row_titles` (see **### Customizable dashboard tile layout**)
+- **Dashboard** — collector status, summary cards (clickable drill-down, incl. a "Critical services" tile → opens the Critical Services tab, and a "🖨 Náplně/Supplies" tile → opens Printer status pre-filtered to low/empty), a **"Komunikace / Comms" tile** (overall comms ok/degraded/down) that toggles a collapsible **CommsHealth** panel, an always-visible **WanHealth** strip (per-site WAN/internet RTT + loss chips), the "Problem PCs" and "📊 Operating systems" tiles (now first-class grid tiles whose detail tables expand below), timeline chart, top noisy PCs chart, top event IDs, computers summary. **Customizable layout** — an ✏️ edit mode places every tile by column-letter + row-number at full/half size, stacks two halves per cell (upper/lower slot), and adds optional per-row headings; persisted in `dashboard.tile_layout` / `dashboard.row_titles` (see **### Customizable dashboard tile layout**)
 - **Printer status** — card per printer with coloured ink/toner/maintenance-box/drum/belt bars + % (SNMP Printer-MIB + HTTP fallback); whole-card click opens the printer EWS via the cert-bypass proxy, a bottom-row link opens the raw `http://IP` (see **### Printer supply collection — SNMP Printer-MIB + HTTP fallback**)
 - **Events** — full-width events table with search + filters (Computer, Source, Level, Time range)
 - **Computers** — inventory with status chips, monitor checkboxes, bulk all/none, AD sync, disk scan, sync history. **Monitor and Exclude are mutually exclusive** — the server clears one when the other is set, on both the per-row PATCH endpoints and the bulk endpoints. The 📧 Disk / 🔔 Services / 🛡 Critical services / Exclude column headers each carry a "✓ all / ✗ none" control that sets that flag for all currently visible (filtered) rows in one shot, via `POST /computers/bulk-flag { ids, flag, value }` (server whitelists the `flag` column name). An **"✉ Email report"** toolbar button emails a fleet-overview report scoped to the **currently visible (filtered)** machines — same "applies to what you see" model as the bulk toggles (see **### Structured fleet overview report + on-demand email**)
 - **Services** — Auto + non-Running detection with policy/drift, by-PC + by-service views, GPO PS script export. The default "Only ExitCode != 0" filter is **off** and exit-code classification goes through the shared `isServiceCrash` predicate so the tab matches the dashboard tile + the broad alert (see **### Services tab — exit-code-agnostic drift, shared `isServiceCrash`**)
 - **Critical Services** — sortable service×machine table of the configured critical services in their real state (Running/Stopped colour, offline machine = stale amber, "only not-running" filter); confirms the critical services actually run, not just flags stopped ones
 - **Perf** — Diagnostics-Performance channel: summary cards, top culprits, most-affected PCs, recent slow boot/shutdown/standby/resume events
-- **Pády / Crashes (💥)** — collected kernel minidumps with their parsed analysis (STOP code, bug-check name, hot function, offending process/module), fleet aggregations (STOP breakdown / top culprit / repeat offenders), per-crash detail with the full cdb output + `.dmp` download, and a white printable "crash analysis" report (see **### Crash-dump collection & analysis**)
+- **Pády / Crashes (💥)** — a collector **status strip** (last/next run + last SQL write, from `GET /crashes/status`), collected kernel minidumps with their parsed analysis (STOP code, bug-check name, hot function, offending process/module) and a dump-derived plain-language explanation (nt-kernel vs third-party driver, with corruption-class special cases), fleet aggregations (STOP breakdown / top culprit / repeat offenders), per-crash detail with the full cdb output + `.dmp` download, and a **light-by-default** printable "crash analysis" report with a light/dark toggle + UTF-8-BOM save (see **### Crash-dump collection & analysis**)
 - **Activity** — terminal-style live log (filter, pause, copy)
 - **Settings** — periodic check frequency + enabled checks + disk thresholds (applied live, no restart). Email config is restructured into a standalone **"Email setup (SMTP)"** section holding the shared relay/From/recipients/dashboard URL; each agenda below (disk / services / ports / reports) carries only its own enable/throttle + an optional per-agenda recipient-override field (see **### Per-agenda email recipients with shared fallback**)
 
@@ -36,6 +38,7 @@ Navigation tabs (Dashboard, Events, Computers, Services, Critical Services, Port
 - Runs under a domain service account (suggested name `svc-itdashboard`).
 - Endpoints organised by feature (see `routes/*.ts`):
   - `health`, `version`, `docs`
+  - `system` (`routes/system.ts`, registered as `registerSystemRoutes`) — `GET /system/comms` (one aggregated ok/degraded/down view over six communication channels — database, mikrotik_rest, ftp, collector, email, unifi — derived from existing data, no new probing) and `GET /system/wan` (live WAN-link snapshot per branch + internet, thresholds, `nextRunAt`, optional speed). See **### Communication-channels health (`GET /system/comms`)** and **### Live WAN-link monitor**
   - `events` — list, summary, top-ids, timeline, top-computers, pc-health (reinstall-candidate scoring)
   - `computers` — list, sync, sync/last, sync/history, :id/monitor (PATCH), monitor/bulk (POST)
   - `collector` — status, run, stop
@@ -64,6 +67,7 @@ Navigation tabs (Dashboard, Events, Computers, Services, Critical Services, Port
   - **Printer supplies collector** — a standalone timer that probes printer-categorized devices over SNMP Printer-MIB (+ a Brother/Epson HTTP fallback) and records ink/toner/maintenance/drum/belt levels in `printer_supplies`. See **### Printer supply collection — SNMP Printer-MIB + HTTP fallback**
   - **Crash-dump collector** (`crash-dump-collector.ts`) — own timer (`crash.interval_sec`); reads `\\PC\C$\Windows\Minidump\*.dmp` from monitored reachable PCs (TCP/445 pre-flight, dedup by computer+filename), stores each new minidump as a blob in `crash_dumps` (status='pending'). Off by default (`crash.enabled`). See **### Crash-dump collection & analysis**
   - **Crash analyzer worker** (`crash-analyzer-worker.ts`) — separate timer (`crash.analyzer_interval_sec`); takes `pending` dumps, materializes the blob to a temp file, runs cdb, stores the parsed result + full output, deletes the temp
+  - **WAN monitor** (`wan-monitor.ts`) — own self-rescheduling timer (`startWanMonitorSchedule`, same DB-driven enable/interval pattern as the crash collector). Every `wan.interval_sec` (default 60) it pings each branch router IP (parsed from `mikrotik.routers`) + one internet target (`wan.internet_target`, default `1.1.1.1`) from the app server via Windows `ping.exe`, parsing avg RTT + packet loss locale-independently from the `TTL=`/`[<=]NNms` lines. Holds **only the current snapshot in memory** — no DB table, no history. Optionally runs a central download speed test on its own slower `wan.speedtest_interval_sec` cadence. See **### Live WAN-link monitor**
   - **Retention purge** — a daily runner (`retention-runner.ts`) executes the `sp_purge_*` procs (events / activity_log / pc_user_history / perf_events / ad_sync_runs + events de-dup) at the configured hour. The Settings "Retenční politika" table now also offers a **per-row manual run** (▶ per row + Označit/Odznačit/Spustit označené); the 3 device-inventory tables (`dhcp_leases` ghosts, `device_ip_history`, `device_ping_samples`) — pruned inline by the collector — are exposed here as discrete steps that replicate the collector's exact DELETE queries (`POST /api/retention/run { steps }`)
 
 ### Database (MSSQL on the SQL host — `SQL_HOST` / `SQL_INSTANCE`, DB `SQL_DATABASE`)
@@ -454,7 +458,18 @@ closing a large memory section → `nt!MiDeleteSubsectionPages` 97/97 → no thi
 
 **Routes** (`routes/crashes.ts`): `GET /crashes` (list, no blob), `GET /crashes/:id` (detail
 incl. `analyze_text`), `GET /crashes/:id/dmp` (download the raw `.dmp`), `POST /crashes/run`
-(on-demand collect+analyze — NOT gated by `crash.enabled`, for manual testing).
+(on-demand collect+analyze — NOT gated by `crash.enabled`, for manual testing), and **`GET /crashes/status`**
+— the collector's own `getCrashCollectStatus()` (`lastRunAt` / `nextRunAt` computed by the scheduler from the
+live `crash.interval_sec` / `lastResult`) joined with the last SQL writes (`MAX(crash_dumps.ingested_at)`,
+`MAX(analyzed_at)`), plus `enabled` / `intervalSec` / `pending`. The CrashesPage renders this as a status
+strip so the operator can see "is collection actually running, and when next".
+
+**Report is light-by-default + dump-derived explanation.** The printable "Analýza pádu / Crash analysis"
+report is now **light-themed by default with a light/dark toggle** and writes with a **UTF-8 BOM** on save
+(same diacritics fix as **### Export encoding — UTF-8 BOM on all text formats**). The report/detail
+explanation is generated from the parsed dump by **`buildExplanation`**, which distinguishes an **nt-kernel**
+fault from a **third-party-driver** fault and applies **special handling for corruption-class bugchecks**
+(`0x13A` / `0x19` / `0xC2` / `0x139` / `0x1A`).
 
 **Settings** (seeded by migration 061): `crash.enabled` (0), `crash.interval_sec` (3600),
 `crash.analyzer_interval_sec` (300), `crash.cdb_path`, `crash.symbol_path`,
@@ -469,6 +484,34 @@ for symbols. UI = `CrashesPage.tsx` (Pády tab: aggregations + table + detail + 
 "Analýza pádu" report via the Manager-Summary serialiser) + a 💥 dashboard tile + a Settings
 section. **Verify-core** (transport, blob write+readback, analysis, full attribution) was done
 live end-to-end before building.
+
+### Communication-channels health (`GET /system/comms`) (2026-06-30)
+
+A single **"is all communication working"** view that the dashboard can read at a glance, instead of the operator inferring it from six scattered tiles. `routes/system.ts` (`registerSystemRoutes`, wired in `index.ts`) exposes **`GET /system/comms`**, which aggregates **six channels** into one **`overall` = `ok` / `degraded` / `down`** plus an `okCount` / `total` and a per-channel breakdown:
+
+- **`database`** — a **live `SELECT 1`** with measured latency. If the DB itself is down the route short-circuits to `overall='down'` (nothing else can be read without it).
+- **`mikrotik_rest`** — the MikroTik REST API.
+- **`ftp`** — per-site FTP **freshness** read from the `site_data_status` table (the strongest signal; reuses the `alerts.freshness.threshold_minutes` staleness line); a missing/stale/errored site degrades it.
+- **`collector`** — the EventLog DCOM collector (last `collector_runs` success ratio).
+- **`email`** — SMTP / M365; alert **sends are logged in `activity_log` under source `'alerts'`** (sent=warn, fail=error), so the channel reads its health from there.
+- **`unifi`** — the UniFi controller.
+
+**Health is derived from data that already exists — no new probing** (apart from the one `SELECT 1`). For `mikrotik` / `unifi` / `collector` / `email` the channel takes the **latest `activity_log` row per source** and is **OK unless that last row's `level='error'`** (per-PC offline `warn`s don't flip a channel); for `ftp` it is `site_data_status` freshness. **Unconfigured channels are excluded** from the verdict (a channel with its feature toggle off reports `enabled:false` and doesn't count toward `degraded`). Frontend: a **"Komunikace / Comms"** tile in `SummaryCards` plus a collapsible **`CommsHealth.tsx`** panel; `api.comms()` is fetched on mount and on the **30 s dashboard refresh loop**.
+
+### Live WAN-link monitor (migrations 062–064, 2026-06-30)
+
+Answers "is the link to each branch — and to the internet — up right now, and how fast", from the app server, with **no agent and no history table**. `services/wan-monitor.ts` runs on its **own self-rescheduling timer** (`startWanMonitorSchedule` in `index.ts`, the same DB-driven enable/interval pattern as the crash collector). Every **`wan.interval_sec`** (default 60) it pings, from the application host via Windows **`ping.exe`**:
+
+- **each branch router IP** (parsed out of `mikrotik.routers`), and
+- **one internet target** (`wan.internet_target`, default `1.1.1.1`).
+
+RTT + packet loss are parsed **locale-independently** from the `TTL=` / `[<=]NNms` lines (same technique as the device-loss parser), giving an **avg RTT + loss %** per probe. The monitor keeps **only the CURRENT snapshot in memory — there is deliberately no DB table and no time-series**; the dashboard reads the live snapshot. **`GET /system/wan`** (in `system.ts`) returns `branches`, the `internet` probe, the `latency_warn_ms` / `loss_warn_pct` colour thresholds, `nextRunAt`, and the optional `speed`. Frontend **`WanHealth.tsx`** is an always-visible dashboard strip with one chip per site.
+
+**Optional central download speed test (off by default).** When `wan.speedtest_enabled` is on, the monitor runs a download speed test on its **own slower** `wan.speedtest_interval_sec` cadence (default 1800 s): it downloads `wan.speedtest_url` (default Cloudflare `__down`, 25 MB) over **`wan.speedtest_streams` PARALLEL fetch streams** (default 6), **timed from the first byte**, and carries the resulting **Mbps in the snapshot**. Parallel streams + first-byte timing exist because a single TCP stream and a cold-start clock both **underestimate** a fast link (the fix that landed in `e0db733`).
+
+**Settings & migrations.** A new **WAN** Settings section exposes the knobs. Migration **062** seeds the WAN-monitor settings (`wan.enabled`, `wan.interval_sec`, `wan.internet_target`, `wan.ping_count`, `wan.latency_warn_ms`, `wan.loss_warn_pct`), **063** seeds the speed-test settings (`wan.speedtest_enabled` off, `wan.speedtest_url`, `wan.speedtest_interval_sec`), and **064** adds `wan.speedtest_streams` (6) and bumps the default sample to 25 MB **only for installs still on the original 10 MB URL** (never clobbering an operator's custom URL).
+
+**Rejected approach — per-branch speed via the router.** Measuring per-branch download speed with MikroTik `/tool/fetch` was evaluated and **not built**: the router is CPU/TLS-bound and tops out around **~3.9 Mbps**, so it measures the router, not the link. The central app-server speed test was built instead; per-branch throughput is intentionally out of scope.
 
 ### Database overview route
 
@@ -732,5 +775,9 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 045_device_packet_loss | dhcp_leases.packet_loss column — per-device packet loss % from the reachability ping (online only; parsed locale-independently by counting `TTL=` reply lines) |
 | 046_device_operator_name | device_categories.name column (operator-editable device name, stored per-MAC) + `category` relaxed to nullable so a name-only row is valid |
 | 047_device_latency | dhcp_leases.latency_ms column — per-device average round-trip (ms) from the reachability ping (online only). NOTE: the "problem" thresholds (`devices.problem_loss_pct` / `devices.problem_latency_ms`) and the operator-defined `devices.categories` list are plain settings with code defaults — NOT seeded by a migration |
+| 048–061 | Documented in their feature sections above (printer supplies, web-proxy default, eventlog snooze, faulty-notebook suppress, device ping history, UniFi, lease retention, device IP history, MikroTik FTP source, data-freshness alert, AD-sync new-PC defaults, IP-history search, perf/adsync retention, crash dumps) — see the migration IDs called out in **### MikroTik FTP file source…**, **### Device history…**, **### Printer supply collection…**, **### Crash-dump collection & analysis** and the related sections |
+| 062_wan_monitor | `wan.*` settings seed for the live WAN-link monitor: `wan.enabled` (1), `wan.interval_sec` (60), `wan.internet_target` (`1.1.1.1`), `wan.ping_count` (5), `wan.latency_warn_ms` (80), `wan.loss_warn_pct` (5) — branch + internet ping from the app server, current snapshot only (no history table). See **### Live WAN-link monitor** |
+| 063_wan_speedtest | optional central download speed test (OFF by default): `wan.speedtest_enabled` (0), `wan.speedtest_url` (Cloudflare `__down`), `wan.speedtest_interval_sec` (1800) — its own slow cadence, result Mbps carried in the WAN snapshot |
+| 064_wan_speedtest_streams | `wan.speedtest_streams` (6) — parallel fetch streams timed from first byte (a single stream / cold clock underestimates fast links); also bumps the default sample 10 MB → 25 MB **only** for installs still on the original default URL |
 
 > `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).

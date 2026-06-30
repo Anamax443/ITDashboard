@@ -42,7 +42,7 @@
 <body>
 <main>
   <h1>ITDashboard <span class="badge live">LIVE</span></h1>
-  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-25</span> <span class="pill">commit b370537</span></p>
+  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-30</span> <span class="pill">commit e0db733</span></p>
 
   <h2>Stav nasazení</h2>
   <div class="grid">
@@ -81,9 +81,11 @@
     <li><strong>Stav tiskáren (náplně)</strong> — per-tiskárna hladiny inkoustu / toneru / maintenance boxu / drumu / beltu čtené přímo z tiskáren přes <strong>SNMP Printer-MIB</strong> (primární cesta, jednotná napříč HP/Epson/Brother) s cíleným <strong>HTTP fallbackem</strong> pro číselné % toneru Brother a maintenance box Epsonu. Nová záložka „Stav tiskáren", homepage dlaždice „🖨 Náplně" a vlajka náplní v záložce Zařízení. Vlastní SNMP v1 klient (<code>node:dgram</code>, bez závislosti); sonduje jen zařízení kategorie tiskárna.</li>
     <li><strong>Záložka „Databáze"</strong> — velikost DB + footprint per tabulka.</li>
     <li><strong>Per-PC „Obnovit teď"</strong> — jednorázová obnova jednoho stroje napříč všemi checky: disky, služby, eventlog, perf, porty.</li>
-    <li><strong>Sběr a analýza pádů (BSOD)</strong> — server tahá kernel <strong>minidumpy</strong> z monitorovaných PC (<code>\\PC\C$\Windows\Minidump</code>, dedup, nikdy <code>MEMORY.DMP</code>) do DB a samostatný worker je analyzuje přes <strong>cdb</strong> (Debugging Tools) — STOP kód, název bugchecku, horká funkce a <strong>vinící proces/modul</strong>. Záložka „Pády" s agregacemi (STOP rozpad / top viník / opakované), detail s celým výstupem cdb a stažením <code>.dmp</code>, a bílý tisknutelný report „Analýza pádu". Klientský <code>C$</code> přes lokální-admin service accountu (Server Admins), bez eskalace. Defaultně vypnuto.</li>
+    <li><strong>Sběr a analýza pádů (BSOD)</strong> — server tahá kernel <strong>minidumpy</strong> z monitorovaných PC (<code>\\PC\C$\Windows\Minidump</code>, dedup, nikdy <code>MEMORY.DMP</code>) do DB a samostatný worker je analyzuje přes <strong>cdb</strong> (Debugging Tools) — STOP kód, název bugchecku, horká funkce a <strong>vinící proces/modul</strong>. Záložka „Pády" s agregacemi (STOP rozpad / top viník / opakované) a <strong>status pruhem</strong> (poslední sběr / poslední zápis do SQL / příští plánovaný běh, <code>GET /crashes/status</code>), detail s celým výstupem cdb a stažením <code>.dmp</code>, a tisknutelný report „Analýza pádu" — <strong>světlý defaultně</strong> s přepínačem světlý/tmavý a UTF-8 (bez mojibake), s <strong>vysvětlením odvozeným z dumpu</strong> (co se stalo / technicky / doporučení), které rozlišuje chybu jádra Windows od ovladače třetí strany a u pádů z poškození paměti ukazuje na vadný ovladač / špatnou RAM. Klientský <code>C$</code> přes lokální-admin service accountu (Server Admins), bez eskalace. Defaultně vypnuto.</li>
     <li><strong>Přizpůsobitelný dashboard</strong> — operátorský režim úprav (✏️) rozmístí každou dlaždici podle <strong>písmene sloupce + čísla řádku</strong> (např. <code>B3</code>) ve <strong>dvou velikostech</strong> (plná / poloviční), umí <strong>dvě poloviční na sobě</strong> v jedné buňce (horní/dolní slot) a <strong>nadpis ke každému řádku</strong>; rozložení i nadpisy se ukládají do nastavení a po refreshi se obnoví. Dlaždice „PC v problémech" a „Operační systémy" jsou plnohodnotné dlaždice mřížky.</li>
     <li><strong>Retenční politika s ručním spuštěním</strong> — přehledová tabulka v Settings; každý řádek má tlačítko ▶ (plus Označit / Odznačit / Spustit označené). I tři device tabulky (duchové leasů, IP historie, ping vzorky), jinak mazané jen v MikroTik cyklu, jdou spustit zvlášť.</li>
+    <li><strong>Zdraví komunikace (Komunikace)</strong> — homepage dlaždice 📶 s jedním celkovým stavem (ok / degraded / down) agregujícím <strong>SQL, MikroTik REST API, FTP stahování, EventLog kolektor, e-mail (SMTP/M365) a UniFi</strong>; rozbalovací panel s řádkem na kanál (stav, detail, poslední chyba, poslední OK). Endpoint <code>GET /system/comms</code>.</li>
+    <li><strong>WAN monitor (pobočky + internet)</strong> — vždy viditelný pruh „Komunikace na pobočky a internet": server živě pinguje router každé pobočky + internetový cíl na latenci a packet loss, jeden barevně kódovaný chip na lokalitu (<code>GET /system/wan</code>). Volitelný (defaultně vypnutý) centrální test rychlosti stahování z internetu přes paralelní streamy měřený ze serveru (<code>↓ X Mb/s</code> na chipu Internet). Per-pobočkový speed test přes router není použitelný (CPU-bound), pobočky tak ukazují jen latenci + ztrátovost.</li>
     <li><strong>Settings</strong> — frekvence, časové okno, zapnuté checky, prahy — aplikováno živě bez restartu služby.</li>
   </ul>
 
@@ -104,6 +106,33 @@
     <tr><td>Sken podsítí (Devices)</td><td>Settings → rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť). Aktivní sken běží z aplikačního serveru; vzdálené podsítě přes ARP routerů. Nic v <code>.env</code>.</td></tr>
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
+
+  <h2>Poslední změny (2026-06-30) — dlaždice Komunikace, WAN monitor na pobočky, stránka Pády</h2>
+  <p class="sub" style="margin:0 0 .75rem">Souhrnná <strong>dlaždice zdraví komunikačních kanálů</strong>, vždy viditelný <strong>WAN monitor dostupnosti poboček + internetu</strong> a vylepšená stránka <strong>Pády</strong> (status sběru + čitelný report s vysvětlením pádu). Zásahy do DB — <strong>migrace 062–064</strong>. Živý commit <span class="pill">e0db733</span>.</p>
+
+  <p style="margin:0 0 4px"><strong>Dlaždice „Komunikace" — zdraví kanálů</strong> <span class="pill">e0db733</span></p>
+  <ul>
+    <li>Nová homepage dlaždice <strong>📶 Komunikace</strong> s jedním celkovým stavem (<code>ok</code> / <code>degraded</code> / <code>down</code>), který agreguje <strong>SQL, MikroTik REST API, FTP stahování, EventLog kolektor, e-mail (SMTP/M365) a UniFi</strong>. Endpoint <code>GET /system/comms</code>.</li>
+    <li>Rozbalovací panel s <strong>řádkem na každý kanál</strong>: stav, detail, poslední chyba a čas posledního OK.</li>
+  </ul>
+
+  <p style="margin:8px 0 4px"><strong>WAN monitor — komunikace na pobočky a internet</strong> <span class="pill">e0db733</span> <span class="pill">migrace 062–064</span></p>
+  <ul>
+    <li>Vždy viditelný pruh na úvodní stránce <strong>„Komunikace na pobočky a internet"</strong> — server živě pinguje router každé pobočky + internetový cíl na <strong>latenci a packet loss</strong>; jeden barevně kódovaný chip na lokalitu. Endpoint <code>GET /system/wan</code> + nová sekce Nastavení.</li>
+    <li>Volitelný (defaultně <strong>VYPNUTÝ</strong>) centrální <strong>test rychlosti stahování z internetu</strong> přes paralelní streamy — měří <strong>ze serveru</strong> a zobrazí <code>↓ X Mb/s</code> na chipu Internet. Nastavení v migracích 062–064 (<code>wan.*</code>).</li>
+    <li><strong>Poctivá výhrada:</strong> per-pobočkový speed test přes MikroTik <code>/tool/fetch</code> není použitelný (router je CPU-bound, ~3,9 Mbps), takže pobočky ukazují <strong>jen latenci + ztrátovost</strong>.</li>
+  </ul>
+
+  <p style="margin:8px 0 4px"><strong>Stránka „Pády" — status sběru + čitelný report</strong> <span class="pill">e0db733</span></p>
+  <ul>
+    <li>Status pruh na stránce Pády: <strong>poslední sběr / poslední zápis do SQL / příští plánovaný běh</strong> přes <code>GET /crashes/status</code>.</li>
+    <li>Tisknutelný report <strong>„Analýza pádu"</strong> je nově <strong>světlý defaultně</strong> s přepínačem světlý/tmavý a <strong>UTF-8</strong> (žádné mojibake).</li>
+    <li>Vysvětlení odvozené z dumpu (co se stalo / technicky / doporučení), které rozlišuje <strong>chybu jádra Windows</strong> od <strong>ovladače třetí strany</strong>, a u pádů z poškození paměti ukazuje na <strong>vadný ovladač / špatnou RAM</strong>.</li>
+  </ul>
+
+  <div class="note">
+    <strong>Migrace:</strong> nyní 001–064 — přidány <strong>062–064</strong> (WAN monitor, nastavení <code>wan.*</code>).
+  </div>
 
   <h2>Poslední změny (2026-06-26) — prezentace jako záložka, historie zařízení, audit retence</h2>
   <p class="sub" style="margin:0 0 .75rem">Prezentace jako <strong>plnohodnotná záložka v appce</strong>, <strong>historie zařízení</strong> hledatelná podle IP/MAC/hostname a <strong>audit + oprava retenční politiky</strong> celého systému. Živý commit <span class="pill">479b7f4</span>.</p>
@@ -469,7 +498,7 @@
     <a href="SETUP-SERVER.md">SETUP-SERVER.md</a> ·
     <a href="../HANDOFF.md">HANDOFF.md</a> ·
     <a href="../README.md">README.md</a><br>
-    Generováno jako statický status snapshot — 2026-06-25 (commit b370537).<br>
+    Generováno jako statický status snapshot — 2026-06-30 (commit e0db733).<br>
     © 2026 Milan Trnka, IT
   </footer>
 </main>

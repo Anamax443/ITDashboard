@@ -104,6 +104,8 @@ a.external { color: var(--accent); }
   <ul>
     <li><a href="#overview"><span data-lang="cs">Přehled</span><span data-lang="en">Overview</span></a></li>
     <li><a href="#summary"><span data-lang="cs">Záložka Souhrn</span><span data-lang="en">Summary tab</span></a></li>
+    <li><a href="#communication"><span data-lang="cs">Komunikace (přehled)</span><span data-lang="en">Communication (health)</span></a></li>
+    <li><a href="#wan"><span data-lang="cs">Pobočky &amp; internet (WAN)</span><span data-lang="en">Branches &amp; internet (WAN)</span></a></li>
     <li><a href="#architecture"><span data-lang="cs">Architektura</span><span data-lang="en">Architecture</span></a></li>
     <li><a href="#deployment"><span data-lang="cs">Deployment workflow</span><span data-lang="en">Deployment workflow</span></a></li>
     <li><a href="#configuration"><span data-lang="cs">Konfigurace a přenositelnost</span><span data-lang="en">Configuration &amp; portability</span></a></li>
@@ -159,6 +161,12 @@ a.external { color: var(--accent); }
   <span data-lang="en">Internal IT operations dashboard for the AXINETWORK domain. Provides cross-fleet eventlog visibility, AD-synced computer inventory, disk space monitoring, and per-PC reachability classification for ~225 domain machines.</span>
 </p>
 
+<div class="callout callout-info" data-lang="en">
+  <strong>What's new (2026-06-30):</strong> New <a href="#communication">📶 "Komunikace" (Communication) health tile</a> — one at-a-glance status aggregating six channels (SQL, MikroTik REST API, FTP downloads, the EventLog collector, e-mail SMTP/M365 and UniFi); the tile shows ✓ when all are OK, otherwise how many of how many, and opens a panel with each channel's status, detail, last error and last-OK time. A new always-visible homepage strip <a href="#wan">"Komunikace na pobočky a internet" (WAN — links to branches &amp; internet)</a> pings each branch router and an internet target live, one colour-coded chip per site with latency (ms) and packet loss (%), plus an optional off-by-default internet download speed test (parallel streams, fast.com-style) shown as "↓ X Mb/s" on the Internet chip (measures the internet from the server, not per branch). The <a href="#crashes">Pády (Crashes) page</a> gains a status strip (last collection · last SQL write · next scheduled collection) and its printable "Analýza pádu" crash report is now light-by-default (printable) with a light/dark toggle, opens correctly from disk (UTF-8), and carries a clearer derived explanation that distinguishes a Windows fault from a third-party driver. Live <code>e0db733</code>, migrations 001–064.
+</div>
+<div class="callout callout-info" data-lang="cs">
+  <strong>Co je nového (2026-06-30):</strong> Nová <a href="#communication">📶 zdravotní dlaždice „Komunikace"</a> — jeden souhrnný stav přes šest kanálů (SQL, MikroTik REST API, stahování přes FTP, EventLog collector, e-mail SMTP/M365 a UniFi); dlaždice ukáže ✓ když je vše OK, jinak kolik z kolika, a otevře panel se stavem každého kanálu, detailem, poslední chybou a časem posledního OK. Nový trvale viditelný pruh na úvodní stránce <a href="#wan">„Komunikace na pobočky a internet" (WAN — pobočky &amp; internet)</a> živě pinguje každý pobočkový router a internetový cíl, jeden barevně rozlišený chip na lokalitu s latencí (ms) a ztrátovostí (%), plus volitelný defaultně vypnutý test rychlosti stahování z internetu (paralelní streamy, ve stylu fast.com) zobrazený jako „↓ X Mb/s" na chipu Internet (měří internet ze serveru, ne per pobočka). <a href="#crashes">Stránka Pády</a> dostává stavový pruh (poslední sběr · poslední zápis do SQL · příští plánovaný sběr) a její tisknutelný report „Analýza pádu" je nově defaultně světlý (tisknutelný) s přepínačem světlý/tmavý, správně se otevírá z disku (UTF-8) a nese srozumitelnější odvozené vysvětlení, které rozliší chybu Windows od ovladače třetí strany. Živý <code>e0db733</code>, migrace 001–064.
+</div>
 <div class="callout callout-info" data-lang="en">
   <strong>What's new (2026-06-25):</strong> New <a href="#summary">"Summary" tab</a> — a managerial "take to the meeting" report rendered as a clean white, theme-independent document with KPI tiles and per-branch bar rows; <strong>Tisk / PDF</strong> and <strong>Uložit HTML</strong> both serialize the same standalone snapshot. Device identity now pulls a <strong>third MikroTik source</strong> per router — an active <a href="#devices"><code>tool/ip-scan</code></a> run <em>on the router</em> that resolves NETBIOS / reverse-DNS / SNMP names from inside the subnet (so static printers/servers finally get real names where the network publishes them). Shared / USB printers are now <strong>keyed by host name</strong> (a host DHCP-IP change no longer duplicates a printer; legacy IP-keyed rows are auto-cleaned). Confirmed-category devices temporarily not seen are still shown (offline, last-known IP); phones are excluded (randomized MAC).
 </div>
@@ -359,6 +367,7 @@ service restarts on new dist/, in-memory state cleared</div>
       <li>Stopped services (PCs affected) → Services tab. Services on the service alert whitelist (Settings → "Email alerts — services") are always excluded here — they do not count toward the PC count or the "N services" subtitle.</li>
       <li>🛡 Critical services (count not-running on reachable machines, per-PC exceptions excluded, red when &gt; 0) → opens the new Critical services tab</li>
       <li>🔌 Ports / Porty (count of PCs with at least one closed key TCP port, red when &gt; 0) → opens the new Ports tab</li>
+      <li>📶 Komunikace / Communication (aggregate health of the six communication channels — see <a href="#communication">Communication</a>) → shows ✓ when all OK, else how many of how many are OK (green / amber / red); opens a panel listing each channel</li>
       <li>Slow boot/shutdown (7d, PCs affected) → Perf tab</li>
       <li>Computers (active/total) → Computers tab unfiltered</li>
     </ul>
@@ -574,6 +583,56 @@ service restarts on new dist/, in-memory state cleared</div>
       </ul>
     </li>
     <li>Zařízení s potvrzenou kategorií, která zrovna <strong>nejsou vidět, se přesto započítávají</strong> (zobrazena offline s poslední známou IP), takže součty odrážejí identitu parku, ne jen to, co zrovna odpovědělo.</li>
+  </ul>
+</div>
+
+<h3 id="communication"><span data-lang="cs">📶 Komunikace — přehled, že všechny kanály fungují</span><span data-lang="en">📶 Communication — at-a-glance that every channel works</span></h3>
+<div data-lang="en">
+  <p>A single homepage <strong>📶 "Komunikace" (Communication) health tile</strong> answers one question — <strong>"is every communication channel working right now?"</strong> — by aggregating the health of <strong>six channels</strong> into one overall status:</p>
+  <ul>
+    <li><strong>SQL database</strong> — the central <code>ITDashboard</code> DB connection.</li>
+    <li><strong>MikroTik REST API</strong> — the routers' REST endpoint (leases / ARP / ip-scan).</li>
+    <li><strong>FTP downloads</strong> — the per-router <code>IP_scan.txt</code> / <code>ARP_scan.txt</code> pulls.</li>
+    <li><strong>EventLog collector</strong> — collection from the client PCs.</li>
+    <li><strong>E-mail (SMTP / M365)</strong> — the outbound mail channel used for alerts and reports.</li>
+    <li><strong>UniFi</strong> — the UniFi controller client source.</li>
+  </ul>
+  <ul>
+    <li>The tile shows <strong>✓ when all channels are OK</strong>; otherwise it shows <strong>how many of how many</strong> are OK and is coloured <strong>green / amber / red</strong> by severity.</li>
+    <li><strong>Click the tile</strong> → a panel opens listing <strong>each channel</strong> with its <strong>status, detail, last error and last-OK time</strong>, so you see at a glance which channel broke and when it last worked.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p>Jediná <strong>📶 zdravotní dlaždice „Komunikace"</strong> na úvodní stránce odpovídá na jednu otázku — <strong>„fungují teď všechny komunikační kanály?"</strong> — tím, že sloučí zdraví <strong>šesti kanálů</strong> do jednoho souhrnného stavu:</p>
+  <ul>
+    <li><strong>SQL databáze</strong> — připojení k centrální DB <code>ITDashboard</code>.</li>
+    <li><strong>MikroTik REST API</strong> — REST endpoint routerů (leases / ARP / ip-scan).</li>
+    <li><strong>Stahování přes FTP</strong> — stahování souborů <code>IP_scan.txt</code> / <code>ARP_scan.txt</code> po routerech.</li>
+    <li><strong>EventLog collector</strong> — sběr z klientských PC.</li>
+    <li><strong>E-mail (SMTP / M365)</strong> — odchozí poštovní kanál pro alerty a reporty.</li>
+    <li><strong>UniFi</strong> — zdroj klientů z UniFi kontroléru.</li>
+  </ul>
+  <ul>
+    <li>Dlaždice ukáže <strong>✓ když jsou všechny kanály OK</strong>; jinak ukáže <strong>kolik z kolika</strong> je OK a je barevně rozlišená <strong>zeleně / oranžově / červeně</strong> podle závažnosti.</li>
+    <li><strong>Kliknutím na dlaždici</strong> → se otevře panel se seznamem <strong>každého kanálu</strong> a jeho <strong>stavem, detailem, poslední chybou a časem posledního OK</strong>, takže na první pohled vidíš, který kanál spadl a kdy naposledy fungoval.</li>
+  </ul>
+</div>
+
+<h3 id="wan"><span data-lang="cs">🌐 Komunikace na pobočky a internet — latence, ztrátovost a volitelně rychlost</span><span data-lang="en">🌐 Links to branches &amp; internet — latency, loss and optional speed</span></h3>
+<div data-lang="en">
+  <p>An <strong>always-visible homepage strip "Komunikace na pobočky a internet" (WAN — links to branches &amp; internet)</strong>. The server pings each <strong>branch router</strong> and an <strong>internet target</strong> live and shows <strong>one colour-coded chip per site</strong> with <strong>latency (ms)</strong> and <strong>packet loss (%)</strong>.</p>
+  <ul>
+    <li><strong>One chip per branch + one Internet chip.</strong> The chip colour follows reachability / latency / loss against the configured thresholds, so a degraded or down link stands out at a glance.</li>
+    <li><strong>Optional internet speed test (off by default).</strong> A download speed test (<strong>parallel streams, like fast.com</strong>) shows <strong>"↓ X Mb/s"</strong> on the Internet chip. It measures <strong>the internet from the server</strong>, not per branch.</li>
+    <li><strong>Tunable in Settings</strong> — interval, internet target, latency / loss thresholds, and the speed test.</li>
+  </ul>
+</div>
+<div data-lang="cs">
+  <p><strong>Trvale viditelný pruh na úvodní stránce „Komunikace na pobočky a internet" (WAN — pobočky &amp; internet)</strong>. Server živě pinguje každý <strong>pobočkový router</strong> a <strong>internetový cíl</strong> a ukazuje <strong>jeden barevně rozlišený chip na lokalitu</strong> s <strong>latencí (ms)</strong> a <strong>ztrátovostí (%)</strong>.</p>
+  <ul>
+    <li><strong>Jeden chip na pobočku + jeden chip Internet.</strong> Barva chipu sleduje dostupnost / latenci / ztrátovost proti nakonfigurovaným prahům, takže degradovaná nebo spadlá linka je vidět na první pohled.</li>
+    <li><strong>Volitelný test rychlosti internetu (defaultně vypnutý).</strong> Test rychlosti stahování (<strong>paralelní streamy, ve stylu fast.com</strong>) ukáže <strong>„↓ X Mb/s"</strong> na chipu Internet. Měří <strong>internet ze serveru</strong>, ne per pobočka.</li>
+    <li><strong>Laditelné v Nastavení</strong> — interval, internetový cíl, prahy latence / ztrátovosti a test rychlosti.</li>
   </ul>
 </div>
 
@@ -1553,7 +1612,8 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
     <li><strong>Collection</strong> — the app server reads <code>\\PC\C$\Windows\Minidump\*.dmp</code> from monitored, reachable PCs (TCP/445 pre-flight, dedup by computer + filename), and stores each new minidump as a blob in the DB with <code>status=pending</code>. It only touches the small minidumps, never <code>C:\Windows\MEMORY.DMP</code>, and leaves the on-client file for Windows to clean — the DB is the durable store. Reads the client <code>C$</code> via the service account's local-admin (Server Admins) membership; no extra privilege.</li>
     <li><strong>Analysis</strong> — a separate worker materializes each pending blob to a temp file and runs <strong>cdb</strong> (Debugging Tools for Windows on the server). It extracts the <strong>STOP code</strong>, bug-check name, the <strong>hot function</strong>, and the <strong>offending process / module</strong>. (The newest cdb's headless <code>!analyze</code> is broken, so a sync recipe <code>.bugcheck; kc; lm; !dpcwatchdog; .thread; !thread; !process</code> is used instead.)</li>
     <li><strong>The Pády tab</strong> — fleet <strong>aggregations</strong> (STOP breakdown, top culprit process/module, repeat offenders), a table (PC · time · STOP · bug-check · culprit · status), and a per-crash <strong>detail</strong> with the full cdb output and a <code>.dmp</code> download.</li>
-    <li><strong>"Analýza pádu" report</strong> — a white, theme-independent printable report per crash (🖨 Print / PDF + ⬇ Save HTML), same approach as the Manager Summary / Presentation.</li>
+    <li><strong>Status strip</strong> — the page now shows <strong>last collection</strong>, <strong>last write to SQL</strong>, and the <strong>next scheduled collection</strong>, so it's obvious whether the data is current.</li>
+    <li><strong>"Analýza pádu" report</strong> — a printable report per crash (🖨 Print / PDF + ⬇ Save HTML). It is now <strong>light-by-default (printable)</strong> with a <strong>light / dark toggle</strong>, <strong>opens correctly from disk (UTF-8)</strong>, and carries a clearer <strong>derived explanation</strong> (what happened / technical / recommended steps) that correctly <strong>distinguishes a Windows fault from a third-party driver</strong>.</li>
     <li><strong>💥 dashboard tile</strong> — PCs with a crash / total dumps; opens the tab.</li>
   </ul>
   <div class="callout callout-info"><strong>Rebuild prerequisite</strong> — Debugging Tools (<code>cdb.exe</code>) must be on the app server (Win SDK: <code>winsdksetup.exe /features OptionId.WindowsDesktopDebuggers /quiet</code>) and the service account needs read access to the client <code>C$</code>. Settings expose the cdb path, symbol path and intervals.</div>
@@ -1564,7 +1624,8 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
     <li><strong>Sběr</strong> — server čte <code>\\PC\C$\Windows\Minidump\*.dmp</code> z monitorovaných dostupných PC (TCP/445 pre-flight, dedup podle PC + jména souboru) a každý nový minidump uloží jako blob do DB se stavem <code>pending</code>. Sahá jen na malé minidumpy, nikdy na <code>C:\Windows\MEMORY.DMP</code>, a klientský soubor nechává Windows uklidit — DB je trvalé úložiště. Klientský <code>C$</code> čte přes lokální-admin (skupina Server Admins) service accountu; žádná eskalace práv.</li>
     <li><strong>Analýza</strong> — samostatný worker zhmotní každý pending blob do temp souboru a spustí <strong>cdb</strong> (Debugging Tools na serveru). Vytáhne <strong>STOP kód</strong>, název bugchecku, <strong>horkou funkci</strong> a <strong>vinící proces / modul</strong>. (Nejnovější cdb má headless <code>!analyze</code> rozbitý, proto se používá sync recept <code>.bugcheck; kc; lm; !dpcwatchdog; .thread; !thread; !process</code>.)</li>
     <li><strong>Záložka Pády</strong> — <strong>agregace</strong> (STOP rozpad, top vinící proces/modul, opakované), tabulka (PC · čas · STOP · bugcheck · viník · stav) a <strong>detail</strong> pádu s celým výstupem cdb a stažením <code>.dmp</code>.</li>
-    <li><strong>Report „Analýza pádu"</strong> — bílý, na motivu nezávislý tisknutelný report per pád (🖨 Tisk / PDF + ⬇ Uložit HTML), stejný přístup jako Souhrn / Prezentace.</li>
+    <li><strong>Stavový pruh</strong> — stránka nově ukazuje <strong>poslední sběr</strong>, <strong>poslední zápis do SQL</strong> a <strong>příští plánovaný sběr</strong>, takže je hned jasné, jestli jsou data aktuální.</li>
+    <li><strong>Report „Analýza pádu"</strong> — tisknutelný report per pád (🖨 Tisk / PDF + ⬇ Uložit HTML). Nově je <strong>defaultně světlý (tisknutelný)</strong> s <strong>přepínačem světlý / tmavý</strong>, <strong>správně se otevírá z disku (UTF-8)</strong> a nese srozumitelnější <strong>odvozené vysvětlení</strong> (co se stalo / technicky / doporučené kroky), které správně <strong>rozliší chybu Windows od ovladače třetí strany</strong>.</li>
     <li><strong>💥 dlaždice</strong> na Přehledu — PC s pádem / celkem dumpů; otevře záložku.</li>
   </ul>
   <div class="callout callout-info"><strong>Předpoklad pro znovupostavení</strong> — na serveru musí být Debugging Tools (<code>cdb.exe</code>) (Win SDK: <code>winsdksetup.exe /features OptionId.WindowsDesktopDebuggers /quiet</code>) a service account potřebuje čtení klientského <code>C$</code>. V Nastavení je cesta k cdb, symbol path a intervaly.</div>
@@ -1773,7 +1834,7 @@ Tohle je <strong>observer-not-executor</strong> pattern aplikovaný na telemetri
   <tr><td><code>device_ping_samples</code></td><td>Rolling ping history (mac, sent/recv/latency) for the long-term loss figure (mig 052)</td></tr>
   <tr><td><code>port_status</code></td><td>Latest per-(computer, port) reachability snapshot (mig 041)</td></tr>
   <tr><td><code>eventlog_snooze</code></td><td>Temporary per-PC "PC v problémech" snooze with signature + hard expiry (mig 050)</td></tr>
-  <tr><td><code>schema_migrations</code></td><td>Migration tracking (applied <code>id</code> + timestamp). Latest: <strong>052</strong> (long-term loss), <strong>053</strong> (UniFi source), <strong>054</strong> (stale-lease pruning)</td></tr>
+  <tr><td><code>schema_migrations</code></td><td>Migration tracking (applied <code>id</code> + timestamp). Latest: <strong>052</strong> (long-term loss), <strong>053</strong> (UniFi source), <strong>054</strong> (stale-lease pruning), <strong>…–064</strong> (Communication health, WAN branch/internet links, crash-page status strip)</td></tr>
 </table>
 
 <h2 id="retention"><span data-lang="cs">Retention policy</span><span data-lang="en">Retention policy</span></h2>

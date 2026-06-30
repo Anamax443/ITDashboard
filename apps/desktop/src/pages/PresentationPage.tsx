@@ -168,6 +168,41 @@ const CS_BODY = `
   </div>
 </section>
 <section class="slide">
+  <div class="kicker">Novinka</div>
+  <h2>Komunikace — stav celého datového toku na první pohled</h2>
+  <div class="grid g2">
+    <div>
+      <p>Celý systém stojí na tom, že jednotlivé kanály dat fungují. Nová dlaždice <strong>Komunikace</strong> to shrne do jednoho světla: <strong>zelená</strong>, když SQL, API síťových prvků, stahování souborů (FTP), sběr z klientů, e-mail i UniFi pracují; <strong>oranžová / červená</strong>, jakmile něco vázne.</p>
+      <p>Po kliknutí se rozbalí panel, který přesně ukáže, <strong>který kanál</strong> má problém a <strong>kdy naposledy fungoval</strong> — žádné hádání, kde se data zasekla.</p>
+      <p class="small muted">Přínos: okamžitá jistota, že celá „roura" dat žije a dashboard ukazuje aktuální stav.</p>
+    </div>
+    <div class="card sky"><h3>Kanály pod dohledem</h3><ul class="clean small"><li><strong>SQL databáze</strong> — uložení dat,</li><li><strong>API síťových prvků</strong> — živé čtení,</li><li><strong>Stahování souborů (FTP)</strong> — snímky leasů a ARP,</li><li><strong>Sběr z klientů</strong> — data přímo z počítačů,</li><li><strong>E-mail</strong> — odesílání výstrah,</li><li><strong>UniFi</strong> — bezdrátová síť.</li></ul></div>
+  </div>
+</section>
+<section class="slide">
+  <div class="kicker">Novinka</div>
+  <h2>Komunikace na pobočky a internet — kvalita linek živě</h2>
+  <div class="grid g2">
+    <div>
+      <p>Dashboard průběžně měří <strong>odezvu (latenci)</strong> a <strong>ztrátovost paketů</strong> ke každé pobočce i k internetu. Každá lokalita má vlastní barevný čip, takže <strong>pomalá nebo problikávající linka</strong> je vidět okamžitě — ne až podle stížností uživatelů.</p>
+      <p>Volitelně se měří i <strong>rychlost stahování z internetu (Mb/s)</strong>.</p>
+      <p class="small muted">Přínos: na první pohled jistota, že každá pobočka jede, jak má.</p>
+    </div>
+    <div class="card ok"><h3>Stav linek</h3><table><tr><th>Lokalita</th><th>Odezva</th><th>Ztráta</th></tr><tr><td>🟢 Pobočka A</td><td class="muted">8 ms</td><td class="muted">0 %</td></tr><tr><td>🟢 Pobočka B</td><td class="muted">14 ms</td><td class="muted">0 %</td></tr><tr><td>🟠 Pobočka C</td><td class="muted">42 ms</td><td class="muted">3 %</td></tr><tr><td>🟢 Internet</td><td class="muted">11 ms</td><td class="muted">↓ 240 Mb/s</td></tr></table><p class="small muted" style="margin-top:10px">Ilustrační hodnoty — barva čipu shrne stav linky.</p></div>
+  </div>
+</section>
+<section class="slide">
+  <div class="kicker">Vylepšeno</div>
+  <h2>Pády (BSOD) — report, který předáte manažerovi i dodavateli</h2>
+  <div class="grid g2">
+    <div>
+      <p>Stránka pádů teď jasně ukazuje <strong>kdy se naposledy sbíraly dumpy</strong>, <strong>kdy se zapsaly do databáze</strong> a <strong>kdy proběhne další sběr</strong> — víte, jak čerstvá data koukáte.</p>
+      <p>Tiskový report o pádu jsme přepracovali: čistý <strong>světlý vzhled pro tisk</strong> s přepínačem tmavá / světlá, správná <strong>diakritika</strong> a <strong>srozumitelné vysvětlení</strong> — co se stalo, technický detail a doporučené kroky.</p>
+    </div>
+    <div class="card warn"><h3>Vina poctivě rozlišená</h3><p class="small">Report čestně odliší <strong>chybu Windows</strong> od <strong>vadného ovladače třetí strany</strong> — nehází všechno na operační systém.</p><p class="small muted" style="margin-top:8px">Přínos: report v lidské řeči, který bez překládání předáte vedení nebo výrobci hardwaru.</p></div>
+  </div>
+</section>
+<section class="slide">
   <div class="kicker">Pod kapotou</div>
   <h2>Technologie, bezpečnost, provoz</h2>
   <div class="grid g2">
@@ -297,6 +332,41 @@ const EN_BODY = `
       <ul class="clean"><li><strong>Debounce</strong> — won't fire on a momentary blip,</li><li><strong>Throttling</strong> — reminds at a sensible interval, never floods,</li><li><strong>Maintenance window</strong> — stays quiet during planned work,</li><li><strong>Per-site / per-machine</strong> — exceptions, so what is still being rolled out doesn't "scream".</li></ul>
     </div>
     <div class="card bad"><h3>🔴 Example: critical disk</h3><p class="small"><strong>PC-001</strong> · drive C: · <span style="color:var(--bad);font-weight:700">2.1&nbsp;GB free</span> of 240&nbsp;GB (0.9&nbsp;%)</p><div class="bar" style="margin:6px 0"><span style="width:99%;background:var(--bad)"></span></div><p class="small muted">Delivered to the agenda's recipient list; repeats at the configured frequency while the condition persists.</p></div>
+  </div>
+</section>
+<section class="slide">
+  <div class="kicker">New</div>
+  <h2>Communication — the whole data pipeline at a glance</h2>
+  <div class="grid g2">
+    <div>
+      <p>The whole system depends on its data channels working. The new <strong>Communication</strong> tile sums that up in one light: <strong>green</strong> when SQL, the network-device API, file downloads (FTP), client collection, e-mail and UniFi are all working; <strong>amber / red</strong> the moment something is off.</p>
+      <p>One click opens a panel that shows exactly <strong>which channel</strong> has the problem and <strong>when it last worked</strong> — no guessing where the data got stuck.</p>
+      <p class="small muted">Benefit: instant confidence that the whole data "pipe" is alive and the dashboard is current.</p>
+    </div>
+    <div class="card sky"><h3>Channels watched</h3><ul class="clean small"><li><strong>SQL database</strong> — data storage,</li><li><strong>Network-device API</strong> — live reads,</li><li><strong>File downloads (FTP)</strong> — lease &amp; ARP snapshots,</li><li><strong>Client collection</strong> — data straight from the PCs,</li><li><strong>E-mail</strong> — sending alerts,</li><li><strong>UniFi</strong> — the wireless network.</li></ul></div>
+  </div>
+</section>
+<section class="slide">
+  <div class="kicker">New</div>
+  <h2>Branch &amp; internet links — live link health</h2>
+  <div class="grid g2">
+    <div>
+      <p>The dashboard continuously measures <strong>latency</strong> and <strong>packet loss</strong> to each branch office and to the internet. Every site gets its own colour-coded chip, so a <strong>slow or flaky link</strong> is visible immediately — not only once users complain.</p>
+      <p>Optionally it also measures <strong>internet download speed (Mb/s)</strong>.</p>
+      <p class="small muted">Benefit: see at a glance that every branch is running as it should.</p>
+    </div>
+    <div class="card ok"><h3>Link status</h3><table><tr><th>Site</th><th>Latency</th><th>Loss</th></tr><tr><td>🟢 Site A</td><td class="muted">8 ms</td><td class="muted">0 %</td></tr><tr><td>🟢 Site B</td><td class="muted">14 ms</td><td class="muted">0 %</td></tr><tr><td>🟠 Site C</td><td class="muted">42 ms</td><td class="muted">3 %</td></tr><tr><td>🟢 Internet</td><td class="muted">11 ms</td><td class="muted">↓ 240 Mb/s</td></tr></table><p class="small muted" style="margin-top:10px">Illustrative values — the chip colour sums up each link.</p></div>
+  </div>
+</section>
+<section class="slide">
+  <div class="kicker">Improved</div>
+  <h2>Crashes (BSOD) — a report you can hand to a manager or vendor</h2>
+  <div class="grid g2">
+    <div>
+      <p>The crash page now clearly shows <strong>when dumps were last collected</strong>, <strong>when they were last written to the database</strong> and <strong>when the next collection runs</strong> — so you know how fresh the data is.</p>
+      <p>The printable crash report was reworked: a clean <strong>light layout for printing</strong> with a dark / light toggle, correct <strong>diacritics</strong>, and a <strong>plain-language explanation</strong> — what happened, the technical detail and recommended steps.</p>
+    </div>
+    <div class="card warn"><h3>Blame, told honestly</h3><p class="small">The report honestly distinguishes a <strong>Windows fault</strong> from a <strong>faulty third-party driver</strong> — it doesn't pin everything on the operating system.</p><p class="small muted" style="margin-top:8px">Benefit: a plain-language report you can hand straight to management or the hardware vendor.</p></div>
   </div>
 </section>
 <section class="slide">

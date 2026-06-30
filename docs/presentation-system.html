@@ -270,6 +270,82 @@ function downloadDeck(name){
   </div>
 </section>
 
+<!-- 7b — COMMUNICATION: HEALTH OF ALL CHANNELS -->
+<section class="slide" id="communication">
+  <div class="kicker">New</div>
+  <h2>Communication — the whole data pipeline at a glance</h2>
+  <div class="grid g2">
+    <div>
+      <p>The whole system depends on its data channels working. The new <strong>Communication</strong> tile
+         sums that up in one light: <strong>green</strong> when SQL, the network-device API, file downloads (FTP),
+         client collection, e-mail and UniFi are all working; <strong>amber / red</strong> the moment something is off.</p>
+      <p>One click opens a panel that shows exactly <strong>which channel</strong> has the problem and <strong>when
+         it last worked</strong> — no guessing where the data got stuck.</p>
+      <p class="small muted">Benefit: instant confidence that the whole data "pipe" is alive and the dashboard is current.</p>
+    </div>
+    <div class="card sky">
+      <h3>Channels watched</h3>
+      <ul class="clean small">
+        <li><strong>SQL database</strong> — data storage,</li>
+        <li><strong>Network-device API</strong> — live reads,</li>
+        <li><strong>File downloads (FTP)</strong> — lease &amp; ARP snapshots,</li>
+        <li><strong>Client collection</strong> — data straight from the PCs,</li>
+        <li><strong>E-mail</strong> — sending alerts,</li>
+        <li><strong>UniFi</strong> — the wireless network.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 7c — BRANCH & INTERNET LINK HEALTH -->
+<section class="slide" id="links">
+  <div class="kicker">New</div>
+  <h2>Branch &amp; internet links — live link health</h2>
+  <div class="grid g2">
+    <div>
+      <p>The dashboard continuously measures <strong>latency</strong> and <strong>packet loss</strong> to each branch
+         office and to the internet. Every site gets its own colour-coded chip, so a <strong>slow or flaky link</strong>
+         is visible immediately — not only once users complain.</p>
+      <p>Optionally it also measures <strong>internet download speed (Mb/s)</strong>.</p>
+      <p class="small muted">Benefit: see at a glance that every branch is running as it should.</p>
+    </div>
+    <div class="card ok">
+      <h3>Link status</h3>
+      <table>
+        <tr><th>Site</th><th>Latency</th><th>Loss</th></tr>
+        <tr><td>🟢 Site A</td><td class="muted">8 ms</td><td class="muted">0 %</td></tr>
+        <tr><td>🟢 Site B</td><td class="muted">14 ms</td><td class="muted">0 %</td></tr>
+        <tr><td>🟠 Site C</td><td class="muted">42 ms</td><td class="muted">3 %</td></tr>
+        <tr><td>🟢 Internet</td><td class="muted">11 ms</td><td class="muted">↓ 240 Mb/s</td></tr>
+      </table>
+      <p class="small muted" style="margin-top:10px">Illustrative values — the chip colour sums up each link.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 7d — CRASHES: CLEARER & MORE USEFUL -->
+<section class="slide" id="crashes">
+  <div class="kicker">Improved</div>
+  <h2>Crashes (BSOD) — a report you can hand to a manager or vendor</h2>
+  <div class="grid g2">
+    <div>
+      <p>The crash page now clearly shows <strong>when dumps were last collected</strong>, <strong>when they were
+         last written to the database</strong> and <strong>when the next collection runs</strong> — so you know how
+         fresh the data is.</p>
+      <p>The printable crash report was reworked: a clean <strong>light layout for printing</strong> with a
+         dark / light toggle, correct <strong>diacritics</strong>, and a <strong>plain-language explanation</strong> —
+         what happened, the technical detail and recommended steps.</p>
+    </div>
+    <div class="card warn">
+      <h3>Blame, told honestly</h3>
+      <p class="small">The report honestly distinguishes a <strong>Windows fault</strong> from a <strong>faulty
+         third-party driver</strong> — it doesn't pin everything on the operating system.</p>
+      <p class="small muted" style="margin-top:8px">Benefit: a plain-language report you can hand straight to
+         management or the hardware vendor.</p>
+    </div>
+  </div>
+</section>
+
 <!-- 8 — TECH + SECURITY -->
 <section class="slide" id="technology">
   <div class="kicker">Under the hood</div>

@@ -6,6 +6,8 @@ Po dokončení už nikdy nemusíš na server ručně — každý `git push` do `
 
 **Real-world setup proběhl 2026-06-01.** Tento dokument reflektuje skutečnost, ne ideál.
 
+> **Stav dokumentu:** aktualizováno **2026-06-30**, živý commit `e0db733`, migrace **001–064**. Rebuild dle tohoto dokumentu postaví systém včetně WAN monitoru (krok 7c).
+
 ## Reference deployment values
 
 Projekt je portable — žádné IP, hostname ani doménová jména nejsou v kódu. Veškeré site-specific hodnoty žijí v configu. Níže jsou **referenční hodnoty aktuálního nasazení** (AXINETWORK). Pokud stavíš projekt v jiném prostředí, **nahraď je svými vlastními** — celý runbook níže používá tyto referenční hodnoty inline, abys je mohl copy-pastovat, ale v novém prostředí je musíš vyměnit.
@@ -163,6 +165,8 @@ npm run build
 npm run migrate
 ```
 
+**Pozn. k migracím:** `npm run migrate` aplikuje aktuálně migrace **001–064** (idempotentní, doběhne i na čerstvé i na existující DB). Migrace **062 `wan_monitor`**, **063 `wan_speedtest`** a **064 `wan_speedtest_streams`** **nezakládají žádné nové tabulky** — pouze seedují řádky do `settings` (default hodnoty WAN monitoru, viz krok 7c). Vše je přepsatelné v Settings UI, takže ručně nic nastavovat nemusíš.
+
 **Pozn:** Auto-deploy pipeline (GitHub Actions) **nečte** tento `.env` — migrace v deploy.yml berou `SQL_HOST` / `SQL_INSTANCE` / `SQL_DATABASE` z **repository Variables** (viz krok 10), ne ze souboru.
 
 **Pozn:** Server používá driver `msnodesqlv8` (NE výchozí tedious) kvůli pravému Windows SSPI v doméně. tedious v doméně failuje s "untrusted domain". Driver má prebuilt binaries pro Node 20 Windows, žádný native build nepotřeba.
@@ -188,7 +192,7 @@ $pwdPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
 & $nssm set $svc AppStderr "$logsDir\api.err.log"
 & $nssm set $svc Start SERVICE_AUTO_START
 & $nssm set $svc ObjectName 'AXINETWORK\svc-itdashboard' $pwdPlain
-& $nssm set $svc Description 'ITDashboard API + eventlog collector'
+& $nssm set $svc Description 'ITDashboard API + eventlog collector + WAN monitor'
 
 [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
 Remove-Variable pwdPlain, pwdSecure
@@ -213,6 +217,31 @@ $new = if ($current -match 'S:') { $current -replace 'S:', "$newACE`S:" } else {
 ```
 
 ACE flags: `CC=QueryConfig, LC=QueryStatus, SW=EnumDeps, RP=Start, WP=Stop, DT=Pause, LO=Interrogate, CR=UserControl, RC=ReadControl`.
+
+## 7c. WAN monitor — žádná nová infra, jen egress
+
+API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog collectoru i **WAN monitor scheduler** — `startWanMonitorSchedule()`. Žádná nová tabulka, žádná nová OS závislost: pinguje přes vestavěný Windows `ping.exe` (stejný, co používají ostatní collectory) a pro volitelný speed test používá globální `fetch`. Enable/interval je DB-driven jako u ostatních collectorů (řízeno řádky v `settings`), takže se to nasadí samo s každým deployem — **nic se ručně neinstaluje**.
+
+**Co měří:** pinguje IP pobočkových routerů (z `mikrotik.routers`) + jeden veřejný internetový cíl (default `1.1.1.1`) **z app serveru** (`10.8.2.213`). Zdraví linky poboček je **jen latence + ztrátovost** (ne rychlost — viz Gotcha #7). Volitelný speed test (default **vypnutý**) stahuje reálný soubor z konfigurované URL (default Cloudflare) → spotřebovává pásmo, proto OFF.
+
+**Seedované settings** (migrace 062–064, vše přepsatelné v Settings UI v sekci *„Komunikace na pobočky a internet"*):
+
+| Klíč | Default | Význam |
+|------|---------|--------|
+| `wan.enabled` | `1` | WAN monitor zapnut |
+| `wan.interval_sec` | `60` | perioda pingu |
+| `wan.internet_target` | `1.1.1.1` | veřejný cíl pro test internetu |
+| `wan.ping_count` | `5` | počet pingů na měření |
+| `wan.latency_warn_ms` | `80` | práh „degraded" latence |
+| `wan.loss_warn_pct` | `5` | práh „degraded" ztrátovosti |
+| `wan.speedtest_enabled` | `0` | speed test **vypnut** (stahuje reálný soubor, žere pásmo) |
+| `wan.speedtest_url` | `https://speed.cloudflare.com/__down?bytes=25000000` | cíl speed testu |
+| `wan.speedtest_interval_sec` | `1800` | perioda speed testu |
+| `wan.speedtest_streams` | `6` | počet paralelních streamů |
+
+**Egress / síť (rebuild-relevant):** WAN monitor pinguje IP pobočkových routerů a internetový cíl `1.1.1.1` **z `.213`**; volitelný speed test dělá odchozí **HTTPS** na `wan.speedtest_url` (default Cloudflare). Server už odchozí internet má (cdb symbol downloads pro analýzu pádů), takže pro defaulty **není potřeba žádné nové firewall pravidlo** — ale cíl speed testu i IP poboček **musí být z `.213` dosažitelné**.
+
+**Read-only endpointy** (žádná změna auth): `GET /system/comms`, `GET /system/wan`, `GET /crashes/status`.
 
 ## 8. Firewall — whitelist konkrétních IP
 
@@ -299,6 +328,8 @@ Invoke-RestMethod http://localhost:4000/health
 3. **`msnodesqlv8`** driver (NE výchozí tedious v `mssql`) — jediný způsob jak udělat pravou Windows Integrated Auth v doméně.
 4. **`npm ci`** vs **`npm install`** — `package-lock.json` zatím není v repu, takže workflow používá `npm install`.
 5. **`B-S-W-SQL-04`** je default instance, NE `\BCNEW` (BCNEW byl jen RDP alias title baru, mate to).
+6. **WAN monitor** = žádná nová infra (žádné tabulky, žádná OS závislost) — jen vestavěný `ping.exe` + `fetch`, řízeno z `settings`. Default speed test je **vypnutý** (`wan.speedtest_enabled=0`), protože stahuje reálný soubor a stojí pásmo. Viz krok 7c.
+7. **Rychlost linky pobočky NEMĚŘ přes router.** Měření per-pobočka rychlosti internetu přes MikroTik `/tool/fetch` **nefunguje** — RouterOS fetch je na hEX CPU/TLS-bound (naměřeno ~3.9 Mbps), takže odráží router, ne linku. Tudy už nechoď — zdraví linky pobočky je proto **jen latence + ztrátovost**.
 
 ## Hotovo
 
