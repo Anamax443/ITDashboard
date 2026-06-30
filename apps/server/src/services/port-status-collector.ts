@@ -27,7 +27,7 @@ function parsePortChecks(raw: string | undefined): PortCheck[] {
 
 // TCP connect that also returns the connect latency in ms, or null on
 // timeout/refused/error. Same shape as the other collectors' tcpProbe but timed.
-function tcpProbeTimed(host: string, port: number, timeoutMs: number): Promise<number | null> {
+export function tcpProbeTimed(host: string, port: number, timeoutMs: number): Promise<number | null> {
   return new Promise((resolve) => {
     const socket = new Socket();
     let settled = false;

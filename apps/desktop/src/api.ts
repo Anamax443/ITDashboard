@@ -812,6 +812,7 @@ export const api = {
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
   comms: () => jget<CommsResult>('/system/comms'),
   wan: () => jget<WanStatus>('/system/wan'),
+  servicePorts: () => jget<ServicePortMatrix>('/system/service-ports'),
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),
   collectorRunAll: () => jpost<CollectorRunAllResult>('/collector/run-all'),
   reachabilityRun: () => jpost<{ pcs: number; reachable: number; unreachable: number; durationMs: number }>('/reachability/run'),
@@ -1167,6 +1168,18 @@ export interface WanStatus {
   internet: WanLink | null;
   speedtestEnabled: boolean;
   speed: { downloadMbps: number | null; at: string } | null;
+  checkedAt: string | null;
+}
+
+export interface SvcCheck { label: string; port: number; category: string; }
+export interface SvcCell { total: number; open: number; closed: { ip: string; name: string | null }[]; }
+export interface ServicePortMatrix {
+  enabled: boolean;
+  intervalSec: number;
+  nextRunAt: string | null;
+  sites: string[];
+  checks: SvcCheck[];
+  cells: Record<string, Record<string, SvcCell>>;
   checkedAt: string | null;
 }
 

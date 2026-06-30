@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getPool } from '../db/pool.js';
 import { getAllSettings } from '../services/settings.js';
 import { getWanSnapshot, getWanNextRun } from '../services/wan-monitor.js';
+import { getSvcMatrix, getSvcNextRun } from '../services/service-port-matrix.js';
 
 // One communication channel's health (API pulls, FTP downloads, SQL, e-mail …).
 interface CommChannel {
@@ -171,6 +172,24 @@ export async function registerSystemRoutes(app: FastifyInstance) {
       speedtestEnabled: boolOn(s['wan.speedtest_enabled']),
       speed: snap?.speed ?? null,
       checkedAt: snap?.checkedAt ?? null,
+    };
+  });
+
+  // Per-branch service-port consistency matrix (printers/phones/… ports reachable
+  // the same way on every site). Curated ports only. Read-only.
+  app.get('/system/service-ports', async () => {
+    const s = await getAllSettings();
+    const enabled = boolOn(s['svcports.enabled'] ?? '1');
+    const iv = Number(s['svcports.interval_sec']);
+    const m = getSvcMatrix();
+    return {
+      enabled,
+      intervalSec: Number.isFinite(iv) && iv >= 120 ? iv : 900,
+      nextRunAt: enabled ? (getSvcNextRun()?.toISOString() ?? null) : null,
+      sites: m?.sites ?? [],
+      checks: m?.checks ?? [],
+      cells: m?.cells ?? {},
+      checkedAt: m?.checkedAt ?? null,
     };
   });
 }

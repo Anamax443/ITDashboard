@@ -19,6 +19,7 @@ import { SettingsPage } from './pages/SettingsPage.js';
 import { ServicesPage } from './pages/ServicesPage.js';
 import { CriticalServicesPage } from './pages/CriticalServicesPage.js';
 import { PortsPage } from './pages/PortsPage.js';
+import { ServicePortsMatrix } from './pages/ServicePortsMatrix.js';
 import { DevicesPage } from './pages/DevicesPage.js';
 import { NetworkPage } from './pages/NetworkPage.js';
 import { PresentationPage } from './pages/PresentationPage.js';
@@ -34,7 +35,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'devices' | 'deviceprinters' | 'printers' | 'network' | 'database' | 'perf' | 'activity' | 'crashes' | 'settings' | 'presentation';
+type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'svcports' | 'devices' | 'deviceprinters' | 'printers' | 'network' | 'database' | 'perf' | 'activity' | 'crashes' | 'settings' | 'presentation';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -291,6 +292,7 @@ export function App() {
             <button className={view === 'services' ? 'active' : ''} onClick={() => setView('services')}>{t('nav.services')}</button>
             <button className={view === 'critsvc' ? 'active' : ''} onClick={() => setView('critsvc')}>{t('nav.critsvc')}</button>
             <button className={view === 'ports' ? 'active' : ''} onClick={() => setView('ports')}>{t('nav.ports')}</button>
+            <button className={view === 'svcports' ? 'active' : ''} onClick={() => setView('svcports')}>{t('nav.svcports')}</button>
             <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}>{t('nav.devices')}</button>
             <button className={view === 'deviceprinters' ? 'active' : ''} onClick={() => setView('deviceprinters')}>{t('nav.devicePrinters')}</button>
             <button className={view === 'printers' ? 'active' : ''} onClick={() => setView('printers')}>{t('nav.printers')}</button>
@@ -511,6 +513,12 @@ export function App() {
       {view === 'ports' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <PortsPage onJumpToComputer={jumpToComputer} initialOnlyIssues={portsInitialOnlyIssues} onOnlyIssuesConsumed={() => setPortsInitialOnlyIssues(false)} />
+        </div>
+      )}
+
+      {view === 'svcports' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <ServicePortsMatrix />
         </div>
       )}
 
