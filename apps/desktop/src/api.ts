@@ -1044,7 +1044,21 @@ export const api = {
   crashDetail: (id: number) => jget<CrashDetail>(`/crashes/${id}`),
   crashRun: () => jpost<{ ok: boolean; collect: { pcs: number; collected: number; skipped: number } | null; analyze: { analyzed: number; failed: number } | null }>('/crashes/run'),
   crashDmpUrl: (id: number) => `${API_BASE}/crashes/${id}/dmp`,
+  crashStatus: () => jget<CrashStatus>('/crashes/status'),
 };
+
+export interface CrashStatus {
+  enabled: boolean;
+  intervalSec: number;
+  running: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  lastResult: { pcs: number; collected: number; skipped: number } | null;
+  lastSqlWriteAt: string | null;
+  lastAnalyzedAt: string | null;
+  total: number;
+  pending: number;
+}
 
 export interface CrashItem {
   id: number;

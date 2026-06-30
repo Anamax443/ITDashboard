@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
-import type { CrashItem, CrashDetail } from '../api.js';
+import type { CrashItem, CrashDetail, CrashStatus } from '../api.js';
 import { useI18n } from '../i18n.js';
 
 // White, theme-independent printable report for one crash — same approach as the
@@ -138,12 +138,14 @@ export function CrashesPage() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sel, setSel] = useState<CrashDetail | null>(null);
+  const [status, setStatus] = useState<CrashStatus | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
   const load = () => {
     setLoading(true);
     api.crashes().then((r) => { setItems(r.items); setError(null); })
       .catch((e) => setError(String(e))).finally(() => setLoading(false));
+    api.crashStatus().then(setStatus).catch(() => {});
   };
   useEffect(load, []);
 
@@ -159,6 +161,14 @@ export function CrashesPage() {
   };
 
   const fmt = (iso: string | null) => iso ? new Date(iso).toLocaleString() : '—';
+  // "za 12 min" / "in 12 min" (future) or "před …" / "… ago" (past).
+  const rel = (iso: string | null) => {
+    if (!iso) return '';
+    const ms = new Date(iso).getTime() - Date.now();
+    const m = Math.round(Math.abs(ms) / 60000);
+    const span = m < 1 ? t('crash.coll.soon') : m < 60 ? `${m} min` : m < 1440 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} d`;
+    return ms >= 0 ? `${t('crash.coll.in')} ${span}` : `${t('crash.coll.ago')} ${span}`;
+  };
   const culprit = (c: CrashItem) => c.culprit_process || c.culprit_module || (c.hot_function ?? '—');
 
   // --- aggregations ---
@@ -235,6 +245,18 @@ export function CrashesPage() {
       </div>
       <div className="panel-body" style={{ flex: 'none' }}>
         {error && <div style={{ color: 'var(--critical)', marginBottom: 10 }}>⚠ {error}</div>}
+
+        {/* stav sběru: poslední sběr · poslední zápis do SQL · další naplánovaný */}
+        {status && (
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14, padding: '8px 12px', background: 'rgba(120,130,150,.06)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12 }}>
+            <span>🛰 <span style={{ color: 'var(--text-dim)' }}>{t('crash.coll.lastCollect')}:</span> <b>{fmt(status.lastRunAt)}</b>{status.lastRunAt ? ` (${rel(status.lastRunAt)})` : ''}{status.lastResult ? ` · ${status.lastResult.collected}/${status.lastResult.pcs} PC` : ''}</span>
+            <span>💾 <span style={{ color: 'var(--text-dim)' }}>{t('crash.coll.lastWrite')}:</span> <b>{fmt(status.lastSqlWriteAt)}</b></span>
+            <span>⏭ <span style={{ color: 'var(--text-dim)' }}>{t('crash.coll.next')}:</span> {status.enabled
+              ? <b>{fmt(status.nextRunAt)} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>{rel(status.nextRunAt)}</span></b>
+              : <b style={{ color: 'var(--warning)' }}>{t('crash.coll.off')}</b>}</span>
+            <span style={{ color: 'var(--text-dim)', marginLeft: 'auto' }}>{t('crash.coll.every')} {Math.round(status.intervalSec / 60)} min{status.pending > 0 ? ` · ${status.pending} ${t('crash.coll.pending')}` : ''}</span>
+          </div>
+        )}
 
         {/* agregace */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>

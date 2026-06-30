@@ -20,6 +20,20 @@ let timer: NodeJS.Timeout | null = null;
 let stopped = false;
 const IDLE_RECHECK_SEC = 120;
 
+// Last/next collection cycle — surfaced on the Pády page so the operator sees when
+// dumps were last pulled and when the next scheduled pull is due (nextRunAt is set
+// by the scheduler from the live crash.interval_sec, so it tracks Settings changes).
+let lastRunAt: Date | null = null;
+let nextRunAt: Date | null = null;
+let lastResult: { pcs: number; collected: number; skipped: number } | null = null;
+
+export function getCrashCollectStatus(): {
+  running: boolean; lastRunAt: Date | null; nextRunAt: Date | null;
+  lastResult: { pcs: number; collected: number; skipped: number } | null;
+} {
+  return { running, lastRunAt, nextRunAt, lastResult };
+}
+
 interface Target { id: number; name: string }
 
 function boolSetting(v: string | undefined): boolean {
@@ -84,9 +98,11 @@ export async function runCrashDumpCollectOnce(): Promise<{ pcs: number; collecte
       }
     }
     if (collected > 0) logActivity('info', 'crash', `Sběr dumpů: ${collected} nových · ${skipped} už v DB · ${targets.length} PC`);
-    return { pcs: targets.length, collected, skipped };
+    lastResult = { pcs: targets.length, collected, skipped };
+    return lastResult;
   } finally {
     running = false;
+    lastRunAt = new Date();
   }
 }
 
@@ -108,7 +124,10 @@ export async function startCrashDumpSchedule(): Promise<void> {
     } catch (e) {
       console.error('Crash-dump collect error', e);
     }
-    if (!stopped) timer = setTimeout(loop, nextSec * 1000);
+    if (!stopped) {
+      timer = setTimeout(loop, nextSec * 1000);
+      nextRunAt = new Date(Date.now() + nextSec * 1000);
+    }
   };
   loop().catch((e) => console.error('Crash-dump collect error', e));
   console.log('Crash-dump collector scheduled (DB-driven enable/interval)');
