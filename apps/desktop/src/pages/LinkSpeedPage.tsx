@@ -25,6 +25,8 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const [okMbps, setOkMbps] = useState(200);
   const [devmap, setDevmap] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
+  const [fStatus, setFStatus] = useState<'all' | 'ok' | 'problem' | 'offline' | 'error'>('all');
+  const [fText, setFText] = useState('');
   const wasRunning = useRef(false);
 
   const loadStatus = () => api.linkSpeedStatus().then((s) => {
@@ -56,6 +58,17 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   };
   const running = status?.running ?? false;
 
+  const cat = (r: LinkSpeedHistoryRow): 'ok' | 'problem' | 'offline' | 'error' => {
+    if (r.error) return /offline/i.test(r.error) ? 'offline' : 'error';
+    if (r.up_mbps == null || r.down_mbps == null) return 'error';
+    return Math.min(r.up_mbps, r.down_mbps) >= okMbps ? 'ok' : 'problem';
+  };
+  const filtered = history.filter((r) => {
+    if (fStatus !== 'all' && cat(r) !== fStatus) return false;
+    if (fText.trim() && !`${r.target} ${nameOf(r.target)}`.toLowerCase().includes(fText.toLowerCase())) return false;
+    return true;
+  });
+
   const ipLink = (target: string) => {
     const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(target);
     const onClick = onJumpToComputer ? () => onJumpToComputer(nameOf(target) || target) : undefined;
@@ -79,13 +92,13 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   ];
   const headers = () => [t('linkspeed.target'), 'Hostname', '↑ Mb/s', '↓ Mb/s', t('linkspeed.verdict'), 'MB', t('linkspeed.when')];
   const exportCsv = () => {
-    const lines = [headers().join(';'), ...history.map((r) => rowVals(r).map((v) => String(v)).join(';'))];
+    const lines = [headers().join(';'), ...filtered.map((r) => rowVals(r).map((v) => String(v)).join(';'))];
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     triggerDownload(blob, `mereni-linky-${Date.now()}.csv`);
   };
   const reportHtml = () => {
     const esc = (s: unknown) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!));
-    const rows = history.map((r) => {
+    const rows = filtered.map((r) => {
       const v = verdict(r.up_mbps, r.down_mbps, r.error);
       return `<tr><td>${esc(r.target)}</td><td>${esc(nameOf(r.target))}</td><td>${r.up_mbps ?? '—'}</td><td>${r.down_mbps ?? '—'}</td><td class="${v.cls}">${esc(v.label)}</td><td>${r.size_mb}</td><td>${esc(fmt(r.measured_at))}</td></tr>`;
     }).join('');
@@ -109,9 +122,9 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
       <div className="panel-header">
         <h2>⚡ {t('linkspeed.title')}</h2>
         <div className="panel-actions">
-          <button className="refresh-btn" onClick={exportCsv} disabled={!history.length} title="CSV">⬇ CSV</button>
-          <button className="refresh-btn" onClick={saveHtml} disabled={!history.length} title="HTML">⬇ HTML</button>
-          <button className="refresh-btn" onClick={printPdf} disabled={!history.length} title="PDF / tisk">🖨 PDF</button>
+          <button className="refresh-btn" onClick={exportCsv} disabled={!filtered.length} title="CSV">⬇ CSV</button>
+          <button className="refresh-btn" onClick={saveHtml} disabled={!filtered.length} title="HTML">⬇ HTML</button>
+          <button className="refresh-btn" onClick={printPdf} disabled={!filtered.length} title="PDF / tisk">🖨 PDF</button>
           <button className="refresh-btn" onClick={() => { loadStatus(); loadHistory(); }}>↻</button>
         </div>
       </div>
@@ -140,14 +153,25 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
 
         {running && status && <div style={{ fontSize: 12, marginBottom: 10 }}>{t('linkspeed.progress')}: <b>{status.done}/{status.total}</b>{status.current ? ` · ${status.current}` : ''} <span style={{ color: 'var(--text-dim)' }}>({status.sizeMB} MB)</span></div>}
 
-        <h3 style={{ fontSize: 14, margin: '6px 0 8px' }}>{t('linkspeed.history')}</h3>
-        {history.length === 0 ? <div style={{ color: 'var(--text-dim)' }}>{t('linkspeed.noHistory')}</div> : (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', margin: '6px 0 8px' }}>
+          <h3 style={{ fontSize: 14, margin: 0 }}>{t('linkspeed.history')}</h3>
+          <select value={fStatus} onChange={(e) => setFStatus(e.target.value as typeof fStatus)} style={{ fontSize: 12, padding: '3px 6px' }}>
+            <option value="all">{t('linkspeed.f.all')}</option>
+            <option value="problem">{t('linkspeed.problem')}</option>
+            <option value="ok">OK</option>
+            <option value="offline">offline</option>
+            <option value="error">{t('linkspeed.f.error')}</option>
+          </select>
+          <input value={fText} onChange={(e) => setFText(e.target.value)} placeholder={t('linkspeed.f.search')} style={{ fontSize: 12, padding: '3px 6px', width: 200 }} />
+          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{filtered.length}/{history.length}</span>
+        </div>
+        {filtered.length === 0 ? <div style={{ color: 'var(--text-dim)' }}>{history.length ? t('linkspeed.f.none') : t('linkspeed.noHistory')}</div> : (
           <table style={{ borderCollapse: 'collapse', fontSize: 12.5, width: '100%', maxWidth: 920 }}>
             <thead><tr style={{ textAlign: 'left', color: 'var(--text-dim)' }}>
               <th style={{ padding: '4px 10px' }}>{t('linkspeed.target')}</th><th style={{ padding: '4px 10px' }}>Hostname</th><th style={{ padding: '4px 10px' }}>↑</th><th style={{ padding: '4px 10px' }}>↓</th><th style={{ padding: '4px 10px' }}>{t('linkspeed.verdict')}</th><th style={{ padding: '4px 10px' }}>MB</th><th style={{ padding: '4px 10px' }}>{t('linkspeed.when')}</th>
             </tr></thead>
             <tbody>
-              {history.map((r) => { const v = verdict(r.up_mbps, r.down_mbps, r.error); return (
+              {filtered.map((r) => { const v = verdict(r.up_mbps, r.down_mbps, r.error); return (
                 <tr key={r.id} style={{ borderTop: '1px solid var(--border)', fontFamily: 'Consolas, monospace' }}>
                   <td style={{ padding: '5px 10px' }}>{ipLink(r.target)}</td>
                   <td style={{ padding: '5px 10px' }}>{nameOf(r.target) || '—'}</td>

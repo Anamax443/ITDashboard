@@ -83,11 +83,11 @@ async function measure(target: string, sizeMB: number): Promise<LinkSpeedResult>
     const t2 = Date.now();
     await pipeline(createReadStream(remoteFile), createWriteStream(localBack));
     const downMs = Date.now() - t2;
-    await fs.rm(remoteFile, { force: true }).catch(() => {});
+    await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});   // remove our whole test dir on the client
     await fs.rm(localBack, { force: true }).catch(() => {});
     return { ...base, upMbps: mbps(bytes, upMs), downMbps: mbps(bytes, downMs), upMs, downMs };
   } catch (e) {
-    await fs.rm(remoteFile, { force: true }).catch(() => {});
+    await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});
     await fs.rm(localBack, { force: true }).catch(() => {});
     return { ...base, upMbps: null, downMbps: null, upMs: null, downMs: null, error: String(e).split('\n')[0]!.slice(0, 200) };
   }
