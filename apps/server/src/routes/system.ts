@@ -4,6 +4,7 @@ import { getAllSettings } from '../services/settings.js';
 import { getWanSnapshot, getWanNextRun } from '../services/wan-monitor.js';
 import { getSvcMatrix, getSvcNextRun } from '../services/service-port-matrix.js';
 import { runServiceDiscovery } from '../services/service-discovery.js';
+import { runLinkSpeedTest } from '../services/link-speed.js';
 
 // One communication channel's health (API pulls, FTP downloads, SQL, e-mail …).
 interface CommChannel {
@@ -201,5 +202,15 @@ export async function registerSystemRoutes(app: FastifyInstance) {
     const r = await runServiceDiscovery(!!req.body?.full);
     if (r === null) { reply.code(409); return { error: 'discovery_already_running' }; }
     return r;
+  });
+
+  // Real link-speed test to one live PC: write an N-MB file to its C$ over SMB and
+  // read it back, computing up/down Mb/s from the wall time. Deliberate transfer of
+  // real data over the branch link — invoked on demand. VERIFY-CORE prototype.
+  app.post<{ Body: { pc?: string; sizeMB?: number } }>('/system/linkspeed/test', async (req, reply) => {
+    const pc = (req.body?.pc ?? '').trim();
+    if (!pc) { reply.code(400); return { error: 'pc required' }; }
+    const sizeMB = Math.max(1, Math.min(1024, Number(req.body?.sizeMB) || 100));
+    return runLinkSpeedTest(pc, sizeMB);
   });
 }
