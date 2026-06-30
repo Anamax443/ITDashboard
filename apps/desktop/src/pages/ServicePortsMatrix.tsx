@@ -16,6 +16,7 @@ export function ServicePortsMatrix() {
   const [discoRunning, setDiscoRunning] = useState(false);
   const [discoFull, setDiscoFull] = useState(false);
   const [discoErr, setDiscoErr] = useState<string | null>(null);
+  const [sel, setSel] = useState<{ site: string; label: string } | null>(null);
 
   const runDiscovery = async () => {
     setDiscoRunning(true); setDiscoErr(null);
@@ -32,11 +33,9 @@ export function ServicePortsMatrix() {
   useEffect(() => { load(); const tmr = setInterval(load, 30_000); return () => clearInterval(tmr); }, []);
 
   const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
-  const cellOf = (site: string, label: string): SvcCell => data?.cells?.[site]?.[label] ?? { online: 0, open: 0, offline: 0, closed: [] };
+  const cellOf = (site: string, label: string): SvcCell => data?.cells?.[site]?.[label] ?? { online: 0, open: 0, offline: 0, devices: [] };
   const statusColor = (c: SvcCell) =>
     c.online === 0 ? 'var(--text-dim)' : c.open === c.online ? 'var(--ok)' : c.open === 0 ? 'var(--critical)' : 'var(--warning)';
-  const closedTitle = (c: SvcCell) =>
-    c.closed.length ? `${t('svcports.closed')}: ${c.closed.map((d) => d.ip + (d.name ? ` (${d.name})` : '')).join(', ')}` : '';
 
   return (
     <div className="panel" style={{ gridColumn: '1 / -1', gridRow: '1 / -1', display: 'flex', flexDirection: 'column', overflow: 'auto' }}>
@@ -72,7 +71,9 @@ export function ServicePortsMatrix() {
                   {data.checks.map((ch) => {
                     const c = cellOf(site, ch.label);
                     return (
-                      <td key={ch.label} title={closedTitle(c)} style={{ padding: '7px 14px', textAlign: 'center' }}>
+                      <td key={ch.label}
+                        onClick={() => c.devices.length && setSel(sel?.site === site && sel?.label === ch.label ? null : { site, label: ch.label })}
+                        style={{ padding: '7px 14px', textAlign: 'center', cursor: c.devices.length ? 'pointer' : 'default', background: sel?.site === site && sel?.label === ch.label ? 'rgba(120,130,150,.12)' : undefined }}>
                         {c.online === 0 && c.offline === 0 ? (
                           <span style={{ color: 'var(--text-dim)' }}>—</span>
                         ) : (
@@ -91,6 +92,33 @@ export function ServicePortsMatrix() {
         ) : (
           <div style={{ color: 'var(--text-dim)' }}>{loading ? '…' : t('svcports.empty')}</div>
         )}
+
+        {sel && (() => {
+          const c = cellOf(sel.site, sel.label);
+          const section = (st: 'closed' | 'offline' | 'open', label: string, col: string) => {
+            const ds = c.devices.filter((d) => d.state === st);
+            if (!ds.length) return null;
+            return (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: col, marginBottom: 3 }}>{label} ({ds.length})</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {ds.map((d) => <span key={d.ip} style={{ fontFamily: 'Consolas, monospace', fontSize: 11.5, padding: '2px 7px', borderRadius: 5, border: '1px solid var(--border)' }}>{d.ip}{d.name ? ` · ${d.name}` : ''}</span>)}
+                </div>
+              </div>
+            );
+          };
+          return (
+            <div style={{ marginTop: 12, border: '1px solid var(--accent)', borderRadius: 8, padding: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <strong style={{ fontSize: 13, fontFamily: 'Consolas, monospace' }}>{sel.site} · {sel.label}</strong>
+                <button className="refresh-btn" style={{ marginLeft: 'auto' }} onClick={() => setSel(null)}>✕</button>
+              </div>
+              {section('closed', t('svcports.list.closed'), 'var(--critical)')}
+              {section('offline', t('svcports.list.offline'), 'var(--text-dim)')}
+              {section('open', t('svcports.list.open'), 'var(--ok)')}
+            </div>
+          );
+        })()}
 
         <div style={{ display: 'flex', gap: 16, marginTop: 14, fontSize: 11.5, color: 'var(--text-dim)', flexWrap: 'wrap' }}>
           <span><span style={{ color: 'var(--ok)' }}>●</span> {t('svcports.legendOk')}</span>
