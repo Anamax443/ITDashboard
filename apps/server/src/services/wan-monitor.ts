@@ -73,24 +73,31 @@ function pingHost(ip: string, count: number, perPingTimeoutMs: number): Promise<
   });
 }
 
-// Download a file and compute throughput in Mbps. Streams the body so memory stays
-// flat; aborts after maxMs. Any failure → null (shown as "—" rather than a fake 0).
-async function measureDownloadMbps(url: string, maxMs: number): Promise<number | null> {
+// Measure download throughput in Mbps. A single TCP stream can't saturate a fast
+// link (TCP window / latency cap it), so — like fast.com / speedtest — we open
+// several PARALLEL streams and sum their bytes. Timing starts at the FIRST byte
+// received (not request start) to exclude DNS/TCP/TLS handshake and server TTFB,
+// which would otherwise drag the rate down on short transfers. Failure → null.
+async function measureDownloadMbps(url: string, streams: number, maxMs: number): Promise<number | null> {
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), maxMs);
+  let totalBytes = 0;
+  let firstByteAt = 0;
+  const CAP = 600 * 1024 * 1024;   // safety cap across all streams
   try {
-    const t0 = Date.now();
-    const res = await fetch(url, { signal: ctrl.signal, redirect: 'follow' });
-    if (!res.ok || !res.body) return null;
-    let bytes = 0;
-    const CAP = 200 * 1024 * 1024;   // safety cap so a bad URL can't stream forever
-    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
-      bytes += chunk.length;
-      if (bytes > CAP) break;
-    }
-    const sec = (Date.now() - t0) / 1000;
-    if (sec <= 0 || bytes <= 0) return null;
-    return Math.round((bytes * 8) / sec / 1e6 * 10) / 10;   // Mbps, 1 decimal
+    const runOne = async () => {
+      const res = await fetch(url, { signal: ctrl.signal, redirect: 'follow' });
+      if (!res.ok || !res.body) return;
+      for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+        if (firstByteAt === 0) firstByteAt = Date.now();
+        totalBytes += chunk.length;
+        if (totalBytes > CAP) { ctrl.abort(); break; }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.max(1, streams) }, () => runOne().catch(() => {})));
+    const sec = (Date.now() - firstByteAt) / 1000;
+    if (firstByteAt === 0 || totalBytes <= 0 || sec <= 0) return null;
+    return Math.round((totalBytes * 8) / sec / 1e6 * 10) / 10;   // Mbps, 1 decimal
   } catch {
     return null;
   } finally {
@@ -116,8 +123,9 @@ export async function runWanProbeOnce(): Promise<WanSnapshot | null> {
     if (boolSetting(s['wan.speedtest_enabled'])) {
       const ivSt = Math.max(60, Number(s['wan.speedtest_interval_sec']) || 1800);
       if (Date.now() - lastSpeedAtMs >= ivSt * 1000) {
-        const url = (s['wan.speedtest_url'] ?? 'https://speed.cloudflare.com/__down?bytes=10000000').trim();
-        speed = { downloadMbps: url ? await measureDownloadMbps(url, 25000) : null, at: new Date().toISOString() };
+        const url = (s['wan.speedtest_url'] ?? 'https://speed.cloudflare.com/__down?bytes=25000000').trim();
+        const streams = Math.max(1, Math.min(16, Number(s['wan.speedtest_streams']) || 6));
+        speed = { downloadMbps: url ? await measureDownloadMbps(url, streams, 30000) : null, at: new Date().toISOString() };
         lastSpeedAtMs = Date.now();
       }
     } else {

@@ -711,9 +711,14 @@ export function SettingsPage() {
               style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace' }}
             />
           </Field>
-          <Field label={t('settings.field.wanSpeedInterval')}>
-            <IntervalInput v={value('wan.speedtest_interval_sec', '1800')} onChange={(v) => set('wan.speedtest_interval_sec', v)} />
-          </Field>
+          <FieldGroup>
+            <Field label={t('settings.field.wanSpeedInterval')}>
+              <IntervalInput v={value('wan.speedtest_interval_sec', '1800')} onChange={(v) => set('wan.speedtest_interval_sec', v)} />
+            </Field>
+            <Field label={t('settings.field.wanSpeedStreams')}>
+              <input type="number" min={1} max={16} value={value('wan.speedtest_streams', '6')} onChange={(e) => set('wan.speedtest_streams', e.target.value)} style={{ ...fieldStyle, width: 90 }} />
+            </Field>
+          </FieldGroup>
           <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
             {t('settings.field.wanSpeedHelp')}
           </p>
