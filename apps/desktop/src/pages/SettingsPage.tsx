@@ -724,6 +724,34 @@ export function SettingsPage() {
           </p>
         </Section>
 
+        <Section title={t('settings.section.linkspeed')} description={t('settings.section.linkspeedDesc')}>
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.lsEnabled')}
+              checked={value('linkspeed.enabled', '0') === '1'}
+              onChange={(checked) => set('linkspeed.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.lsInterval')}>
+              <input type="number" min={1} value={value('linkspeed.interval_hours', '24')} onChange={(e) => set('linkspeed.interval_hours', e.target.value)} style={{ ...fieldStyle, width: 90 }} />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.lsTargets')}>
+            <textarea value={value('linkspeed.targets', '')} onChange={(e) => set('linkspeed.targets', e.target.value)} rows={2} placeholder={"all\n10.8.2.*"} style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }} />
+          </Field>
+          <Field label={t('settings.field.lsExclude')}>
+            <textarea value={value('linkspeed.exclude_hosts', '')} onChange={(e) => set('linkspeed.exclude_hosts', e.target.value)} rows={2} placeholder={"SERVER01\nNTB-VIP"} style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }} />
+          </Field>
+          <FieldGroup>
+            <Field label={t('settings.field.lsSize')}>
+              <input type="number" min={1} max={1024} value={value('linkspeed.size_mb', '100')} onChange={(e) => set('linkspeed.size_mb', e.target.value)} style={{ ...fieldStyle, width: 90 }} />
+            </Field>
+            <Field label={t('settings.field.lsOk')}>
+              <input type="number" min={1} value={value('linkspeed.ok_mbps', '200')} onChange={(e) => set('linkspeed.ok_mbps', e.target.value)} style={{ ...fieldStyle, width: 90 }} />
+            </Field>
+          </FieldGroup>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>{t('settings.field.lsHelp')}</p>
+        </Section>
+
         <Section title={t('settings.section.unifi')} description={t('settings.section.unifiDesc')}>
           <FieldGroup>
             <CheckField

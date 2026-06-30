@@ -3,6 +3,7 @@ import { pipeline } from 'node:stream/promises';
 import { randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { getPool } from '../db/pool.js';
+import { getAllSettings } from './settings.js';
 import { tcpProbeTimed } from './port-status-collector.js';
 
 // Quick "is it alive at all" ICMP check — to tell an OFFLINE host (no ping) from a
@@ -162,4 +163,60 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number): Prom
     batch.running = false;
     batch.current = null;
   }
+}
+
+// Resolve a raw target string into a concrete IP/host list: expand "all" to the IPs
+// of active PCs/servers, expand ranges, then drop any host on the exclusion list
+// (linkspeed.exclude_hosts — matched by hostname or IP). Shared by the route + the
+// scheduler so both behave the same.
+export async function expandTargets(raw: string): Promise<string[]> {
+  const s = await getAllSettings();
+  let allTargets: string[] = [];
+  if (/\ball\b/i.test(raw)) {
+    const pool = await getPool();
+    allTargets = (await pool.request().query<{ ip_address: string }>(
+      `SELECT ip_address FROM computers WHERE enabled=1 AND excluded=0 AND reachable=1 AND ip_address IS NOT NULL`)).recordset.map((r) => r.ip_address);
+  }
+  let targets = parseTargets(raw, allTargets);
+  const excl = new Set((s['linkspeed.exclude_hosts'] ?? '').split(/[,;\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean));
+  if (excl.size && targets.length) {
+    const pool = await getPool();
+    const ipToName = new Map<string, string>();
+    (await pool.request().query<{ ip_address: string; name: string }>(
+      `SELECT ip_address, name FROM computers WHERE ip_address IS NOT NULL`)).recordset.forEach((r) => ipToName.set(r.ip_address, (r.name || '').toLowerCase()));
+    targets = targets.filter((t) => !excl.has(t.toLowerCase()) && !excl.has(ipToName.get(t) || ''));
+  }
+  return targets;
+}
+
+// --- scheduled measurement -------------------------------------------------------
+const boolS = (v: string | undefined) => ['1', 'true', 'yes', 'on'].includes((v ?? '').toLowerCase());
+let schedTimer: NodeJS.Timeout | null = null;
+let schedStopped = false;
+let lastSchedRunMs = Date.now();   // treat boot as "just ran" so a restart doesn't trigger an immediate sweep
+
+export async function startLinkSpeedSchedule(): Promise<void> {
+  schedStopped = false;
+  if (schedTimer) { clearTimeout(schedTimer); schedTimer = null; }
+  const loop = async () => {
+    if (schedStopped) return;
+    try {
+      const s = await getAllSettings();
+      if (boolS(s['linkspeed.enabled'])) {
+        const hrs = Math.max(1, Number(s['linkspeed.interval_hours']) || 24);
+        const raw = (s['linkspeed.targets'] ?? '').trim();
+        if (raw && !batch.running && Date.now() - lastSchedRunMs >= hrs * 3600 * 1000) {
+          lastSchedRunMs = Date.now();
+          const sizeMB = Math.max(1, Math.min(1024, Number(s['linkspeed.size_mb']) || 100));
+          const targets = await expandTargets(raw);
+          if (targets.length) void runLinkSpeedBatch(targets, sizeMB);
+        }
+      }
+    } catch (e) {
+      console.error('link-speed schedule error', e);
+    }
+    if (!schedStopped) schedTimer = setTimeout(loop, 30 * 60 * 1000);   // re-check every 30 min; run gated by interval
+  };
+  schedTimer = setTimeout(loop, 5 * 60 * 1000);   // first check 5 min after boot
+  console.log('Link-speed schedule started (DB-driven enable/interval)');
 }

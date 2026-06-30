@@ -41,6 +41,7 @@ import { startCrashDumpSchedule } from './services/crash-dump-collector.js';
 import { startCrashAnalyzerSchedule } from './services/crash-analyzer-worker.js';
 import { startWanMonitorSchedule } from './services/wan-monitor.js';
 import { startServicePortsSchedule } from './services/service-port-matrix.js';
+import { startLinkSpeedSchedule } from './services/link-speed.js';
 
 const PORT = Number(process.env.API_PORT ?? 4000);
 const BIND = process.env.API_BIND ?? '0.0.0.0';
@@ -108,6 +109,7 @@ app.listen({ port: PORT, host: BIND }).then(async () => {
   await startCrashAnalyzerSchedule();
   await startWanMonitorSchedule();
   await startServicePortsSchedule();
+  await startLinkSpeedSchedule();
 }).catch((err) => {
   app.log.error(err);
   process.exit(1);
