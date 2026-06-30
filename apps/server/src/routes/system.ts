@@ -4,7 +4,7 @@ import { getAllSettings } from '../services/settings.js';
 import { getWanSnapshot, getWanNextRun } from '../services/wan-monitor.js';
 import { getSvcMatrix, getSvcNextRun } from '../services/service-port-matrix.js';
 import { runServiceDiscovery } from '../services/service-discovery.js';
-import { runLinkSpeedTest } from '../services/link-speed.js';
+import { runLinkSpeedTest, runLinkSpeedBatch, getLinkSpeedStatus, parseTargets } from '../services/link-speed.js';
 
 // One communication channel's health (API pulls, FTP downloads, SQL, e-mail …).
 interface CommChannel {
@@ -210,7 +210,44 @@ export async function registerSystemRoutes(app: FastifyInstance) {
   app.post<{ Body: { pc?: string; sizeMB?: number } }>('/system/linkspeed/test', async (req, reply) => {
     const pc = (req.body?.pc ?? '').trim();
     if (!pc) { reply.code(400); return { error: 'pc required' }; }
-    const sizeMB = Math.max(1, Math.min(1024, Number(req.body?.sizeMB) || 100));
+    const s = await getAllSettings();
+    const sizeMB = Math.max(1, Math.min(1024, Number(req.body?.sizeMB) || Number(s['linkspeed.size_mb']) || 100));
     return runLinkSpeedTest(pc, sizeMB);
+  });
+
+  // Batch link-speed test (the "Měření linky" page) — targets = IP list / range
+  // "10.8.2.*" / "10.8.2.180-182" / "all" (active PCs). Runs in the background;
+  // poll /system/linkspeed/status. Each target is SMB-prechecked, so dead IPs are
+  // skipped fast.
+  app.post<{ Body: { targets?: string; sizeMB?: number } }>('/system/linkspeed/run', async (req, reply) => {
+    if (getLinkSpeedStatus().running) { reply.code(409); return { error: 'already_running' }; }
+    const s = await getAllSettings();
+    const sizeMB = Math.max(1, Math.min(1024, Number(req.body?.sizeMB) || Number(s['linkspeed.size_mb']) || 100));
+    const raw = String(req.body?.targets ?? '');
+    let allNames: string[] = [];
+    if (/\ball\b/i.test(raw)) {
+      const pool = await getPool();
+      allNames = (await pool.request().query<{ name: string }>(
+        `SELECT name FROM computers WHERE enabled=1 AND excluded=0 AND (reachable=1 OR reachable IS NULL)`)).recordset.map((r) => r.name);
+    }
+    const targets = parseTargets(raw, allNames);
+    if (targets.length === 0) { reply.code(400); return { error: 'no targets' }; }
+    void runLinkSpeedBatch(targets, sizeMB);
+    return { started: true, count: targets.length };
+  });
+
+  app.get('/system/linkspeed/status', async () => {
+    const s = await getAllSettings();
+    return { okMbps: Number(s['linkspeed.ok_mbps']) || 200, defaultSizeMB: Number(s['linkspeed.size_mb']) || 100, ...getLinkSpeedStatus() };
+  });
+
+  app.get<{ Querystring: { limit?: string } }>('/system/linkspeed/history', async (req) => {
+    const limit = Math.max(1, Math.min(2000, Number(req.query?.limit) || 300));
+    const pool = await getPool();
+    const rows = (await pool.request().input('lim', limit).query(`
+      SELECT TOP (@lim) id, target, up_mbps, down_mbps, up_ms, down_ms, size_mb, error, measured_at
+      FROM link_speed_results ORDER BY id DESC`)).recordset;
+    const s = await getAllSettings();
+    return { okMbps: Number(s['linkspeed.ok_mbps']) || 200, items: rows };
   });
 }

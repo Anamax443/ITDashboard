@@ -20,6 +20,7 @@ import { ServicesPage } from './pages/ServicesPage.js';
 import { CriticalServicesPage } from './pages/CriticalServicesPage.js';
 import { PortsPage } from './pages/PortsPage.js';
 import { ServicePortsMatrix } from './pages/ServicePortsMatrix.js';
+import { LinkSpeedPage } from './pages/LinkSpeedPage.js';
 import { DevicesPage } from './pages/DevicesPage.js';
 import { NetworkPage } from './pages/NetworkPage.js';
 import { PresentationPage } from './pages/PresentationPage.js';
@@ -35,7 +36,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'svcports' | 'devices' | 'deviceprinters' | 'printers' | 'network' | 'database' | 'perf' | 'activity' | 'crashes' | 'settings' | 'presentation';
+type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'svcports' | 'linkspeed' | 'devices' | 'deviceprinters' | 'printers' | 'network' | 'database' | 'perf' | 'activity' | 'crashes' | 'settings' | 'presentation';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -301,6 +302,7 @@ export function App() {
             <button className={view === 'network' ? 'active' : ''} onClick={() => setView('network')}>{t('nav.network')}</button>
             <button className={view === 'database' ? 'active' : ''} onClick={() => setView('database')}>{t('nav.database')}</button>
             <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>{t('nav.perf')}</button>
+            <button className={view === 'linkspeed' ? 'active' : ''} onClick={() => setView('linkspeed')}>⚡ {t('nav.linkspeed')}</button>
             <button className={view === 'crashes' ? 'active' : ''} onClick={() => setView('crashes')}>💥 {t('nav.crashes')}</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>{t('nav.activity')}</button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>{t('nav.settings')}</button>
@@ -527,6 +529,12 @@ export function App() {
       {view === 'network' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <NetworkPage />
+        </div>
+      )}
+
+      {view === 'linkspeed' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <LinkSpeedPage />
         </div>
       )}
 

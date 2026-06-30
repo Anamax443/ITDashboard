@@ -813,6 +813,15 @@ export const api = {
   comms: () => jget<CommsResult>('/system/comms'),
   wan: () => jget<WanStatus>('/system/wan'),
   servicePorts: () => jget<ServicePortMatrix>('/system/service-ports'),
+  linkSpeedStatus: () => jget<LinkSpeedStatus>('/system/linkspeed/status'),
+  linkSpeedHistory: (limit = 300) => jget<{ okMbps: number; items: LinkSpeedHistoryRow[] }>(`/system/linkspeed/history?limit=${limit}`),
+  linkSpeedRun: async (targets: string, sizeMB?: number) => {
+    const r = await fetch(`${API_BASE}/system/linkspeed/run`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targets, sizeMB }),
+    });
+    if (!r.ok && r.status !== 409) throw new Error(`POST /system/linkspeed/run → ${r.status}`);
+    return r.json() as Promise<{ started?: boolean; count?: number; error?: string }>;
+  },
   serviceDiscovery: async (full: boolean) => {
     const r = await fetch(`${API_BASE}/system/service-discovery`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ full }),
@@ -1193,6 +1202,24 @@ export interface ServicePortMatrix {
 
 export interface DiscoCatProfile { category: string; sampled: { ip: string; name: string | null }[]; ports: { port: number; open: number; of: number }[]; }
 export interface DiscoResult { full: boolean; scannedPorts: number; durationMs: number; categories: DiscoCatProfile[]; ranAt: string; }
+
+export interface LinkSpeedResult {
+  target: string; sizeMB: number;
+  upMbps: number | null; downMbps: number | null;
+  upMs: number | null; downMs: number | null;
+  error?: string; measuredAt: string;
+}
+export interface LinkSpeedStatus {
+  okMbps: number; defaultSizeMB: number;
+  running: boolean; total: number; done: number; current: string | null;
+  sizeMB: number; startedAt: string | null; results: LinkSpeedResult[];
+}
+export interface LinkSpeedHistoryRow {
+  id: number; target: string;
+  up_mbps: number | null; down_mbps: number | null;
+  up_ms: number | null; down_ms: number | null;
+  size_mb: number; error: string | null; measured_at: string;
+}
 
 export interface CollectorRunResult {
   runId: number;
