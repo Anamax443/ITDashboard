@@ -1,6 +1,6 @@
 # Architecture
 
-> **Document state:** 2026-06-30 · live commit `e0db733` · migrations 001–064.
+> **Document state:** 2026-06-30 · live commit `d55552d` · migrations 001–070.
 
 ## Components
 
@@ -38,7 +38,7 @@ Navigation tabs (Dashboard, Events, Computers, Services, Critical Services, Port
 - Runs under a domain service account (suggested name `svc-itdashboard`).
 - Endpoints organised by feature (see `routes/*.ts`):
   - `health`, `version`, `docs`
-  - `system` (`routes/system.ts`, registered as `registerSystemRoutes`) — `GET /system/comms` (one aggregated ok/degraded/down view over six communication channels — database, mikrotik_rest, ftp, collector, email, unifi — derived from existing data, no new probing) and `GET /system/wan` (live WAN-link snapshot per branch + internet, thresholds, `nextRunAt`, optional speed). See **### Communication-channels health (`GET /system/comms`)** and **### Live WAN-link monitor**
+  - `system` (`routes/system.ts`, registered as `registerSystemRoutes`) — `GET /system/comms` (one aggregated ok/degraded/down view over six communication channels — database, mikrotik_rest, ftp, collector, email, unifi — derived from existing data, no new probing), `GET /system/wan` (live WAN-link snapshot per branch + internet, thresholds, `nextRunAt`, optional speed), and the **PARKED** `GET /system/service-ports` + `POST /system/service-discovery` (per-branch service-port matrix + discovery; route content present, nav tab hidden, scheduler idle — see **### Per-branch service-port matrix + service discovery (PARKED)**). See **### Communication-channels health (`GET /system/comms`)** and **### Live WAN-link monitor**
   - `events` — list, summary, top-ids, timeline, top-computers, pc-health (reinstall-candidate scoring)
   - `computers` — list, sync, sync/last, sync/history, :id/monitor (PATCH), monitor/bulk (POST)
   - `collector` — status, run, stop
@@ -68,6 +68,7 @@ Navigation tabs (Dashboard, Events, Computers, Services, Critical Services, Port
   - **Crash-dump collector** (`crash-dump-collector.ts`) — own timer (`crash.interval_sec`); reads `\\PC\C$\Windows\Minidump\*.dmp` from monitored reachable PCs (TCP/445 pre-flight, dedup by computer+filename), stores each new minidump as a blob in `crash_dumps` (status='pending'). Off by default (`crash.enabled`). See **### Crash-dump collection & analysis**
   - **Crash analyzer worker** (`crash-analyzer-worker.ts`) — separate timer (`crash.analyzer_interval_sec`); takes `pending` dumps, materializes the blob to a temp file, runs cdb, stores the parsed result + full output, deletes the temp
   - **WAN monitor** (`wan-monitor.ts`) — own self-rescheduling timer (`startWanMonitorSchedule`, same DB-driven enable/interval pattern as the crash collector). Every `wan.interval_sec` (default 60) it pings each branch router IP (parsed from `mikrotik.routers`) + one internet target (`wan.internet_target`, default `1.1.1.1`) from the app server via Windows `ping.exe`, parsing avg RTT + packet loss locale-independently from the `TTL=`/`[<=]NNms` lines. Holds **only the current snapshot in memory** — no DB table, no history. Optionally runs a central download speed test on its own slower `wan.speedtest_interval_sec` cadence. See **### Live WAN-link monitor**
+  - **Service-port matrix** (`service-port-matrix.ts`, **PARKED**) — own self-rescheduling timer (`startServicePortsSchedule`, the same DB-driven enable/interval pattern as the other standalone collectors). For each `svcports.checks` entry it TCP-probes that port (reusing the now-exported `tcpProbeTimed()` from `port-status-collector.ts`) on every categorized device of that category at each site, **from `.213` over the WAN**; in-memory snapshot only. Currently **idle** (`svcports.enabled=0`, migration 070). See **### Per-branch service-port matrix + service discovery (PARKED)**
   - **Retention purge** — a daily runner (`retention-runner.ts`) executes the `sp_purge_*` procs (events / activity_log / pc_user_history / perf_events / ad_sync_runs + events de-dup) at the configured hour. The Settings "Retenční politika" table now also offers a **per-row manual run** (▶ per row + Označit/Odznačit/Spustit označené); the 3 device-inventory tables (`dhcp_leases` ghosts, `device_ip_history`, `device_ping_samples`) — pruned inline by the collector — are exposed here as discrete steps that replicate the collector's exact DELETE queries (`POST /api/retention/run { steps }`)
 
 ### Database (MSSQL on the SQL host — `SQL_HOST` / `SQL_INSTANCE`, DB `SQL_DATABASE`)
@@ -513,6 +514,20 @@ RTT + packet loss are parsed **locale-independently** from the `TTL=` / `[<=]NNm
 
 **Rejected approach — per-branch speed via the router.** Measuring per-branch download speed with MikroTik `/tool/fetch` was evaluated and **not built**: the router is CPU/TLS-bound and tops out around **~3.9 Mbps**, so it measures the router, not the link. The central app-server speed test was built instead; per-branch throughput is intentionally out of scope.
 
+### Per-branch service-port matrix + service discovery (PARKED) (migrations 065–070, 2026-06-30)
+
+Built to answer "does every branch reach the services it needs — chiefly **do branches print to the HQ printer segment?**" as a per-branch × per-category port matrix, then **PARKED** the same day because the central vantage point can't measure what the question actually asks. The **code and endpoints stay**; the nav tab is hidden and `svcports.enabled=0` (migration 070) so the scheduler **idles**.
+
+**Service-port matrix (`services/service-port-matrix.ts`).** Started by `startServicePortsSchedule()` in `index.ts` (DB-driven enable/interval, the same self-rescheduling pattern as the other collectors). For each `svcports.checks` entry (`Label:port:category`, default printers `9100`/`515`/`631`) it TCP-probes that port — reusing **`tcpProbeTimed()`, now EXPORTED from `port-status-collector.ts`** — on every device of that category at each site (`mikrotik.routers`), **from `.213` over the WAN**. **In-memory snapshot only** (no table). Each cell counts **open / online**, with **offline counted separately**. It is **OUI-aware**: `svcports.voip_ouis` promotes Yealink / VoIP-OUI devices to an effective category `'voip'`. `GET /system/service-ports` returns the matrix; the frontend `ServicePortsMatrix.tsx` renders it, and a **cell click lists the actual devices** (open / closed / offline).
+
+**Service discovery (`services/service-discovery.ts`).** A **user-triggered** `POST /system/service-discovery` scans a **broad TCP port set** (1–1024 + common highs, or full 1–65535) on a **sample of reachable devices per category** to learn the real open-port profile (VoIP split out by OUI). **Read-only.**
+
+**Migrations 065–070** are **all settings seeds, no new tables**: **065** `service_port_matrix`, **066** drops the phone default, **067** `service_discovery` + `svcports.voip_ouis`, **068** voip web check, **069** drops the voip check, **070** **PARK** (`svcports.enabled=0`).
+
+**Why parked — central-vantage limit (a rejected-vantage decision, mirrors the WAN speed test).** The matrix probes **from the central `.213`**, so it measures **central → device** reachability, **not branch → device**. The real question ("do branches print to HQ / the printer segment?") requires measuring **from the branch router** (MikroTik `netwatch type=tcp` / REST ping), not from `.213` — the **same central-vantage limit** as the WAN speed test. Cross-site rows (HQ IPs appearing under a branch) are **expected** (branches route into HQ for printing). The org is **mid SD-WAN redesign** separating the printer network; **revive after the segment exists, measured from the branch routers**. Caveat: the `dhcp-reader` API user is **read-only** (`netwatch`/`test` needs a higher router policy).
+
+**VoIP out of scope from `.213`.** The IP phones are **Yealink** (OUI `24:9A:D8`) on a **T-Mobile cloud PBX (BroadWorks)**; they are **not in `dhcp_leases`** (separate voice network) and **unreachable from `.213`**, so VoIP monitoring is out of scope from the central server.
+
 ### Database overview route
 
 `GET /database` returns a whole-DB size breakdown (**data / log / used**) plus **per-table** `rows` / `reserved` / `data` figures, read from the SQL system catalog. A new **"Database"** tab renders it, giving the operator a storage-growth view without touching SSMS.
@@ -779,5 +794,11 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 062_wan_monitor | `wan.*` settings seed for the live WAN-link monitor: `wan.enabled` (1), `wan.interval_sec` (60), `wan.internet_target` (`1.1.1.1`), `wan.ping_count` (5), `wan.latency_warn_ms` (80), `wan.loss_warn_pct` (5) — branch + internet ping from the app server, current snapshot only (no history table). See **### Live WAN-link monitor** |
 | 063_wan_speedtest | optional central download speed test (OFF by default): `wan.speedtest_enabled` (0), `wan.speedtest_url` (Cloudflare `__down`), `wan.speedtest_interval_sec` (1800) — its own slow cadence, result Mbps carried in the WAN snapshot |
 | 064_wan_speedtest_streams | `wan.speedtest_streams` (6) — parallel fetch streams timed from first byte (a single stream / cold clock underestimates fast links); also bumps the default sample 10 MB → 25 MB **only** for installs still on the original default URL |
+| 065_service_port_matrix | `svcports.*` settings seed for the per-branch service-port matrix (`svcports.enabled`, `svcports.interval_sec`, `svcports.checks` default printers `9100`/`515`/`631` as `Label:port:category`) — central `.213`→device TCP probe per category per site, in-memory snapshot only (no table). See **### Per-branch service-port matrix + service discovery (PARKED)** |
+| 066_svcports_drop_phone | drops the phone default from `svcports.checks` (phones are off the central network / unreachable from `.213`) |
+| 067_service_discovery | `svcports.voip_ouis` seed (Yealink/VoIP OUI list for the OUI→`voip` category promotion) + service-discovery settings — backs the user-triggered `POST /system/service-discovery` broad-port scan; settings only, no table |
+| 068_svcports_voip_web | adds a VoIP web check to `svcports.checks` |
+| 069_svcports_drop_voip | drops the voip check (VoIP phones are out of scope from `.213` — separate voice network, not in `dhcp_leases`) |
+| 070_svcports_park | **PARK**: `svcports.enabled=0` — scheduler idles, nav tab hidden; code + endpoints retained. Central vantage measures `.213`→device, not branch→device (same limit as the WAN speed test); revive after the SD-WAN printer-segment split, measured from the branch routers |
 
 > `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).

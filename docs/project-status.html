@@ -42,7 +42,7 @@
 <body>
 <main>
   <h1>ITDashboard <span class="badge live">LIVE</span></h1>
-  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-30</span> <span class="pill">commit e0db733</span></p>
+  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-30</span> <span class="pill">commit d55552d</span></p>
 
   <h2>Stav nasazení</h2>
   <div class="grid">
@@ -106,6 +106,26 @@
     <tr><td>Sken podsítí (Devices)</td><td>Settings → rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť). Aktivní sken běží z aplikačního serveru; vzdálené podsítě přes ARP routerů. Nic v <code>.env</code>.</td></tr>
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
+
+  <h2>Poslední změny (2026-06-30) — Porty poboček (matice service-portů) + discovery sken — POSTAVENO a ODLOŽENO</h2>
+  <p class="sub" style="margin:0 0 .75rem">Matice <strong>lokalita × service-port</strong> „Porty poboček" (defaultně tiskové porty 9100/515/631) sondovaná z centrálního serveru, s prokliky na zařízení v buňce a OUI kategorií <strong>voip</strong>, plus operátorem spuštěný <strong>široký discovery sken portů</strong>. Zásahy do DB — <strong>migrace 065–070</strong>. Hotovo a vzápětí <strong>odloženo (parkováno)</strong>. Živý commit <span class="pill">d55552d</span>.</p>
+
+  <p style="margin:0 0 4px"><strong>Matice „Porty poboček" + service discovery sken</strong> <span class="pill">d55552d</span> <span class="pill">migrace 065–070</span></p>
+  <ul>
+    <li>Matice <strong>lokalita × service-port</strong> (výchozí tiskové porty <code>9100</code> / <code>515</code> / <code>631</code>) sondovaná <strong>z centrálního serveru</strong>, s <strong>prokliky na zařízení v buňce</strong> a <strong>OUI kategorií „voip"</strong>. Endpoint <code>GET /system/service-ports</code>.</li>
+    <li>Operátorem spuštěný <strong>široký discovery sken portů</strong> (<code>POST /system/service-discovery</code>).</li>
+    <li><strong>Aktuální stav — PARKOVÁNO:</strong> navigační záložka skrytá, <code>svcports.enabled=0</code>; veškerý kód i endpointy <strong>zachovány</strong>.</li>
+  </ul>
+
+  <div class="note">
+    <strong>Proč parkováno:</strong> matice měří z centrálního serveru (<code>.213</code>) = „dosáhne <strong>CENTRUM</strong> na X", nikoli „dosáhne na to <strong>POBOČKA</strong>". Reálná potřeba („tisknou pobočky do centrály / na tiskovou síť?") se musí měřit <strong>z pobočkového routeru</strong>. Cross-site řádky jsou <strong>očekávané</strong> (pobočky routují do centrály kvůli tisku), ne chyba. Organizace je uprostřed <strong>SD-WAN redesignu</strong> oddělujícího tiskovou síť — oživit <strong>až tisková síť vznikne</strong> a měřit z pobočkových routerů.
+  </div>
+  <div class="note">
+    <strong>VoIP zjištění:</strong> IP telefony jsou <strong>Yealink na cloudové ústředně T-Mobile</strong> (<code>xspweb.t-mobile.cz</code>); nejsou v inventáři a z <code>.213</code> nejsou dosažitelné — monitoring VoIP je z centrálního serveru <strong>mimo rozsah</strong> (stav žije v portálu/API T-Mobile).
+  </div>
+  <div class="note">
+    <strong>Migrace:</strong> nyní 001–070 — přidány <strong>065–070</strong> (Porty poboček / service-port matice + discovery sken, nastavení <code>svcports.*</code>).
+  </div>
 
   <h2>Poslední změny (2026-06-30) — dlaždice Komunikace, WAN monitor na pobočky, stránka Pády</h2>
   <p class="sub" style="margin:0 0 .75rem">Souhrnná <strong>dlaždice zdraví komunikačních kanálů</strong>, vždy viditelný <strong>WAN monitor dostupnosti poboček + internetu</strong> a vylepšená stránka <strong>Pády</strong> (status sběru + čitelný report s vysvětlením pádu). Zásahy do DB — <strong>migrace 062–064</strong>. Živý commit <span class="pill">e0db733</span>.</p>
@@ -498,7 +518,7 @@
     <a href="SETUP-SERVER.md">SETUP-SERVER.md</a> ·
     <a href="../HANDOFF.md">HANDOFF.md</a> ·
     <a href="../README.md">README.md</a><br>
-    Generováno jako statický status snapshot — 2026-06-30 (commit e0db733).<br>
+    Generováno jako statický status snapshot — 2026-06-30 (commit d55552d).<br>
     © 2026 Milan Trnka, IT
   </footer>
 </main>

@@ -6,7 +6,7 @@ Po dokončení už nikdy nemusíš na server ručně — každý `git push` do `
 
 **Real-world setup proběhl 2026-06-01.** Tento dokument reflektuje skutečnost, ne ideál.
 
-> **Stav dokumentu:** aktualizováno **2026-06-30**, živý commit `e0db733`, migrace **001–064**. Rebuild dle tohoto dokumentu postaví systém včetně WAN monitoru (krok 7c).
+> **Stav dokumentu:** aktualizováno **2026-06-30**, živý commit `d55552d`, migrace **001–070**. Rebuild dle tohoto dokumentu postaví systém včetně WAN monitoru (krok 7c) a parkovaného service-port maticového scheduleru (krok 7d).
 
 ## Reference deployment values
 
@@ -165,7 +165,7 @@ npm run build
 npm run migrate
 ```
 
-**Pozn. k migracím:** `npm run migrate` aplikuje aktuálně migrace **001–064** (idempotentní, doběhne i na čerstvé i na existující DB). Migrace **062 `wan_monitor`**, **063 `wan_speedtest`** a **064 `wan_speedtest_streams`** **nezakládají žádné nové tabulky** — pouze seedují řádky do `settings` (default hodnoty WAN monitoru, viz krok 7c). Vše je přepsatelné v Settings UI, takže ručně nic nastavovat nemusíš.
+**Pozn. k migracím:** `npm run migrate` aplikuje aktuálně migrace **001–070** (idempotentní, doběhne i na čerstvé i na existující DB). Migrace **062 `wan_monitor`**, **063 `wan_speedtest`** a **064 `wan_speedtest_streams`** **nezakládají žádné nové tabulky** — pouze seedují řádky do `settings` (default hodnoty WAN monitoru, viz krok 7c). Stejně tak migrace **065 `service_port_matrix`**, **066 `drop-phone-default`**, **067 `service_discovery`**, **068 `voip-web`**, **069 `drop-voip`** a **070 `park`** **nezakládají žádné nové tabulky** — jsou to čistě seedy/UPDATE řádků v `settings` (defaulty service-port matice + discovery, viz krok 7d; migrace **070** funkci parkuje nastavením `svcports.enabled=0`). Vše je přepsatelné v Settings UI, takže ručně nic nastavovat nemusíš.
 
 **Pozn:** Auto-deploy pipeline (GitHub Actions) **nečte** tento `.env` — migrace v deploy.yml berou `SQL_HOST` / `SQL_INSTANCE` / `SQL_DATABASE` z **repository Variables** (viz krok 10), ne ze souboru.
 
@@ -192,7 +192,7 @@ $pwdPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
 & $nssm set $svc AppStderr "$logsDir\api.err.log"
 & $nssm set $svc Start SERVICE_AUTO_START
 & $nssm set $svc ObjectName 'AXINETWORK\svc-itdashboard' $pwdPlain
-& $nssm set $svc Description 'ITDashboard API + eventlog collector + WAN monitor'
+& $nssm set $svc Description 'ITDashboard API + eventlog collector + WAN monitor + service-port scheduler (parked)'
 
 [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
 Remove-Variable pwdPlain, pwdSecure
@@ -242,6 +242,33 @@ API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog 
 **Egress / síť (rebuild-relevant):** WAN monitor pinguje IP pobočkových routerů a internetový cíl `1.1.1.1` **z `.213`**; volitelný speed test dělá odchozí **HTTPS** na `wan.speedtest_url` (default Cloudflare). Server už odchozí internet má (cdb symbol downloads pro analýzu pádů), takže pro defaulty **není potřeba žádné nové firewall pravidlo** — ale cíl speed testu i IP poboček **musí být z `.213` dosažitelné**.
 
 **Read-only endpointy** (žádná změna auth): `GET /system/comms`, `GET /system/wan`, `GET /crashes/status`.
+
+## 7d. Service-port matice — žádná nová infra, **parkováno** (jen egress, když se zapne)
+
+API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog collectoru a WAN monitoru i **service-port maticový scheduler** — `startServicePortsSchedule()` (per-pobočková matice dostupnosti služebních portů). Žádná nová tabulka, žádná nová OS závislost: TCP probe je **stejný** jako u tabu *Ports*, discovery scan používá globální `fetch`, který už v procesu je. Enable/interval je DB-driven jako u ostatních collectorů (řízeno řádky v `settings`), takže se to nasadí samo s každým deployem — **nic se ručně neinstaluje**.
+
+**Stav: PARKOVÁNO.** Migrace **070** nastavuje `svcports.enabled=0`, takže scheduler při startu nastartuje, ale **nic neběží**. Discovery scan je výhradně **user-triggered** (přes endpoint níže). Pokud rebuild postavíš dle tohoto dokumentu, funkce zůstává v klidu, dokud ji někdo vědomě v Settings UI nezapne.
+
+**Co dělá (po zapnutí):** ke každé pobočce sestaví matici dostupnosti služebních portů — defaultní checky míří na tiskárny (TCP **9100/515/631**) a VoIP telefony (Yealink OUI). Probe jde **odchozí TCP z `.213`** na IP zařízení z inventáře napříč pobočkovými sítěmi (přes stávající VPN). Discovery scan je širší user-triggered TCP sken vzorku zařízení.
+
+**Seedované settings** (migrace 065–070, vše přepsatelné v Settings UI; funkce parkovaná, takže většina je dormantní):
+
+| Klíč | Default | Význam |
+|------|---------|--------|
+| `svcports.enabled` | `0` | **parkováno** — scheduler neběží |
+| `svcports.interval_sec` | `900` | perioda matice (když zapnuto) |
+| `svcports.timeout_ms` | `1500` | timeout TCP probe |
+| `svcports.max_per_cell` | `60` | max zařízení na buňku matice |
+| `svcports.checks` | tiskárny `9100/515/631` | seznam port-checků |
+| `svcports.voip_ouis` | Yealink OUIs | OUI prefixy pro detekci VoIP telefonů |
+| `svcdisc.sample` | `8` | vzorek zařízení pro discovery |
+| `svcdisc.full_sample` | `3` | vzorek pro „full" discovery |
+| `svcdisc.timeout_ms` | `800` | timeout discovery probe |
+| `svcdisc.categories` | (seed) | kategorie portů pro discovery |
+
+**Egress / síť (rebuild-relevant):** když se matice **zapne**, dělá odchozí TCP connecty z `.213` na inventované IP zařízení napříč pobočkovými sítěmi (přes stávající VPN); discovery scan je úmyslný **user-triggered** probe sweep. Pro defaulty **není potřeba žádné nové firewall pravidlo** — ale je to záměrný probe sweep, ne pasivní čtení. Parkováno by default, takže nic neběží.
+
+**Read-only endpointy** (žádná změna auth): `GET /system/service-ports`, `POST /system/service-discovery` (user-triggered širší TCP sken vzorku zařízení).
 
 ## 8. Firewall — whitelist konkrétních IP
 
@@ -330,6 +357,8 @@ Invoke-RestMethod http://localhost:4000/health
 5. **`B-S-W-SQL-04`** je default instance, NE `\BCNEW` (BCNEW byl jen RDP alias title baru, mate to).
 6. **WAN monitor** = žádná nová infra (žádné tabulky, žádná OS závislost) — jen vestavěný `ping.exe` + `fetch`, řízeno z `settings`. Default speed test je **vypnutý** (`wan.speedtest_enabled=0`), protože stahuje reálný soubor a stojí pásmo. Viz krok 7c.
 7. **Rychlost linky pobočky NEMĚŘ přes router.** Měření per-pobočka rychlosti internetu přes MikroTik `/tool/fetch` **nefunguje** — RouterOS fetch je na hEX CPU/TLS-bound (naměřeno ~3.9 Mbps), takže odráží router, ne linku. Tudy už nechoď — zdraví linky pobočky je proto **jen latence + ztrátovost**.
+8. **Service-port matice je parkovaná (`svcports.enabled=0`, migrace 070).** Scheduler `startServicePortsSchedule()` startuje při boot, ale nic neběží — žádná nová infra, žádné nové firewall pravidlo (viz krok 7d). Discovery scan je výhradně user-triggered.
+9. **„Dosáhne POBOČKA na tiskárnu" se NEMĚŘÍ z centra.** Probe z `.213` testuje vantage centra, ne pobočky — pro „umí pobočka dosáhnout svou tiskárnu" je správné měřit **z pobočkového routeru** (MikroTik netwatch / REST ping), ne centrálně. Zamítnuto/odloženo do doby, než probíhající SD-WAN separace tiskové sítě nadefinuje tiskový segment. Pozor: API user `dhcp-reader` je **read-only**, takže router-side test/netwatch by potřeboval vyšší policy.
 
 ## Hotovo
 
