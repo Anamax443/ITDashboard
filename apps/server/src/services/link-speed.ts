@@ -60,7 +60,7 @@ async function archive(r: LinkSpeedResult): Promise<void> {
 async function measure(target: string, sizeMB: number): Promise<LinkSpeedResult> {
   const bytes = sizeMB * 1024 * 1024;
   const remoteDir = `\\\\${target}\\C$\\tmp\\itdash-speedtest`;
-  const remoteFile = `${remoteDir}\\spd-${sizeMB}.bin`;
+  const remoteFile = `${remoteDir}\\spd-${sizeMB}.tmp`;   // benign ext (not .bin) to lower AV friction
   const localBack = `${LOCAL_DIR}\\back-${target.replace(/[^\w.-]/g, '_')}.bin`;
   const base = { target, sizeMB, measuredAt: new Date().toISOString() };
   try {
@@ -102,7 +102,11 @@ export interface BatchState {
   results: LinkSpeedResult[];
 }
 let batch: BatchState = { running: false, total: 0, done: 0, current: null, sizeMB: 0, startedAt: null, results: [] };
+let stopRequested = false;
 export function getLinkSpeedStatus(): BatchState { return batch; }
+// Abort a running batch after the current PC finishes (an in-flight transfer isn't
+// cut mid-stream). Returns false if nothing is running.
+export function stopLinkSpeed(): boolean { if (!batch.running) return false; stopRequested = true; return true; }
 
 // "10.8.2.*", "10.8.2.180-182", bare IPs/hostnames, comma/space/newline separated.
 // "all" must be pre-expanded by the caller (to active computer names) and passed in.
@@ -124,9 +128,11 @@ export function parseTargets(raw: string, allNames: string[]): string[] {
 // and archived. Progress is polled via getLinkSpeedStatus().
 export async function runLinkSpeedBatch(targets: string[], sizeMB: number): Promise<void> {
   if (batch.running) return;
+  stopRequested = false;
   batch = { running: true, total: targets.length, done: 0, current: null, sizeMB, startedAt: new Date().toISOString(), results: [] };
   try {
     for (const t of targets) {
+      if (stopRequested) break;
       batch.current = t;
       let r: LinkSpeedResult;
       if ((await tcpProbeTimed(t, 445, 2500)) == null) {

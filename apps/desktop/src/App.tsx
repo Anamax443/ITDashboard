@@ -534,7 +534,7 @@ export function App() {
 
       {view === 'linkspeed' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
-          <LinkSpeedPage />
+          <LinkSpeedPage onJumpToComputer={jumpToComputer} />
         </div>
       )}
 

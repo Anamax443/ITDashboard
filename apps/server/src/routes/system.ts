@@ -4,7 +4,7 @@ import { getAllSettings } from '../services/settings.js';
 import { getWanSnapshot, getWanNextRun } from '../services/wan-monitor.js';
 import { getSvcMatrix, getSvcNextRun } from '../services/service-port-matrix.js';
 import { runServiceDiscovery } from '../services/service-discovery.js';
-import { runLinkSpeedTest, runLinkSpeedBatch, getLinkSpeedStatus, parseTargets } from '../services/link-speed.js';
+import { runLinkSpeedTest, runLinkSpeedBatch, getLinkSpeedStatus, stopLinkSpeed, parseTargets } from '../services/link-speed.js';
 
 // One communication channel's health (API pulls, FTP downloads, SQL, e-mail …).
 interface CommChannel {
@@ -250,4 +250,6 @@ export async function registerSystemRoutes(app: FastifyInstance) {
     const s = await getAllSettings();
     return { okMbps: Number(s['linkspeed.ok_mbps']) || 200, items: rows };
   });
+
+  app.post('/system/linkspeed/stop', async () => ({ stopped: stopLinkSpeed() }));
 }

@@ -814,6 +814,7 @@ export const api = {
   wan: () => jget<WanStatus>('/system/wan'),
   servicePorts: () => jget<ServicePortMatrix>('/system/service-ports'),
   linkSpeedStatus: () => jget<LinkSpeedStatus>('/system/linkspeed/status'),
+  linkSpeedStop: () => jpost<{ stopped: boolean }>('/system/linkspeed/stop'),
   linkSpeedHistory: (limit = 300) => jget<{ okMbps: number; items: LinkSpeedHistoryRow[] }>(`/system/linkspeed/history?limit=${limit}`),
   linkSpeedRun: async (targets: string, sizeMB?: number) => {
     const r = await fetch(`${API_BASE}/system/linkspeed/run`, {
