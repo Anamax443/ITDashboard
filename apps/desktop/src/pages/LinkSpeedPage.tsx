@@ -48,7 +48,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
   const nameOf = (target: string) => devmap.get(target) || (/^\d{1,3}(\.\d{1,3}){3}$/.test(target) ? '' : target);
   const verdict = (up: number | null, down: number | null, err?: string | null) => {
-    if (err) return { label: err, cls: 'bad', color: 'var(--critical)' };
+    if (err) { const off = /offline/i.test(err); return { label: err, cls: off ? '' : 'bad', color: off ? 'var(--text-dim)' : 'var(--critical)' }; }
     if (up == null || down == null) return { label: '—', cls: '', color: 'var(--text-dim)' };
     return Math.min(up, down) >= okMbps
       ? { label: 'OK', cls: 'ok', color: 'var(--ok)' }

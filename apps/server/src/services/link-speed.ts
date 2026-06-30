@@ -1,8 +1,19 @@
 import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { randomBytes } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { getPool } from '../db/pool.js';
 import { tcpProbeTimed } from './port-status-collector.js';
+
+// Quick "is it alive at all" ICMP check — to tell an OFFLINE host (no ping) from a
+// host that's up but has SMB/445 blocked (firewall), so offline doesn't read as a
+// port error. Locale-independent TTL= match.
+function pingAlive(host: string, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile('ping', ['-n', '1', '-w', String(timeoutMs), host], { windowsHide: true, timeout: timeoutMs + 2000, maxBuffer: 1 << 16 },
+      (_e, stdout) => resolve(/TTL=/i.test(stdout || '')));
+  });
+}
 
 // Real link-speed test to a live PC/notebook: write an N-MB file from .213 to the
 // client's C$ over SMB (= upload), read it back to .213 (= download), and compute
@@ -136,7 +147,10 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number): Prom
       batch.current = t;
       let r: LinkSpeedResult;
       if ((await tcpProbeTimed(t, 445, 2500)) == null) {
-        r = { target: t, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, error: 'SMB nedostupné (445)', measuredAt: new Date().toISOString() };
+        // Offline host (no ping) vs up-but-445-blocked — don't measure either, but
+        // label them differently so offline isn't mistaken for a port problem.
+        const alive = await pingAlive(t, 1000);
+        r = { target: t, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
       } else {
         r = await measure(t, sizeMB);
       }

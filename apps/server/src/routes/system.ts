@@ -224,13 +224,16 @@ export async function registerSystemRoutes(app: FastifyInstance) {
     const s = await getAllSettings();
     const sizeMB = Math.max(1, Math.min(1024, Number(req.body?.sizeMB) || Number(s['linkspeed.size_mb']) || 100));
     const raw = String(req.body?.targets ?? '');
-    let allNames: string[] = [];
+    // "all" = the IP of every ACTIVE PC/server (offline ones are skipped). The IP is
+    // the target so the operator sees cable-vs-WiFi from the address; hostname is
+    // resolved separately for the second column.
+    let allTargets: string[] = [];
     if (/\ball\b/i.test(raw)) {
       const pool = await getPool();
-      allNames = (await pool.request().query<{ name: string }>(
-        `SELECT name FROM computers WHERE enabled=1 AND excluded=0 AND (reachable=1 OR reachable IS NULL)`)).recordset.map((r) => r.name);
+      allTargets = (await pool.request().query<{ ip_address: string }>(
+        `SELECT ip_address FROM computers WHERE enabled=1 AND excluded=0 AND reachable=1 AND ip_address IS NOT NULL`)).recordset.map((r) => r.ip_address);
     }
-    const targets = parseTargets(raw, allNames);
+    const targets = parseTargets(raw, allTargets);
     if (targets.length === 0) { reply.code(400); return { error: 'no targets' }; }
     void runLinkSpeedBatch(targets, sizeMB);
     return { started: true, count: targets.length };
