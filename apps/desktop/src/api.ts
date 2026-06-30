@@ -1165,6 +1165,8 @@ export interface WanStatus {
   nextRunAt: string | null;
   branches: WanLink[];
   internet: WanLink | null;
+  speedtestEnabled: boolean;
+  speed: { downloadMbps: number | null; at: string } | null;
   checkedAt: string | null;
 }
 

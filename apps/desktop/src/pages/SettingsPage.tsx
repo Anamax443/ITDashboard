@@ -668,6 +668,57 @@ export function SettingsPage() {
           />
         </Section>
 
+        <Section title={t('settings.section.wan')} description={t('settings.section.wanDesc')}>
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.wanEnabled')}
+              checked={value('wan.enabled', '1') === '1'}
+              onChange={(checked) => set('wan.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.wanInterval')}>
+              <IntervalInput v={value('wan.interval_sec', '60')} onChange={(v) => set('wan.interval_sec', v)} />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.wanInternetTarget')}>
+            <input
+              type="text"
+              value={value('wan.internet_target', '1.1.1.1')}
+              onChange={(e) => set('wan.internet_target', e.target.value)}
+              placeholder="1.1.1.1"
+              style={{ ...fieldStyle, width: 240, fontFamily: 'Consolas, monospace' }}
+            />
+          </Field>
+          <FieldGroup>
+            <Field label={t('settings.field.wanLatencyWarn')}>
+              <input type="number" min={1} value={value('wan.latency_warn_ms', '80')} onChange={(e) => set('wan.latency_warn_ms', e.target.value)} style={{ ...fieldStyle, width: 90 }} />
+            </Field>
+            <Field label={t('settings.field.wanLossWarn')}>
+              <input type="number" min={0} max={100} value={value('wan.loss_warn_pct', '5')} onChange={(e) => set('wan.loss_warn_pct', e.target.value)} style={{ ...fieldStyle, width: 90 }} />
+            </Field>
+          </FieldGroup>
+
+          <div style={{ borderTop: '1px solid var(--border)', margin: '16px 0 10px' }} />
+          <CheckField
+            label={t('settings.field.wanSpeedEnabled')}
+            checked={value('wan.speedtest_enabled', '0') === '1'}
+            onChange={(checked) => set('wan.speedtest_enabled', checked ? '1' : '0')}
+          />
+          <Field label={t('settings.field.wanSpeedUrl')}>
+            <input
+              type="text"
+              value={value('wan.speedtest_url', 'https://speed.cloudflare.com/__down?bytes=10000000')}
+              onChange={(e) => set('wan.speedtest_url', e.target.value)}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace' }}
+            />
+          </Field>
+          <Field label={t('settings.field.wanSpeedInterval')}>
+            <IntervalInput v={value('wan.speedtest_interval_sec', '1800')} onChange={(v) => set('wan.speedtest_interval_sec', v)} />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '4px 0 0 0', lineHeight: 1.5 }}>
+            {t('settings.field.wanSpeedHelp')}
+          </p>
+        </Section>
+
         <Section title={t('settings.section.unifi')} description={t('settings.section.unifiDesc')}>
           <FieldGroup>
             <CheckField

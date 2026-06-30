@@ -14,9 +14,14 @@ export interface WanLink {
   lossPct: number;
   latencyMs: number | null;
 }
+export interface WanSpeed {
+  downloadMbps: number | null;
+  at: string;
+}
 export interface WanSnapshot {
   branches: WanLink[];
   internet: WanLink | null;
+  speed: WanSpeed | null;
   checkedAt: string;
 }
 
@@ -26,6 +31,12 @@ let timer: NodeJS.Timeout | null = null;
 let stopped = false;
 let nextRunAt: Date | null = null;
 const IDLE_RECHECK_SEC = 120;
+
+// Speed test runs on its own (much longer) cadence than the pings — it downloads a
+// real file, so it costs bandwidth. Gated by elapsed time; result is carried in
+// every snapshot until refreshed.
+let speed: WanSpeed | null = null;
+let lastSpeedAtMs = 0;
 
 const boolSetting = (v: string | undefined) => ['1', 'true', 'yes', 'on'].includes((v ?? '').toLowerCase());
 
@@ -62,6 +73,31 @@ function pingHost(ip: string, count: number, perPingTimeoutMs: number): Promise<
   });
 }
 
+// Download a file and compute throughput in Mbps. Streams the body so memory stays
+// flat; aborts after maxMs. Any failure → null (shown as "—" rather than a fake 0).
+async function measureDownloadMbps(url: string, maxMs: number): Promise<number | null> {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), maxMs);
+  try {
+    const t0 = Date.now();
+    const res = await fetch(url, { signal: ctrl.signal, redirect: 'follow' });
+    if (!res.ok || !res.body) return null;
+    let bytes = 0;
+    const CAP = 200 * 1024 * 1024;   // safety cap so a bad URL can't stream forever
+    for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+      bytes += chunk.length;
+      if (bytes > CAP) break;
+    }
+    const sec = (Date.now() - t0) / 1000;
+    if (sec <= 0 || bytes <= 0) return null;
+    return Math.round((bytes * 8) / sec / 1e6 * 10) / 10;   // Mbps, 1 decimal
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(to);
+  }
+}
+
 export async function runWanProbeOnce(): Promise<WanSnapshot | null> {
   if (running) return snapshot;
   running = true;
@@ -76,7 +112,19 @@ export async function runWanProbeOnce(): Promise<WanSnapshot | null> {
     let internet: WanLink | null = null;
     if (internetTarget) internet = { site: 'internet', ip: internetTarget, ...(await pingHost(internetTarget, count, perTimeout)) };
 
-    snapshot = { branches, internet, checkedAt: new Date().toISOString() };
+    // Optional, opt-in download speed test on its own (longer) cadence.
+    if (boolSetting(s['wan.speedtest_enabled'])) {
+      const ivSt = Math.max(60, Number(s['wan.speedtest_interval_sec']) || 1800);
+      if (Date.now() - lastSpeedAtMs >= ivSt * 1000) {
+        const url = (s['wan.speedtest_url'] ?? 'https://speed.cloudflare.com/__down?bytes=10000000').trim();
+        speed = { downloadMbps: url ? await measureDownloadMbps(url, 25000) : null, at: new Date().toISOString() };
+        lastSpeedAtMs = Date.now();
+      }
+    } else {
+      speed = null;
+    }
+
+    snapshot = { branches, internet, speed, checkedAt: new Date().toISOString() };
     return snapshot;
   } finally {
     running = false;

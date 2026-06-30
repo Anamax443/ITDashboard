@@ -23,6 +23,11 @@ export function WanHealth({ data }: { data: WanStatus | null }) {
         <div style={{ fontSize: 11.5, color: 'var(--text-dim)', fontFamily: 'Consolas, monospace', marginTop: 2 }}>
           {l.alive ? `${l.latencyMs ?? '—'} ms · ${l.lossPct}% ${t('wan.loss')}` : t('wan.down')}
         </div>
+        {isInternet && data.speedtestEnabled && (
+          <div style={{ fontSize: 11.5, color: 'var(--text-dim)', fontFamily: 'Consolas, monospace', marginTop: 1 }}>
+            ↓ {data.speed?.downloadMbps != null ? `${data.speed.downloadMbps} Mb/s` : '…'}
+          </div>
+        )}
       </div>
     );
   };

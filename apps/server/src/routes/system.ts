@@ -168,6 +168,8 @@ export async function registerSystemRoutes(app: FastifyInstance) {
       nextRunAt: enabled ? (getWanNextRun()?.toISOString() ?? null) : null,
       branches: snap?.branches ?? [],
       internet: snap?.internet ?? null,
+      speedtestEnabled: boolOn(s['wan.speedtest_enabled']),
+      speed: snap?.speed ?? null,
       checkedAt: snap?.checkedAt ?? null,
     };
   });
