@@ -813,6 +813,13 @@ export const api = {
   comms: () => jget<CommsResult>('/system/comms'),
   wan: () => jget<WanStatus>('/system/wan'),
   servicePorts: () => jget<ServicePortMatrix>('/system/service-ports'),
+  serviceDiscovery: async (full: boolean) => {
+    const r = await fetch(`${API_BASE}/system/service-discovery`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ full }),
+    });
+    if (!r.ok) throw new Error(`POST /system/service-discovery → ${r.status}`);
+    return r.json() as Promise<DiscoResult>;
+  },
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),
   collectorRunAll: () => jpost<CollectorRunAllResult>('/collector/run-all'),
   reachabilityRun: () => jpost<{ pcs: number; reachable: number; unreachable: number; durationMs: number }>('/reachability/run'),
@@ -1182,6 +1189,9 @@ export interface ServicePortMatrix {
   cells: Record<string, Record<string, SvcCell>>;
   checkedAt: string | null;
 }
+
+export interface DiscoCatProfile { category: string; sampled: { ip: string; name: string | null }[]; ports: { port: number; open: number; of: number }[]; }
+export interface DiscoResult { full: boolean; scannedPorts: number; durationMs: number; categories: DiscoCatProfile[]; ranAt: string; }
 
 export interface CollectorRunResult {
   runId: number;

@@ -3,6 +3,7 @@ import { getPool } from '../db/pool.js';
 import { getAllSettings } from '../services/settings.js';
 import { getWanSnapshot, getWanNextRun } from '../services/wan-monitor.js';
 import { getSvcMatrix, getSvcNextRun } from '../services/service-port-matrix.js';
+import { runServiceDiscovery } from '../services/service-discovery.js';
 
 // One communication channel's health (API pulls, FTP downloads, SQL, e-mail …).
 interface CommChannel {
@@ -191,5 +192,14 @@ export async function registerSystemRoutes(app: FastifyInstance) {
       cells: m?.cells ?? {},
       checkedAt: m?.checkedAt ?? null,
     };
+  });
+
+  // One-off service discovery: scan a broad TCP port set on a sample of devices per
+  // category to learn the real port profile. User-triggered (deliberate probe sweep).
+  // `full` = the whole 1–65535 range (slow); otherwise well-known + common highs.
+  app.post<{ Body: { full?: boolean } }>('/system/service-discovery', async (req, reply) => {
+    const r = await runServiceDiscovery(!!req.body?.full);
+    if (r === null) { reply.code(409); return { error: 'discovery_already_running' }; }
+    return r;
   });
 }

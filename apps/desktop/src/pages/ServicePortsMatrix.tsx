@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import type { ServicePortMatrix, SvcCell } from '../api.js';
+import type { ServicePortMatrix, SvcCell, DiscoResult } from '../api.js';
 import { useI18n } from '../i18n.js';
 
 // Per-branch service-port consistency matrix: rows = sites, columns = service
@@ -12,6 +12,17 @@ export function ServicePortsMatrix() {
   const [data, setData] = useState<ServicePortMatrix | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [disco, setDisco] = useState<DiscoResult | null>(null);
+  const [discoRunning, setDiscoRunning] = useState(false);
+  const [discoFull, setDiscoFull] = useState(false);
+  const [discoErr, setDiscoErr] = useState<string | null>(null);
+
+  const runDiscovery = async () => {
+    setDiscoRunning(true); setDiscoErr(null);
+    try { setDisco(await api.serviceDiscovery(discoFull)); }
+    catch (e) { setDiscoErr(String(e)); }
+    finally { setDiscoRunning(false); }
+  };
 
   const load = () => {
     setLoading(true);
@@ -88,6 +99,40 @@ export function ServicePortsMatrix() {
           <span style={{ color: 'var(--text-dim)' }}>N off = {t('svcports.legendOffline')}</span>
           <span style={{ color: 'var(--text-dim)' }}>— {t('svcports.legendEmpty')}</span>
           <span style={{ marginLeft: 'auto' }}>{t('svcports.checkedAt')} {fmt(data?.checkedAt ?? null)}</span>
+        </div>
+
+        <div style={{ marginTop: 22, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+            <strong style={{ fontSize: 14 }}>🔬 {t('svcports.disco.title')}</strong>
+            <label style={{ fontSize: 12, color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <input type="checkbox" checked={discoFull} onChange={(e) => setDiscoFull(e.target.checked)} disabled={discoRunning} />
+              {t('svcports.disco.full')}
+            </label>
+            <button className="refresh-btn" onClick={runDiscovery} disabled={discoRunning} style={{ fontWeight: 600 }}>
+              {discoRunning ? `… ${t('svcports.disco.running')}` : `▶ ${t('svcports.disco.run')}`}
+            </button>
+          </div>
+          <p style={{ fontSize: 11.5, color: 'var(--text-dim)', margin: '0 0 10px', maxWidth: 780, lineHeight: 1.5 }}>{t('svcports.disco.help')}</p>
+          {discoErr && <div style={{ color: 'var(--critical)', marginBottom: 8 }}>⚠ {discoErr}</div>}
+          {disco && (
+            <div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-dim)', marginBottom: 10 }}>
+                {disco.scannedPorts} {t('svcports.disco.ports')} · {(disco.durationMs / 1000).toFixed(1)} s · {fmt(disco.ranAt)}{disco.full ? ' · 1–65535' : ''}
+              </div>
+              {disco.categories.length === 0 ? <div style={{ color: 'var(--text-dim)' }}>{t('svcports.disco.none')}</div> : disco.categories.map((c) => (
+                <div key={c.category} style={{ marginBottom: 12 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{c.category} <span style={{ color: 'var(--text-dim)', fontWeight: 400, fontSize: 12 }}>({c.sampled.length} {t('svcports.disco.sampled')}: {c.sampled.map((d) => d.ip).join(', ')})</span></div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {c.ports.length === 0 ? <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>{t('svcports.disco.noports')}</span> : c.ports.map((p) => (
+                      <span key={p.port} title={`${p.open}/${p.of}`} style={{ fontFamily: 'Consolas, monospace', fontSize: 11.5, padding: '2px 7px', borderRadius: 5, border: '1px solid var(--border)', background: p.open === p.of ? 'rgba(63,214,140,.12)' : 'rgba(245,165,36,.12)' }}>
+                        {p.port} <span style={{ color: 'var(--text-dim)' }}>{p.open}/{p.of}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
