@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getPool } from '../db/pool.js';
 import { getAllSettings } from '../services/settings.js';
+import { getWanSnapshot, getWanNextRun } from '../services/wan-monitor.js';
 
 // One communication channel's health (API pulls, FTP downloads, SQL, e-mail …).
 interface CommChannel {
@@ -150,6 +151,24 @@ export async function registerSystemRoutes(app: FastifyInstance) {
       overall: okCount === considered.length ? 'ok' : 'degraded',
       okCount, total: considered.length, channels,
       checkedAt: new Date().toISOString(),
+    };
+  });
+
+  // Live WAN-link health to each branch + the internet (current snapshot only).
+  app.get('/system/wan', async () => {
+    const s = await getAllSettings();
+    const enabled = boolOn(s['wan.enabled'] ?? '1');
+    const iv = Number(s['wan.interval_sec']);
+    const snap = getWanSnapshot();
+    return {
+      enabled,
+      intervalSec: Number.isFinite(iv) && iv >= 30 ? iv : 60,
+      latencyWarnMs: Number(s['wan.latency_warn_ms']) || 80,
+      lossWarnPct: Number(s['wan.loss_warn_pct']) || 5,
+      nextRunAt: enabled ? (getWanNextRun()?.toISOString() ?? null) : null,
+      branches: snap?.branches ?? [],
+      internet: snap?.internet ?? null,
+      checkedAt: snap?.checkedAt ?? null,
     };
   });
 }

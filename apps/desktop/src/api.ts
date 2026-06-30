@@ -811,6 +811,7 @@ export const api = {
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
   comms: () => jget<CommsResult>('/system/comms'),
+  wan: () => jget<WanStatus>('/system/wan'),
   collectorRun: () => jpost<CollectorRunResult>('/collector/run'),
   collectorRunAll: () => jpost<CollectorRunAllResult>('/collector/run-all'),
   reachabilityRun: () => jpost<{ pcs: number; reachable: number; unreachable: number; durationMs: number }>('/reachability/run'),
@@ -1147,6 +1148,24 @@ export interface CommsResult {
   total: number;
   channels: CommChannel[];
   checkedAt: string;
+}
+
+export interface WanLink {
+  site: string;
+  ip: string;
+  alive: boolean;
+  lossPct: number;
+  latencyMs: number | null;
+}
+export interface WanStatus {
+  enabled: boolean;
+  intervalSec: number;
+  latencyWarnMs: number;
+  lossWarnPct: number;
+  nextRunAt: string | null;
+  branches: WanLink[];
+  internet: WanLink | null;
+  checkedAt: string | null;
 }
 
 export interface CollectorRunResult {
