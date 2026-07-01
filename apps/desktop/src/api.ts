@@ -815,6 +815,7 @@ export const api = {
   servicePorts: () => jget<ServicePortMatrix>('/system/service-ports'),
   linkSpeedStatus: () => jget<LinkSpeedStatus>('/system/linkspeed/status'),
   linkSpeedStop: () => jpost<{ stopped: boolean }>('/system/linkspeed/stop'),
+  linkSpeedReset: () => jpost<{ baselineAt: string }>('/system/linkspeed/reset'),
   linkSpeedSummary: () => jget<LinkSpeedSummary>('/system/linkspeed/summary'),
   linkSpeedHistory: (limit = 300) => jget<{ okMbps: number; items: LinkSpeedHistoryRow[] }>(`/system/linkspeed/history?limit=${limit}`),
   linkSpeedRun: async (targets: string, sizeMB?: number, cycles?: number) => {
@@ -1214,6 +1215,7 @@ export interface LinkSpeedResult {
 }
 export interface LinkSpeedStatus {
   okMbps: number; defaultSizeMB: number; defaultCycles: number;
+  baselineAt: string | null;
   running: boolean; total: number; done: number; current: string | null;
   cycleDone: number; cycleTotal: number;
   sizeMB: number; startedAt: string | null; results: LinkSpeedResult[];

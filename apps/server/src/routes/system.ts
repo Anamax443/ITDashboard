@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getPool } from '../db/pool.js';
-import { getAllSettings } from '../services/settings.js';
+import { getAllSettings, setSetting } from '../services/settings.js';
 import { getWanSnapshot, getWanNextRun } from '../services/wan-monitor.js';
 import { getSvcMatrix, getSvcNextRun } from '../services/service-port-matrix.js';
 import { runServiceDiscovery } from '../services/service-discovery.js';
@@ -240,8 +240,18 @@ export async function registerSystemRoutes(app: FastifyInstance) {
       okMbps: Number(s['linkspeed.ok_mbps']) || 200,
       defaultSizeMB: Number(s['linkspeed.size_mb']) || 100,
       defaultCycles: Math.max(1, Math.min(20, Number(s['linkspeed.cycles']) || 4)),
+      baselineAt: (s['linkspeed.baseline_at'] ?? '').trim() || null,
       ...getLinkSpeedStatus(),
     };
+  });
+
+  // Non-destructive "reset" of the summary/slowest view: records a baseline timestamp
+  // so the overview only counts measurements from now on. Historical rows are KEPT in
+  // SQL (the history grid still shows everything) — nothing is deleted.
+  app.post('/system/linkspeed/reset', async () => {
+    const baselineAt = new Date().toISOString();
+    await setSetting('linkspeed.baseline_at', baselineAt);
+    return { baselineAt };
   });
 
   app.get<{ Querystring: { limit?: string } }>('/system/linkspeed/history', async (req) => {
@@ -261,12 +271,24 @@ export async function registerSystemRoutes(app: FastifyInstance) {
   app.get('/system/linkspeed/summary', async () => {
     const s = await getAllSettings();
     const okMbps = Number(s['linkspeed.ok_mbps']) || 200;
+    const baselineAt = (s['linkspeed.baseline_at'] ?? '').trim();
     const pool = await getPool();
-    const rows = (await pool.request().query<{ target: string; up_mbps: number | null; down_mbps: number | null; error: string | null; measured_at: Date }>(`
-      WITH latest AS (
+    // Dedup by machine IDENTITY (a computer's name via ip match, else the raw target)
+    // so the same PC measured by both IP and hostname counts once. Baseline filter =
+    // the non-destructive reset (older rows stay in SQL, just excluded from the tally).
+    const rows = (await pool.request()
+      .input('baseline', baselineAt ? new Date(baselineAt) : null)
+      .query<{ target: string; up_mbps: number | null; down_mbps: number | null; error: string | null; measured_at: Date }>(`
+      WITH resolved AS (
+        SELECT l.id, l.target, l.up_mbps, l.down_mbps, l.error, l.measured_at,
+               COALESCE(LOWER(c.name), LOWER(l.target)) AS ident
+        FROM link_speed_results l
+        LEFT JOIN computers c ON c.ip_address = l.target
+        WHERE (@baseline IS NULL OR l.measured_at >= @baseline)),
+      latest AS (
         SELECT target, up_mbps, down_mbps, error, measured_at,
-               ROW_NUMBER() OVER (PARTITION BY target ORDER BY measured_at DESC, id DESC) AS rn
-        FROM link_speed_results)
+               ROW_NUMBER() OVER (PARTITION BY ident ORDER BY measured_at DESC, id DESC) AS rn
+        FROM resolved)
       SELECT target, up_mbps, down_mbps, error, measured_at FROM latest WHERE rn = 1`)).recordset;
     let ok = 0, slow = 0, offline = 0, errc = 0;
     const measured: { target: string; mbps: number }[] = [];

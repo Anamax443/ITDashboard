@@ -138,8 +138,21 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   });
   const toggleSort = (k: SortKey) => { if (sortKey === k) setSortDir((d) => (d === 1 ? -1 : 1)); else { setSortKey(k); setSortDir(1); } };
 
-  // Visual summary over the LATEST measurement per target (history is newest-first).
-  const latestPerTarget = (() => { const m = new Map<string, LinkSpeedHistoryRow>(); for (const r of history) if (!m.has(r.target)) m.set(r.target, r); return [...m.values()]; })();
+  // Visual summary over the LATEST measurement per machine IDENTITY (history is
+  // newest-first). Identity = the PC name (via IP→name map) or the raw target, so the
+  // same machine measured by both IP and hostname is counted ONCE. Rows older than the
+  // reset baseline are excluded (non-destructive reset — they stay in the history grid).
+  const baselineAt = status?.baselineAt ?? null;
+  const identityKey = (target: string) => (nameOf(target) || target).toLowerCase();
+  const latestPerTarget = (() => {
+    const m = new Map<string, LinkSpeedHistoryRow>();
+    for (const r of history) {
+      if (baselineAt && r.measured_at < baselineAt) continue;
+      const k = identityKey(r.target);
+      if (!m.has(k)) m.set(k, r);
+    }
+    return [...m.values()];
+  })();
   const counts = { ok: 0, problem: 0, offline: 0, error: 0 };
   for (const r of latestPerTarget) counts[cat(r)]++;
   const bars = latestPerTarget.filter((r) => r.up_mbps != null && r.down_mbps != null).map((r) => ({ r, mbps: Math.min(r.up_mbps!, r.down_mbps!) })).sort((a, b) => a.mbps - b.mbps).slice(0, 10);
@@ -157,6 +170,13 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
       if (r.error) setError(r.error === 'already_running' ? t('linkspeed.busy') : r.error);
       else { wasRunning.current = true; loadStatus(); }
     } catch (e) { setError(String(e)); }
+  };
+
+  // Non-destructive reset: records a baseline so the summary/slowest start fresh from
+  // now. Nothing is deleted from SQL — the history grid below still shows everything.
+  const doReset = async () => {
+    if (!window.confirm(t('linkspeed.resetConfirm'))) return;
+    await api.linkSpeedReset().then(loadStatus).catch(() => {});
   };
 
   // --- exports (the filtered+sorted view) ---
@@ -237,7 +257,11 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
 
         {latestPerTarget.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: 14, margin: '0 0 6px' }}>{t('linkspeed.overview')}</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 6px' }}>
+              <h3 style={{ fontSize: 14, margin: 0 }}>{t('linkspeed.overview')}</h3>
+              <button className="refresh-btn" onClick={doReset} title={t('linkspeed.resetHint')} style={{ fontSize: 11 }}>↺ {t('linkspeed.reset')}</button>
+              {baselineAt && <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{t('linkspeed.since')}: {fmt(baselineAt)}</span>}
+            </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: bars.length ? 10 : 0 }}>
               {([['ok', 'var(--ok)', 'OK'], ['problem', 'var(--critical)', t('linkspeed.problem')], ['offline', 'var(--text-dim)', 'offline'], ['error', 'var(--warning)', t('linkspeed.f.error')]] as const).map(([k, c, lab]) => (
                 <span key={k} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)' }}><b style={{ color: c }}>{counts[k as keyof typeof counts]}</b> {lab}</span>
