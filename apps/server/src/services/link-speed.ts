@@ -441,11 +441,20 @@ export async function expandTargets(raw: string, opts?: { ignoreExclusions?: boo
 const boolS = (v: string | undefined) => ['1', 'true', 'yes', 'on'].includes((v ?? '').toLowerCase());
 let schedTimer: NodeJS.Timeout | null = null;
 let schedStopped = false;
-let lastSchedRunMs = Date.now();   // treat boot as "just ran" so a restart doesn't trigger an immediate sweep
+// "When did link-speed last run" — PERSISTED via the DB (newest measurement), not the
+// process boot time. Otherwise every service restart (e.g. a deploy) reset the clock, so
+// with an interval in hours and frequent restarts the scheduled sweep never fired.
+let lastSchedRunMs = Date.now();
 
 export async function startLinkSpeedSchedule(): Promise<void> {
   schedStopped = false;
   if (schedTimer) { clearTimeout(schedTimer); schedTimer = null; }
+  // Seed from the last actual measurement so restarts don't postpone the sweep.
+  try {
+    const pool = await getPool();
+    const row = (await pool.request().query<{ t: Date | null }>(`SELECT MAX(measured_at) AS t FROM link_speed_results`)).recordset[0];
+    lastSchedRunMs = row?.t ? new Date(row.t).getTime() : 0;   // no history → 0 = run at the next in-window check
+  } catch { lastSchedRunMs = 0; }
   const loop = async () => {
     if (schedStopped) return;
     try {
