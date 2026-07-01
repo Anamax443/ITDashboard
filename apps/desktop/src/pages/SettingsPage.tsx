@@ -770,6 +770,13 @@ export function SettingsPage() {
           <Field label={t('settings.field.lsExclude')}>
             <textarea value={value('linkspeed.exclude_hosts', '')} onChange={(e) => set('linkspeed.exclude_hosts', e.target.value)} rows={2} placeholder={"SERVER01\n10.8.2.254\n10.8.2.180-182"} style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }} />
           </Field>
+          <Field label={t('settings.field.lsMethods')}>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <CheckField label={t('settings.field.lsMethodSmb')} checked={value('linkspeed.method.smb', '1') === '1'} onChange={(c) => set('linkspeed.method.smb', c ? '1' : '0')} />
+              <CheckField label={t('settings.field.lsMethodRobo')} checked={value('linkspeed.method.robocopy', '0') === '1'} onChange={(c) => set('linkspeed.method.robocopy', c ? '1' : '0')} />
+              <CheckField label={t('settings.field.lsMethodNic')} checked={value('linkspeed.method.nic', '1') === '1'} onChange={(c) => set('linkspeed.method.nic', c ? '1' : '0')} />
+            </div>
+          </Field>
           <FieldGroup>
             <Field label={t('settings.field.lsSize')}>
               <input type="number" min={1} max={1024} value={value('linkspeed.size_mb', '100')} onChange={(e) => set('linkspeed.size_mb', e.target.value)} style={{ ...fieldStyle, width: 90 }} />

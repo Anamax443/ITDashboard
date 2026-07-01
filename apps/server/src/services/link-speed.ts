@@ -1,7 +1,7 @@
 import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { randomBytes } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { getPool } from '../db/pool.js';
 import { getAllSettings } from './settings.js';
@@ -33,13 +33,27 @@ function pingLatency(host: string, timeoutMs: number): Promise<number | null> {
 // Cycles + test filename come from settings (linkspeed.cycles / linkspeed.filename).
 // pauseMs = idle gap left between consecutive PCs in a batch (linkspeed.pause_ms) —
 // spaces out the load on .213's uplink and lets other collectors slip in between.
-async function readOpts(): Promise<{ cycles: number; filename: string; okMbps: number; pauseMs: number }> {
+// Which measurement methods run — each independently toggleable in Settings.
+// SMB (single-stream up/down) + NIC (negotiated port speed) default ON; robocopy
+// (/MT multi-file, saturates fast links) default OFF (heavier).
+export interface LinkMethods { smb: boolean; robocopy: boolean; nic: boolean }
+const settingOn = (v: string | undefined, def: boolean) =>
+  v == null || v === '' ? def : ['1', 'true', 'yes', 'on'].includes(v.toLowerCase());
+
+async function readOpts(): Promise<{ cycles: number; filename: string; okMbps: number; pauseMs: number; methods: LinkMethods }> {
   const s = await getAllSettings();
   const cycles = Math.max(1, Math.min(20, Number(s['linkspeed.cycles']) || 4));
   const filename = ((s['linkspeed.filename'] ?? '').trim() || 'itdash-speedtest.tmp').replace(/[\\/:*?"<>|]/g, '_');
   const okMbps = Number(s['linkspeed.ok_mbps']) || 200;
   const pauseMs = Math.max(0, Math.min(60000, Number(s['linkspeed.pause_ms']) || 0));
-  return { cycles, filename, okMbps, pauseMs };
+  const methods: LinkMethods = {
+    smb: settingOn(s['linkspeed.method.smb'], true),
+    robocopy: settingOn(s['linkspeed.method.robocopy'], false),
+    nic: settingOn(s['linkspeed.method.nic'], true),
+  };
+  // Never end up with nothing to do — if the operator turned everything off, fall back to SMB.
+  if (!methods.smb && !methods.robocopy && !methods.nic) methods.smb = true;
+  return { cycles, filename, okMbps, pauseMs, methods };
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -70,12 +84,16 @@ export interface LinkSpeedResult {
   ip: string | null;     // resolved current IP of the target
   hostname: string | null; // resolved computer name of the target
   sizeMB: number;
-  upMbps: number | null;
+  upMbps: number | null;      // SMB single-stream
   downMbps: number | null;
   upMs: number | null;
   downMs: number | null;
   latencyMs: number | null;
   cycles: number;
+  nicMbps: number | null;     // negotiated NIC link speed (port), via DCOM CIM
+  nicName: string | null;     // the adapter that answered on the target IP
+  roboUpMbps: number | null;  // robocopy /MT multi-file throughput
+  roboDownMbps: number | null;
   error?: string;
   measuredAt: string;
 }
@@ -122,50 +140,148 @@ async function ensureSource(sizeMB: number): Promise<string> {
 
 const mbps = (bytes: number, ms: number) => (ms > 0 ? Math.round((bytes * 8) / (ms / 1000) / 1e6 * 10) / 10 : null);
 
+// Cache N random chunk files (for robocopy /MT, which parallelises across FILES — a
+// single file wouldn't benefit). sizeMB split into ROBO_CHUNKS files under a per-size dir.
+const ROBO_CHUNKS = 8;
+async function ensureChunkSource(sizeMB: number): Promise<string> {
+  const dir = `${LOCAL_DIR}\\chunks-${sizeMB}`;
+  const per = Math.max(1, Math.floor(sizeMB / ROBO_CHUNKS));
+  await fs.mkdir(dir, { recursive: true });
+  try {
+    const files = (await fs.readdir(dir)).filter((f) => f.endsWith('.bin'));
+    if (files.length === ROBO_CHUNKS) return dir;   // already built
+  } catch { /* build */ }
+  for (let i = 0; i < ROBO_CHUNKS; i++) {
+    const bytes = i === ROBO_CHUNKS - 1 ? (sizeMB - per * (ROBO_CHUNKS - 1)) : per;   // last chunk carries the remainder
+    await fs.writeFile(`${dir}\\chunk-${i}.bin`, randomBytes(Math.max(1, bytes) * 1024 * 1024));
+  }
+  return dir;
+}
+
+// Run robocopy and return wall-clock ms for the whole directory copy, or null on a hard
+// error. Robocopy exit codes 0-7 mean success (1 = files copied); >=8 is a real failure —
+// so we can't rely on the process exit code the way execFile does.
+function runRobocopy(srcDir: string, dstDir: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const t0 = Date.now();
+    const p = spawn('robocopy', [srcDir, dstDir, '/MT:16', '/NP', '/R:0', '/W:0', '/NJH', '/NJS', '/NDL', '/NFL'], { windowsHide: true });
+    p.on('error', () => resolve(null));
+    p.on('close', (code) => resolve((code ?? 16) < 8 ? Date.now() - t0 : null));
+  });
+}
+
+// robocopy /MT up (→ client C$) + down (→ back to .213), Mb/s from wall time.
+async function roboMeasure(target: string, sizeMB: number, remoteBase: string): Promise<{ up: number | null; down: number | null }> {
+  const bytes = sizeMB * 1024 * 1024;
+  const srcDir = await ensureChunkSource(sizeMB);
+  const remoteDir = `${remoteBase}\\rc`;
+  const backDir = `${LOCAL_DIR}\\rcback-${target.replace(/[^\w.-]/g, '_')}`;
+  await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});
+  await fs.rm(backDir, { recursive: true, force: true }).catch(() => {});
+  const upMs = await runRobocopy(srcDir, remoteDir);
+  const downMs = upMs == null ? null : await runRobocopy(remoteDir, backDir);
+  await fs.rm(backDir, { recursive: true, force: true }).catch(() => {});
+  return { up: upMs == null ? null : mbps(bytes, upMs), down: downMs == null ? null : mbps(bytes, downMs) };
+}
+
+// Read the negotiated link speed of the NIC that owns the target IP, via a DCOM CIM
+// session (same transport the disk/eventlog collectors use — plain Get-CimInstance
+// would use WinRM, which most domain PCs don't have). Best-effort: any failure (DC
+// denies DCOM, host offline, no matching adapter) resolves to null, never throws.
+function readNicSpeed(host: string, ip: string | null): Promise<{ mbps: number | null; name: string | null } | null> {
+  const ps = `
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$opt = New-CimSessionOption -Protocol Dcom
+$s = New-CimSession -ComputerName '${host}' -SessionOption $opt -ErrorAction Stop
+try {
+  $ip = '${ip ?? ''}'
+  $na = $null
+  if ($ip) {
+    $cfg = Get-CimInstance -CimSession $s Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=true' -ErrorAction SilentlyContinue |
+      Where-Object { $_.IPAddress -contains $ip } | Select-Object -First 1
+    if ($cfg) { $na = Get-CimInstance -CimSession $s Win32_NetworkAdapter -Filter ("Index=" + $cfg.Index) -ErrorAction SilentlyContinue }
+  }
+  if (-not $na) {
+    $na = Get-CimInstance -CimSession $s Win32_NetworkAdapter -Filter 'NetConnectionStatus=2' -ErrorAction SilentlyContinue |
+      Where-Object { $_.Speed -gt 0 } | Sort-Object Speed -Descending | Select-Object -First 1
+  }
+  if ($na) { "$([int64]$na.Speed)|$($na.Name)" } else { "" }
+} finally { Remove-CimSession $s }
+`;
+  return new Promise((resolve) => {
+    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 12000 });
+    let out = '';
+    p.stdout.on('data', (b) => (out += b.toString('utf8')));
+    p.on('error', () => resolve(null));
+    p.on('close', () => {
+      const line = out.trim().split(/\r?\n/).find((l) => l.includes('|'));
+      if (!line) return resolve(null);
+      const [bps, ...rest] = line.split('|');
+      const speed = Number(bps);
+      resolve({ mbps: Number.isFinite(speed) && speed > 0 ? Math.round(speed / 1e6) : null, name: rest.join('|').trim() || null });
+    });
+  });
+}
+
 async function archive(r: LinkSpeedResult): Promise<void> {
   try {
     const pool = await getPool();
     await pool.request()
       .input('t', r.target).input('ip', r.ip).input('hn', r.hostname).input('up', r.upMbps).input('down', r.downMbps)
       .input('ums', r.upMs).input('dms', r.downMs).input('sz', r.sizeMB).input('err', r.error ?? null).input('lat', r.latencyMs).input('cyc', r.cycles)
-      .query(`INSERT INTO link_speed_results (target, ip_address, host_name, up_mbps, down_mbps, up_ms, down_ms, size_mb, error, latency_ms, cycles)
-              VALUES (@t,@ip,@hn,@up,@down,@ums,@dms,@sz,@err,@lat,@cyc)`);
+      .input('nic', r.nicMbps).input('nicn', r.nicName).input('rup', r.roboUpMbps).input('rdown', r.roboDownMbps)
+      .query(`INSERT INTO link_speed_results (target, ip_address, host_name, up_mbps, down_mbps, up_ms, down_ms, size_mb, error, latency_ms, cycles, nic_mbps, nic_name, robo_up_mbps, robo_down_mbps)
+              VALUES (@t,@ip,@hn,@up,@down,@ums,@dms,@sz,@err,@lat,@cyc,@nic,@nicn,@rup,@rdown)`);
   } catch (e) { console.error('link-speed archive failed', e); }
 }
 
 // One measurement (no concurrency guard) — N cycles of write-to-C$ + read-back, keep
 // the BEST up/down of the cycles (transient AV/CPU dips don't understate capacity),
 // plus a ping RTT. The test file (linkspeed.filename) is deleted afterwards.
-async function measure(target: string, sizeMB: number, cycles: number, filename: string, ep: { ip: string | null; hostname: string | null }, onCycle?: (done: number) => void): Promise<LinkSpeedResult> {
+async function measure(target: string, sizeMB: number, cycles: number, filename: string, ep: { ip: string | null; hostname: string | null }, methods: LinkMethods, onCycle?: (done: number) => void): Promise<LinkSpeedResult> {
   const bytes = sizeMB * 1024 * 1024;
   const remoteDir = `\\\\${target}\\C$\\tmp\\itdash-speedtest`;
   const remoteFile = `${remoteDir}\\${filename}`;
   const localBack = `${LOCAL_DIR}\\back-${target.replace(/[^\w.-]/g, '_')}.bin`;
   const base = { target, ip: ep.ip, hostname: ep.hostname, sizeMB, cycles, measuredAt: new Date().toISOString() };
+
+  // NIC negotiated speed is transport-independent (DCOM, not C$) — read it first and
+  // keep it even if the SMB/robocopy part later fails (e.g. C$ denied). Best-effort.
+  let nicMbps: number | null = null, nicName: string | null = null;
+  if (methods.nic) { const nic = await readNicSpeed(target, ep.ip).catch(() => null); if (nic) { nicMbps = nic.mbps; nicName = nic.name; } }
+
+  const needsShare = methods.smb || methods.robocopy;
   try {
-    const src = await ensureSource(sizeMB);
-    await fs.mkdir(remoteDir, { recursive: true });
     let bU = 0, bUms: number | null = null, bD = 0, bDms: number | null = null;
-    for (let i = 0; i < cycles; i++) {
-      const t1 = Date.now();
-      await pipeline(createReadStream(src), createWriteStream(remoteFile));
-      const upMs = Date.now() - t1;
-      const t2 = Date.now();
-      await pipeline(createReadStream(remoteFile), createWriteStream(localBack));
-      const downMs = Date.now() - t2;
-      const u = mbps(bytes, upMs) ?? 0, d = mbps(bytes, downMs) ?? 0;
-      if (u > bU) { bU = u; bUms = upMs; }
-      if (d > bD) { bD = d; bDms = downMs; }
-      onCycle?.(i + 1);   // report cycle progress for the live terminal
+    let roboUp: number | null = null, roboDown: number | null = null;
+    if (needsShare) {
+      await fs.mkdir(remoteDir, { recursive: true });
+      if (methods.smb) {
+        const src = await ensureSource(sizeMB);
+        for (let i = 0; i < cycles; i++) {
+          const t1 = Date.now();
+          await pipeline(createReadStream(src), createWriteStream(remoteFile));
+          const upMs = Date.now() - t1;
+          const t2 = Date.now();
+          await pipeline(createReadStream(remoteFile), createWriteStream(localBack));
+          const downMs = Date.now() - t2;
+          const u = mbps(bytes, upMs) ?? 0, d = mbps(bytes, downMs) ?? 0;
+          if (u > bU) { bU = u; bUms = upMs; }
+          if (d > bD) { bD = d; bDms = downMs; }
+          onCycle?.(i + 1);   // report cycle progress for the live terminal
+        }
+      }
+      if (methods.robocopy) { const rc = await roboMeasure(target, sizeMB, remoteDir); roboUp = rc.up; roboDown = rc.down; }
     }
     const latencyMs = await pingLatency(target, 1000);
     await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});
     await fs.rm(localBack, { force: true }).catch(() => {});
-    return { ...base, upMbps: bU || null, downMbps: bD || null, upMs: bUms, downMs: bDms, latencyMs };
+    return { ...base, upMbps: bU || null, downMbps: bD || null, upMs: bUms, downMs: bDms, latencyMs, nicMbps, nicName, roboUpMbps: roboUp, roboDownMbps: roboDown };
   } catch (e) {
     await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});
     await fs.rm(localBack, { force: true }).catch(() => {});
-    return { ...base, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, error: String(e).split('\n')[0]!.slice(0, 200) };
+    return { ...base, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, nicMbps, nicName, roboUpMbps: null, roboDownMbps: null, error: String(e).split('\n')[0]!.slice(0, 200) };
   }
 }
 
@@ -177,13 +293,13 @@ const effCycles = (override: number | undefined, fromSettings: number): number =
 let single = false;
 // On-demand single PC test (used by the per-PC button). Archived to DB.
 export async function runLinkSpeedTest(target: string, sizeMB: number, cyclesOverride?: number): Promise<LinkSpeedResult> {
-  if (single) return { target, ip: null, hostname: null, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: 'already_running', measuredAt: new Date().toISOString() };
+  if (single) return { target, ip: null, hostname: null, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, nicMbps: null, nicName: null, roboUpMbps: null, roboDownMbps: null, error: 'already_running', measuredAt: new Date().toISOString() };
   single = true;
   try {
-    const { cycles, filename } = await readOpts();
+    const { cycles, filename, methods } = await readOpts();
     const ep = await resolveEndpoint(target);
     const key = await hostKey(target);   // serialize per PC (identity, not IP) — no other heavy op runs on it meanwhile
-    const r = await withHostLock(key, () => measure(target, sizeMB, effCycles(cyclesOverride, cycles), filename, ep));
+    const r = await withHostLock(key, () => measure(target, sizeMB, effCycles(cyclesOverride, cycles), filename, ep, methods));
     await archive(r); return r;
   }
   finally { single = false; }
@@ -230,9 +346,11 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
   if (batch.running) return;
   stopRequested = false;
   batch = { running: true, total: targets.length, done: 0, current: null, cycleDone: 0, cycleTotal: 0, sizeMB, startedAt: new Date().toISOString(), results: [] };
-  const { cycles: cyclesSetting, filename, okMbps, pauseMs } = await readOpts();
+  const { cycles: cyclesSetting, filename, okMbps, pauseMs, methods } = await readOpts();
   const cycles = effCycles(cyclesOverride, cyclesSetting);
-  logActivity('info', 'linkspeed', `Měření spuštěno: ${targets.length} cílů · ${sizeMB} MB · ${cycles}× cyklů${pauseMs ? ` · prodleva ${pauseMs} ms` : ''}`);
+  const needsShare = methods.smb || methods.robocopy;
+  const methodList = [methods.smb && 'SMB', methods.robocopy && 'Robocopy', methods.nic && 'NIC'].filter(Boolean).join('+');
+  logActivity('info', 'linkspeed', `Měření spuštěno: ${targets.length} cílů · ${sizeMB} MB · ${cycles}× cyklů · ${methodList}${pauseMs ? ` · prodleva ${pauseMs} ms` : ''}`);
   let nOk = 0, nSlow = 0, nOff = 0, nErr = 0;
   try {
     for (let idx = 0; idx < targets.length; idx++) {
@@ -242,19 +360,22 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
       // uplink and leaves room for other collectors. Interruptible via stopRequested.
       if (idx > 0 && pauseMs > 0) { await sleep(pauseMs); if (stopRequested) break; }
       batch.current = t;
-      batch.cycleDone = 0; batch.cycleTotal = cycles;   // reset cycle progress for this target
+      batch.cycleDone = 0; batch.cycleTotal = methods.smb ? cycles : 0;   // reset cycle progress for this target
       const ep = await resolveEndpoint(t);   // capture IP + hostname even for skipped hosts
       let r: LinkSpeedResult;
-      if ((await tcpProbeTimed(t, 445, 2500)) == null) {
-        // Offline host (no ping) vs up-but-445-blocked — don't measure either, but
-        // label them differently so offline isn't mistaken for a port problem.
-        batch.cycleTotal = 0;   // skipped host — no cycles run
-        const alive = await pingAlive(t, 1000);
-        r = { target: t, ip: ep.ip, hostname: ep.hostname, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
+      // Reachability gate: SMB/robocopy need C$ (445); a NIC-only run needs just a ping.
+      const share445 = needsShare ? (await tcpProbeTimed(t, 445, 2500)) != null : false;
+      const alive = share445 ? true : await pingAlive(t, 1000);
+      if (needsShare ? !share445 : !alive) {
+        // Offline (no ping) vs up-but-445-blocked — labelled differently so offline
+        // isn't mistaken for a port problem. Still grab the NIC speed if alive.
+        batch.cycleTotal = 0;
+        r = { target: t, ip: ep.ip, hostname: ep.hostname, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, nicMbps: null, nicName: null, roboUpMbps: null, roboDownMbps: null, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
+        if (methods.nic && alive) { const nic = await withHostLock(await hostKey(t), () => readNicSpeed(t, ep.ip)).catch(() => null); if (nic) { r.nicMbps = nic.mbps; r.nicName = nic.name; } }
       } else {
         // Serialize per PC identity so no other heavy op skews the transfer.
         const key = await hostKey(t);
-        r = await withHostLock(key, () => measure(t, sizeMB, cycles, filename, ep, (d) => { batch.cycleDone = d; }));
+        r = await withHostLock(key, () => measure(t, sizeMB, cycles, filename, ep, methods, (d) => { batch.cycleDone = d; }));
       }
       await archive(r);
       batch.results.push(r);
@@ -262,9 +383,15 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
       // Log each result to the activity feed (warn = slow, error = hard error).
       const off = !!r.error && /offline/i.test(r.error);
       const isErr = !!r.error && !off;
-      const slow = !r.error && r.upMbps != null && r.downMbps != null && Math.min(r.upMbps, r.downMbps) < okMbps;
+      // Throughput verdict uses SMB if present, else robocopy (whichever method ran).
+      const eUp = r.upMbps ?? r.roboUpMbps, eDown = r.downMbps ?? r.roboDownMbps;
+      const slow = !r.error && eUp != null && eDown != null && Math.min(eUp, eDown) < okMbps;
       if (off) nOff++; else if (isErr) nErr++; else if (slow) nSlow++; else nOk++;
-      const msg = r.error ? `${t}: ${r.error}` : `${t}: ↑${r.upMbps} ↓${r.downMbps} Mb/s${r.latencyMs != null ? ` · ${r.latencyMs} ms` : ''}${slow ? ' — POMALÉ' : ''}`;
+      const parts: string[] = [];
+      if (r.upMbps != null) parts.push(`↑${r.upMbps} ↓${r.downMbps}`);
+      if (r.roboUpMbps != null) parts.push(`RC↑${r.roboUpMbps} ↓${r.roboDownMbps}`);
+      if (r.nicMbps != null) parts.push(`port ${r.nicMbps}`);
+      const msg = r.error ? `${t}: ${r.error}` : `${t}: ${parts.join(' · ') || '—'} Mb/s${r.latencyMs != null ? ` · ${r.latencyMs} ms` : ''}${slow ? ' — POMALÉ' : ''}`;
       logActivity(isErr ? 'error' : slow ? 'warn' : 'info', 'linkspeed', msg);
     }
     logActivity('info', 'linkspeed', `Měření dokončeno: ${nOk} OK · ${nSlow} pomalé · ${nOff} offline · ${nErr} chyba`);

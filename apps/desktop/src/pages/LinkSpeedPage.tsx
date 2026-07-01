@@ -16,7 +16,7 @@ const REPORT_CSS = `.ls-rep{font-family:'Segoe UI',Arial,sans-serif;color:#111;m
 .ls-rep .bad{color:#b91c1c;font-weight:700}.ls-rep .ok{color:#157347;font-weight:700}
 @media print{@page{margin:12mm}}`;
 
-type SortKey = 'target' | 'hostname' | 'up' | 'down' | 'latency' | 'status' | 'size' | 'cycles' | 'when';
+type SortKey = 'target' | 'hostname' | 'up' | 'down' | 'nic' | 'robo' | 'latency' | 'status' | 'size' | 'cycles' | 'when';
 
 // Column filter expressions for numeric columns: "300..500" (range), ">300",
 // ">=300", "<100", "<=100", "=300"/"300" (exact), else substring fallback.
@@ -66,7 +66,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const [error, setError] = useState<string | null>(null);
   const [fStatus, setFStatus] = useState<'all' | 'ok' | 'problem' | 'offline' | 'error'>('all');
   const [fAll, setFAll] = useState('');
-  const [colF, setColF] = useState<Record<SortKey, string>>({ target: '', hostname: '', up: '', down: '', latency: '', status: '', size: '', cycles: '', when: '' });
+  const [colF, setColF] = useState<Record<SortKey, string>>({ target: '', hostname: '', up: '', down: '', nic: '', robo: '', latency: '', status: '', size: '', cycles: '', when: '' });
   const consoleRef = useRef<HTMLDivElement>(null);
   const [sortKey, setSortKey] = useState<SortKey>('when');
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
@@ -121,6 +121,8 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
     { key: 'hostname', label: 'Hostname', val: (r) => hostOf(r), sort: (r) => hostOf(r).toLowerCase() },
     { key: 'up', label: '↑ Mb/s', type: 'num', hint: '>300  <100  300..500', val: (r) => (r.up_mbps ?? '—').toString(), num: (r) => r.up_mbps, sort: (r) => r.up_mbps ?? -1 },
     { key: 'down', label: '↓ Mb/s', type: 'num', hint: '>300  <100  300..500', val: (r) => (r.down_mbps ?? '—').toString(), num: (r) => r.down_mbps, sort: (r) => r.down_mbps ?? -1 },
+    { key: 'nic', label: 'Port', type: 'num', hint: '=1000  <1000  =100', val: (r) => (r.nic_mbps ?? '—').toString(), num: (r) => r.nic_mbps, sort: (r) => r.nic_mbps ?? -1 },
+    { key: 'robo', label: 'RC ↑↓', hint: 'robocopy', val: (r) => (r.robo_up_mbps != null || r.robo_down_mbps != null) ? `${r.robo_up_mbps ?? '—'}/${r.robo_down_mbps ?? '—'}` : '—', sort: (r) => (r.robo_down_mbps ?? r.robo_up_mbps ?? -1) },
     { key: 'latency', label: t('linkspeed.latency'), type: 'num', hint: '<10  >50  10..50', val: (r) => (r.latency_ms ?? '—').toString(), num: (r) => r.latency_ms, sort: (r) => r.latency_ms ?? 99999 },
     { key: 'status', label: t('linkspeed.verdict'), val: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label, sort: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label.toLowerCase() },
     { key: 'size', label: 'MB', type: 'num', hint: '>50  <200  50..200', val: (r) => String(r.size_mb), num: (r) => r.size_mb, sort: (r) => r.size_mb },
@@ -131,7 +133,8 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   // Short help shown on hover over each history column header.
   const headHelp: Record<SortKey, string> = {
     target: t('linkspeed.h.target'), hostname: t('linkspeed.h.hostname'),
-    up: t('linkspeed.h.up'), down: t('linkspeed.h.down'), latency: t('linkspeed.h.latency'),
+    up: t('linkspeed.h.up'), down: t('linkspeed.h.down'), nic: t('linkspeed.h.nic'), robo: t('linkspeed.h.robo'),
+    latency: t('linkspeed.h.latency'),
     status: t('linkspeed.h.status'), size: t('linkspeed.h.size'), cycles: t('linkspeed.h.cycles'),
     when: t('linkspeed.h.when'),
   };
@@ -290,9 +293,13 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
               const col = r.error ? (off ? '#8899aa' : '#ff6b6b') : (r.upMbps != null && r.downMbps != null && Math.min(r.upMbps, r.downMbps) < okMbps ? '#f5a524' : '#9fe6c4');
               const host = r.hostname || nameOf(r.ip ?? r.target);
               const head = `${r.ip ?? r.target}${host ? `  ${host}` : ''}`;
+              const parts: string[] = [];
+              if (r.upMbps != null) parts.push(`↑${r.upMbps} ↓${r.downMbps}`);
+              if (r.roboUpMbps != null) parts.push(`RC↑${r.roboUpMbps} ↓${r.roboDownMbps}`);
+              if (r.nicMbps != null) parts.push(`port ${r.nicMbps}`);
               const txt = r.error
                 ? `${head}  ${r.error}`
-                : `${head}  ↑${r.upMbps} ↓${r.downMbps} Mb/s${r.latencyMs != null ? `  ${r.latencyMs} ms` : ''}${r.cycles ? `  ${r.cycles}× cyklů` : ''}`;
+                : `${head}  ${parts.join(' · ') || '—'} Mb/s${r.latencyMs != null ? `  ${r.latencyMs} ms` : ''}${r.cycles ? `  ${r.cycles}×` : ''}`;
               return <div key={i} style={{ color: col, whiteSpace: 'pre-wrap' }}>{txt}</div>;
             })}
             {running && (() => {
@@ -385,6 +392,8 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
                   <td style={{ padding: '5px 10px' }}>{hostOf(r) || '—'}</td>
                   <td style={{ padding: '5px 10px' }}>{r.up_mbps ?? '—'}</td>
                   <td style={{ padding: '5px 10px' }}>{r.down_mbps ?? '—'}</td>
+                  <td style={{ padding: '5px 10px', color: r.nic_mbps != null && r.nic_mbps < 1000 ? 'var(--warning)' : 'var(--text-dim)' }} title={r.nic_name ?? undefined}>{r.nic_mbps ?? '—'}</td>
+                  <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{(r.robo_up_mbps != null || r.robo_down_mbps != null) ? `${r.robo_up_mbps ?? '—'}/${r.robo_down_mbps ?? '—'}` : '—'}</td>
                   <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{r.latency_ms ?? '—'}</td>
                   <td style={{ padding: '5px 10px', color: v.color, fontWeight: 600 }}>{v.label}</td>
                   <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{r.size_mb}</td>
