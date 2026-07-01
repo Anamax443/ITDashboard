@@ -224,15 +224,15 @@ try {
   });
 }
 
-async function archive(r: LinkSpeedResult): Promise<void> {
+async function archive(r: LinkSpeedResult, runId: string | null = null): Promise<void> {
   try {
     const pool = await getPool();
     await pool.request()
       .input('t', r.target).input('ip', r.ip).input('hn', r.hostname).input('up', r.upMbps).input('down', r.downMbps)
       .input('ums', r.upMs).input('dms', r.downMs).input('sz', r.sizeMB).input('err', r.error ?? null).input('lat', r.latencyMs).input('cyc', r.cycles)
-      .input('nic', r.nicMbps).input('nicn', r.nicName).input('rup', r.roboUpMbps).input('rdown', r.roboDownMbps)
-      .query(`INSERT INTO link_speed_results (target, ip_address, host_name, up_mbps, down_mbps, up_ms, down_ms, size_mb, error, latency_ms, cycles, nic_mbps, nic_name, robo_up_mbps, robo_down_mbps)
-              VALUES (@t,@ip,@hn,@up,@down,@ums,@dms,@sz,@err,@lat,@cyc,@nic,@nicn,@rup,@rdown)`);
+      .input('nic', r.nicMbps).input('nicn', r.nicName).input('rup', r.roboUpMbps).input('rdown', r.roboDownMbps).input('run', runId)
+      .query(`INSERT INTO link_speed_results (target, ip_address, host_name, up_mbps, down_mbps, up_ms, down_ms, size_mb, error, latency_ms, cycles, nic_mbps, nic_name, robo_up_mbps, robo_down_mbps, run_id)
+              VALUES (@t,@ip,@hn,@up,@down,@ums,@dms,@sz,@err,@lat,@cyc,@nic,@nicn,@rup,@rdown,@run)`);
   } catch (e) { console.error('link-speed archive failed', e); }
 }
 
@@ -346,6 +346,7 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
   if (batch.running) return;
   stopRequested = false;
   batch = { running: true, total: targets.length, done: 0, current: null, cycleDone: 0, cycleTotal: 0, sizeMB, startedAt: new Date().toISOString(), results: [] };
+  const runId = batch.startedAt!;   // "otisk" — every target in this batch shares it
   const { cycles: cyclesSetting, filename, okMbps, pauseMs, methods } = await readOpts();
   const cycles = effCycles(cyclesOverride, cyclesSetting);
   const needsShare = methods.smb || methods.robocopy;
@@ -377,7 +378,7 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
         const key = await hostKey(t);
         r = await withHostLock(key, () => measure(t, sizeMB, cycles, filename, ep, methods, (d) => { batch.cycleDone = d; }));
       }
-      await archive(r);
+      await archive(r, runId);
       batch.results.push(r);
       batch.done++;
       // Log each result to the activity feed (warn = slow, error = hard error).

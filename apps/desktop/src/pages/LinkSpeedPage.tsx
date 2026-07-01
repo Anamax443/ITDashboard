@@ -65,6 +65,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const [devmap, setDevmap] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [fStatus, setFStatus] = useState<'all' | 'ok' | 'problem' | 'offline' | 'error'>('all');
+  const [runScope, setRunScope] = useState<'last' | 'last3' | 'last10' | 'all'>('last');   // which run(s) to show
   const [fAll, setFAll] = useState('');
   const [colF, setColF] = useState<Record<SortKey, string>>({ target: '', hostname: '', up: '', down: '', nic: '', robo: '', latency: '', status: '', size: '', cycles: '', when: '' });
   const consoleRef = useRef<HTMLDivElement>(null);
@@ -102,17 +103,32 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   // Prefer the hostname resolved+stored at measurement time; fall back to the live
   // IP→name map for older rows that predate the stored column.
   const hostOf = (r: LinkSpeedHistoryRow) => r.host_name || nameOf(r.ip_address ?? r.target);
-  const verdict = (up: number | null, down: number | null, err?: string | null) => {
-    if (err) { const off = /offline/i.test(err); return { label: err, cls: off ? '' : 'bad', color: off ? 'var(--text-dim)' : 'var(--critical)' }; }
-    if (up == null || down == null) return { label: '—', cls: '', color: 'var(--text-dim)' };
-    return Math.min(up, down) >= okMbps ? { label: 'OK', cls: 'ok', color: 'var(--ok)' } : { label: t('linkspeed.problem'), cls: 'bad', color: 'var(--critical)' };
-  };
+  // Effective throughput = SMB if measured, else robocopy (whichever method ran).
+  const effUp = (r: LinkSpeedHistoryRow) => r.up_mbps ?? r.robo_up_mbps;
+  const effDown = (r: LinkSpeedHistoryRow) => r.down_mbps ?? r.robo_down_mbps;
   const cat = (r: LinkSpeedHistoryRow): 'ok' | 'problem' | 'offline' | 'error' => {
     if (r.error) return /offline/i.test(r.error) ? 'offline' : 'error';
-    if (r.up_mbps == null || r.down_mbps == null) return 'error';
-    return Math.min(r.up_mbps, r.down_mbps) >= okMbps ? 'ok' : 'problem';
+    const u = effUp(r), d = effDown(r);
+    if (u == null || d == null) return r.nic_mbps != null ? 'ok' : 'error';   // NIC-only run isn't an error
+    return Math.min(u, d) >= okMbps ? 'ok' : 'problem';
   };
   const running = status?.running ?? false;
+
+  // Runs ("otisky") — distinct run_id in newest-first order (history is newest-first).
+  // The run scope selects the last / last 3 / last 10 / all runs; rows without a run_id
+  // (legacy / ad-hoc per-PC tests) only show under "all".
+  const runsAll: string[] = (() => { const seen = new Set<string>(), out: string[] = []; for (const r of history) if (r.run_id && !seen.has(r.run_id)) { seen.add(r.run_id); out.push(r.run_id); } return out; })();
+  const runCount = runScope === 'last' ? 1 : runScope === 'last3' ? 3 : runScope === 'last10' ? 10 : runsAll.length;
+  const selectedRuns = new Set(runScope === 'all' ? runsAll : runsAll.slice(0, runCount));
+  const scoped = runScope === 'all' ? history : history.filter((r) => r.run_id && selectedRuns.has(r.run_id));
+  const runTimeOf = (runId: string) => { const row = history.find((r) => r.run_id === runId); return row ? fmt(row.measured_at) : runId; };
+  // Row verdict using effective throughput (SMB or robocopy); a NIC-only row is "OK".
+  const verdictRow = (r: LinkSpeedHistoryRow) => {
+    if (r.error) { const off = /offline/i.test(r.error); return { label: r.error, cls: off ? '' : 'bad', color: off ? 'var(--text-dim)' : 'var(--critical)' }; }
+    const u = effUp(r), d = effDown(r);
+    if (u == null || d == null) return r.nic_mbps != null ? { label: 'OK', cls: 'ok', color: 'var(--ok)' } : { label: '—', cls: '', color: 'var(--text-dim)' };
+    return Math.min(u, d) >= okMbps ? { label: 'OK', cls: 'ok', color: 'var(--ok)' } : { label: t('linkspeed.problem'), cls: 'bad', color: 'var(--critical)' };
+  };
 
   // One column definition drives the header, per-column filter, sort and exports.
   type Col = { key: SortKey; label: string; type?: 'num' | 'date'; hint?: string; val: (r: LinkSpeedHistoryRow) => string; num?: (r: LinkSpeedHistoryRow) => number | null; iso?: (r: LinkSpeedHistoryRow) => string; sort: (r: LinkSpeedHistoryRow) => string | number };
@@ -124,7 +140,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
     { key: 'nic', label: 'Port', type: 'num', hint: '=1000  <1000  =100', val: (r) => (r.nic_mbps ?? '—').toString(), num: (r) => r.nic_mbps, sort: (r) => r.nic_mbps ?? -1 },
     { key: 'robo', label: 'RC ↑↓', hint: 'robocopy', val: (r) => (r.robo_up_mbps != null || r.robo_down_mbps != null) ? `${r.robo_up_mbps ?? '—'}/${r.robo_down_mbps ?? '—'}` : '—', sort: (r) => (r.robo_down_mbps ?? r.robo_up_mbps ?? -1) },
     { key: 'latency', label: t('linkspeed.latency'), type: 'num', hint: '<10  >50  10..50', val: (r) => (r.latency_ms ?? '—').toString(), num: (r) => r.latency_ms, sort: (r) => r.latency_ms ?? 99999 },
-    { key: 'status', label: t('linkspeed.verdict'), val: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label, sort: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label.toLowerCase() },
+    { key: 'status', label: t('linkspeed.verdict'), val: (r) => verdictRow(r).label, sort: (r) => verdictRow(r).label.toLowerCase() },
     { key: 'size', label: 'MB', type: 'num', hint: '>50  <200  50..200', val: (r) => String(r.size_mb), num: (r) => r.size_mb, sort: (r) => r.size_mb },
     { key: 'cycles', label: t('linkspeed.cyclesCol'), type: 'num', hint: '=4  >1', val: (r) => (r.cycles ?? '—').toString(), num: (r) => r.cycles, sort: (r) => r.cycles ?? -1 },
     { key: 'when', label: t('linkspeed.when'), type: 'date', hint: '>01.07.2026 06:00   <01.07.2026   30.06.2026..01.07.2026', val: (r) => fmt(r.measured_at), iso: (r) => r.measured_at, sort: (r) => r.measured_at },
@@ -139,7 +155,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
     when: t('linkspeed.h.when'),
   };
 
-  const view = history.filter((r) => {
+  const view = scoped.filter((r) => {
     if (fStatus !== 'all' && cat(r) !== fStatus) return false;
     if (fAll.trim() && !cols.map((c) => c.val(r)).join(' ').toLowerCase().includes(fAll.toLowerCase())) return false;
     for (const c of cols) {
@@ -163,7 +179,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const identityKey = (r: LinkSpeedHistoryRow) => (hostOf(r) || r.ip_address || r.target).toLowerCase();
   const latestPerTarget = (() => {
     const m = new Map<string, LinkSpeedHistoryRow>();
-    for (const r of history) {
+    for (const r of scoped) {
       if (baselineAt && r.measured_at < baselineAt) continue;
       const k = identityKey(r);
       if (!m.has(k)) m.set(k, r);
@@ -172,7 +188,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   })();
   const counts = { ok: 0, problem: 0, offline: 0, error: 0 };
   for (const r of latestPerTarget) counts[cat(r)]++;
-  const bars = latestPerTarget.filter((r) => r.up_mbps != null && r.down_mbps != null).map((r) => ({ r, mbps: Math.min(r.up_mbps!, r.down_mbps!) })).sort((a, b) => a.mbps - b.mbps).slice(0, 10);
+  const bars = latestPerTarget.map((r) => ({ r, u: effUp(r), d: effDown(r) })).filter((x) => x.u != null && x.d != null).map((x) => ({ r: x.r, mbps: Math.min(x.u!, x.d!) })).sort((a, b) => a.mbps - b.mbps).slice(0, 10);
   const barMax = Math.max(1000, ...bars.map((b) => b.mbps));
 
   // Per-/24-network health: tells a SYSTEMIC problem (a whole branch/subnet slow — bad
@@ -188,7 +204,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
       const sub = ip.replace(/\.\d+$/, '') + '.*';   // "10.8.2.*" — same syntax as Targets/Exclusions
       const a = m.get(sub) ?? { measured: 0, slow: 0, offline: 0, error: 0, mbps: [] };
       const c = cat(r);
-      if (c === 'ok' || c === 'problem') { a.measured++; a.mbps.push(Math.min(r.up_mbps!, r.down_mbps!)); if (c === 'problem') a.slow++; }
+      if (c === 'ok' || c === 'problem') { const u = effUp(r), d = effDown(r); if (u != null && d != null) a.mbps.push(Math.min(u, d)); a.measured++; if (c === 'problem') a.slow++; }
       else if (c === 'offline') a.offline++; else a.error++;
       m.set(sub, a);
     }
@@ -233,12 +249,35 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   };
   const reportHtml = () => {
     const esc = (s: unknown) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!));
-    const rows = view.map((r) => `<tr>${cols.map((c) => c.key === 'status' ? `<td class="${verdict(r.up_mbps, r.down_mbps, r.error).cls}">${esc(c.val(r))}</td>` : `<td>${esc(c.val(r))}</td>`).join('')}</tr>`).join('');
+    const nameOfRow = (r: LinkSpeedHistoryRow) => hostOf(r) || r.ip_address || r.target;
+    const scopeLabel = runScope === 'last' ? t('linkspeed.runLast') : runScope === 'last3' ? t('linkspeed.runLast3') : runScope === 'last10' ? t('linkspeed.runLast10') : t('linkspeed.runAll');
+    const runInfo = runScope === 'last' && runsAll[0] ? runTimeOf(runsAll[0]) : `${selectedRuns.size}×`;
+
+    // "What to check" — the actionable part for a technician.
+    const systemic = subnetStats.filter((s) => s.verdict === 'systemic');
+    const nic100 = latestPerTarget.filter((r) => r.nic_mbps != null && r.nic_mbps < 1000);
+    const check: string[] = [];
+    if (systemic.length) check.push(`<p>🔴 <b>${t('linkspeed.rep.systemic')}:</b> ${systemic.map((s) => `${esc(s.sub)} (${s.slow}/${s.measured}, ${t('linkspeed.median')} ${s.median ?? '—'} Mb/s)`).join(' · ')}</p>`);
+    if (nic100.length) check.push(`<p>🟠 <b>${t('linkspeed.rep.nic100')}:</b> ${nic100.map((r) => `${esc(nameOfRow(r))} = ${r.nic_mbps} Mb`).join(' · ')}</p>`);
+    if (bars.length) check.push(`<p>🐌 <b>${t('linkspeed.slowest')}:</b> ${bars.slice(0, 10).map((b) => `${esc(nameOfRow(b.r))} ${b.mbps} Mb/s`).join(' · ')}</p>`);
+    if (!check.length) check.push(`<p class="ok">✔ ${t('linkspeed.rep.allok')}</p>`);
+
+    const subnetTable = subnetStats.length
+      ? `<h2>${t('linkspeed.subnets')}</h2><table><thead><tr><th>${t('linkspeed.rep.network')}</th><th>${t('linkspeed.verdict')}</th><th>${t('linkspeed.problem')}/${t('linkspeed.rep.measured')}</th><th>off</th><th>err</th><th>${t('linkspeed.median')} Mb/s</th></tr></thead><tbody>`
+        + subnetStats.map((s) => `<tr><td>${esc(s.sub)}</td><td class="${s.verdict === 'systemic' ? 'bad' : s.verdict === 'isolated' ? '' : 'ok'}">${s.verdict === 'systemic' ? esc(t('linkspeed.subnetSystemic')) : s.verdict === 'isolated' ? esc(t('linkspeed.subnetIsolated')) : 'OK'}</td><td>${s.slow}/${s.measured}</td><td>${s.offline || ''}</td><td>${s.error || ''}</td><td>${s.median ?? '—'}</td></tr>`).join('')
+        + '</tbody></table>'
+      : '';
+
+    const rows = view.map((r) => `<tr>${cols.map((c) => c.key === 'status' ? `<td class="${verdictRow(r).cls}">${esc(c.val(r))}</td>` : `<td>${esc(c.val(r))}</td>`).join('')}</tr>`).join('');
     return '﻿<!DOCTYPE html><html lang="cs"><head><meta charset="utf-8"><title>' + t('linkspeed.title') + '</title><style>' + REPORT_CSS + '</style></head><body><div class="ls-rep">'
-      + `<h1>⚡ ${t('linkspeed.title')}</h1><div class="meta">ITDashboard · ${t('linkspeed.okAt')} ≥ ${okMbps} Mb/s · ${new Date().toLocaleString()}</div>`
-      + `<table><thead><tr>${cols.map((c) => `<th>${esc(c.label)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></body></html>`;
+      + `<h1>⚡ ${t('linkspeed.title')}</h1><div class="meta">ITDashboard · ${scopeLabel} (${esc(runInfo)}) · ${t('linkspeed.okAt')} ≥ ${okMbps} Mb/s · ${new Date().toLocaleString()}</div>`
+      + `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:0 0 14px"><b>${t('linkspeed.rep.check')}</b>${check.join('')}</div>`
+      + `<p style="font-size:12px;color:#555">${counts.ok} OK · ${counts.problem} ${t('linkspeed.problem')} · ${counts.offline} offline · ${counts.error} ${t('linkspeed.f.error')}</p>`
+      + subnetTable
+      + `<h2>${t('linkspeed.history')}</h2><table><thead><tr>${cols.map((c) => `<th>${esc(c.label)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></body></html>`;
   };
-  const saveHtml = () => triggerDownload(new Blob([reportHtml()], { type: 'text/html;charset=utf-8' }), `mereni-linky-${Date.now()}.html`);
+  // Open the report in a NEW TAB (not a download) so it's viewable straight away.
+  const saveHtml = () => { const w = window.open('', '_blank'); if (!w) return; w.document.write(reportHtml()); w.document.close(); };
   const printPdf = () => { const w = window.open('', '_blank', 'width=1000,height=800'); if (!w) return; w.document.write(reportHtml()); w.document.close(); w.focus(); setTimeout(() => w.print(), 350); };
   const triggerDownload = (blob: Blob, name: string) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000); };
 
@@ -250,7 +289,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
         <h2>⚡ {t('linkspeed.title')}</h2>
         <div className="panel-actions">
           <button className="refresh-btn" onClick={exportCsv} disabled={!view.length} title="CSV">⬇ CSV</button>
-          <button className="refresh-btn" onClick={saveHtml} disabled={!view.length} title="HTML">⬇ HTML</button>
+          <button className="refresh-btn" onClick={saveHtml} disabled={!view.length} title="HTML">🔗 HTML</button>
           <button className="refresh-btn" onClick={printPdf} disabled={!view.length} title="PDF / tisk">🖨 PDF</button>
           <button className="refresh-btn" onClick={() => { loadStatus(); loadHistory(); }}>↻</button>
         </div>
@@ -323,7 +362,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
               ))}
             </div>
             {bars.length > 0 && <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>{t('linkspeed.slowest')}</div>}
-            {bars.map((b) => { const v = verdict(b.r.up_mbps, b.r.down_mbps, b.r.error); return (
+            {bars.map((b) => { const v = verdictRow(b.r); return (
               <div key={b.r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, fontSize: 11.5 }}>
                 <span style={{ width: 110, fontFamily: 'Consolas, monospace' }}>{b.r.ip_address ?? b.r.target}</span>
                 <span style={{ width: 130, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hostOf(b.r)}</span>
@@ -359,6 +398,13 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', margin: '6px 0 8px' }}>
           <h3 style={{ fontSize: 14, margin: 0 }}>{t('linkspeed.history')}</h3>
+          <select value={runScope} onChange={(e) => setRunScope(e.target.value as typeof runScope)} title={t('linkspeed.runScopeHint')} style={{ fontSize: 12, padding: '3px 6px' }}>
+            <option value="last">{t('linkspeed.runLast')}</option>
+            <option value="last3">{t('linkspeed.runLast3')}</option>
+            <option value="last10">{t('linkspeed.runLast10')}</option>
+            <option value="all">{t('linkspeed.runAll')}</option>
+          </select>
+          {runScope === 'last' && runsAll[0] && <span style={{ fontSize: 10.5, color: 'var(--text-dim)' }}>{runTimeOf(runsAll[0])}</span>}
           <select value={fStatus} onChange={(e) => setFStatus(e.target.value as typeof fStatus)} style={{ fontSize: 12, padding: '3px 6px' }}>
             <option value="all">{t('linkspeed.f.all')}</option>
             <option value="problem">{t('linkspeed.problem')}</option>
@@ -367,10 +413,10 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
             <option value="error">{t('linkspeed.f.error')}</option>
           </select>
           <input value={fAll} onChange={(e) => setFAll(e.target.value)} placeholder={t('linkspeed.f.searchAll')} style={{ fontSize: 12, padding: '3px 6px', width: 220 }} />
-          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{view.length}/{history.length}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{view.length}/{scoped.length} · {runsAll.length} {t('linkspeed.runs')}</span>
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             <button className="refresh-btn" onClick={exportCsv} disabled={!view.length}>⬇ CSV</button>
-            <button className="refresh-btn" onClick={saveHtml} disabled={!view.length}>⬇ HTML</button>
+            <button className="refresh-btn" onClick={saveHtml} disabled={!view.length}>🔗 HTML</button>
             <button className="refresh-btn" onClick={printPdf} disabled={!view.length}>🖨 PDF</button>
           </span>
         </div>
@@ -386,7 +432,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
               </tr>
             </thead>
             <tbody>
-              {view.map((r) => { const v = verdict(r.up_mbps, r.down_mbps, r.error); return (
+              {view.map((r) => { const v = verdictRow(r); return (
                 <tr key={r.id} style={{ borderTop: '1px solid var(--border)', fontFamily: 'Consolas, monospace' }}>
                   <td style={{ padding: '5px 10px' }}>{ipLink(r.ip_address ?? r.target)}</td>
                   <td style={{ padding: '5px 10px' }}>{hostOf(r) || '—'}</td>

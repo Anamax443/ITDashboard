@@ -1230,6 +1230,7 @@ export interface LinkSpeedHistoryRow {
   latency_ms: number | null; cycles: number | null;
   nic_mbps: number | null; nic_name: string | null;
   robo_up_mbps: number | null; robo_down_mbps: number | null;
+  run_id: string | null;
   size_mb: number; error: string | null; measured_at: string;
 }
 
