@@ -42,7 +42,7 @@
 <body>
 <main>
   <h1>ITDashboard <span class="badge live">LIVE</span></h1>
-  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-06-30</span> <span class="pill">commit d55552d</span></p>
+  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-07-01</span> <span class="pill">commit d7d6890</span></p>
 
   <h2>Stav nasazení</h2>
   <div class="grid">
@@ -86,6 +86,7 @@
     <li><strong>Retenční politika s ručním spuštěním</strong> — přehledová tabulka v Settings; každý řádek má tlačítko ▶ (plus Označit / Odznačit / Spustit označené). I tři device tabulky (duchové leasů, IP historie, ping vzorky), jinak mazané jen v MikroTik cyklu, jdou spustit zvlášť.</li>
     <li><strong>Zdraví komunikace (Komunikace)</strong> — homepage dlaždice 📶 s jedním celkovým stavem (ok / degraded / down) agregujícím <strong>SQL, MikroTik REST API, FTP stahování, EventLog kolektor, e-mail (SMTP/M365) a UniFi</strong>; rozbalovací panel s řádkem na kanál (stav, detail, poslední chyba, poslední OK). Endpoint <code>GET /system/comms</code>.</li>
     <li><strong>WAN monitor (pobočky + internet)</strong> — vždy viditelný pruh „Komunikace na pobočky a internet": server živě pinguje router každé pobočky + internetový cíl na latenci a packet loss, jeden barevně kódovaný chip na lokalitu (<code>GET /system/wan</code>). Volitelný (defaultně vypnutý) centrální test rychlosti stahování z internetu přes paralelní streamy měřený ze serveru (<code>↓ X Mb/s</code> na chipu Internet). Per-pobočkový speed test přes router není použitelný (CPU-bound), pobočky tak ukazují jen latenci + ztrátovost.</li>
+    <li><strong>Měření linky (⚡)</strong> — server přes SMB zapíše a přečte soubor na <code>C$</code> každého PC a spočítá <strong>rychlost nahoru/dolů (Mb/s) + latenci</strong> = reálná kvalita drátěného spoje (odhalí vadné kabely / 100Mb porty v gigabitové síti). Cíluje IP / rozsah / vše (aktivní PC/NTB/servery). Řaditelná/filtrovatelná mřížka historie (operátor / rozsah / datum), živá konzole, export CSV/HTML/PDF, proklik IP → Počítače, sloupce Hostname / Latence / Cykly. Plánovač v Nastavení (interval, hodinové okno, výjimky, cykly, název souboru); homepage dlaždice <strong>⚡ Linky</strong>. Endpointy <code>/system/linkspeed/*</code>.</li>
     <li><strong>Settings</strong> — frekvence, časové okno, zapnuté checky, prahy — aplikováno živě bez restartu služby.</li>
   </ul>
 
@@ -106,6 +107,23 @@
     <tr><td>Sken podsítí (Devices)</td><td>Settings → rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť). Aktivní sken běží z aplikačního serveru; vzdálené podsítě přes ARP routerů. Nic v <code>.env</code>.</td></tr>
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
+
+  <h2>Poslední změny (2026-07-01) — Měření linky (kvalita spoje) ⚡</h2>
+  <p class="sub" style="margin:0 0 .75rem">Nová záložka <strong>„Měření linky" (⚡)</strong> + homepage dlaždice: server přes SMB měří <strong>reálnou kvalitu drátěného spoje</strong> každého PC (rychlost nahoru/dolů + latence) a odhalí tak vadné kabely / 100Mb porty v gigabitové síti. Zásahy do DB — <strong>migrace 071–074</strong>. Živý commit <span class="pill">d7d6890</span>.</p>
+
+  <p style="margin:0 0 4px"><strong>Měření linky / connection quality</strong> <span class="pill">d7d6890</span> <span class="pill">migrace 071–074</span></p>
+  <ul>
+    <li>Server <strong>zapíše a přečte soubor</strong> na <code>C$</code> každého cílového PC přes SMB a spočítá <strong>rychlost nahoru/dolů (Mb/s) + latenci</strong> = reálná kvalita spoje (ne jen odkud/kam, ale <strong>jak dobře</strong> daný spoj vede) — chytí <strong>vadné kabely a 100Mb porty</strong> na gigabitové síti.</li>
+    <li>Cíluje <strong>IP / rozsah / vše</strong> (aktivní PC/NTB/servery). <strong>Řaditelná a filtrovatelná mřížka historie</strong> (filtr operátor / rozsah / datum), <strong>živá konzole</strong>, export <strong>CSV / HTML / PDF</strong>, proklik z IP do záložky Počítače, sloupce <strong>Hostname / Latence / Cykly</strong>.</li>
+    <li><strong>Plánovač v Nastavení</strong> — interval, hodinové okno, výjimky, počet cyklů, název souboru. Endpointy <code>/system/linkspeed/*</code>; výsledky do tabulky <code>link_speed_results</code> (migrace 071–074). Loguje do <code>activity_log</code>; nová homepage dlaždice <strong>⚡ Linky</strong>.</li>
+  </ul>
+
+  <div class="note">
+    <strong>Živé zjištění:</strong> běh přes celou flotilu našel <strong>~25 pomalých spojů</strong>, mimo jiné <strong>SQL server na 12,7 Mb/s</strong> — klasický příznak vadného kabelu / 100Mb portu.
+  </div>
+  <div class="note">
+    <strong>Migrace:</strong> nyní 001–074 — přidány <strong>071–074</strong> (Měření linky, tabulka <code>link_speed_results</code>).
+  </div>
 
   <h2>Poslední změny (2026-06-30) — Porty poboček (matice service-portů) + discovery sken — POSTAVENO a ODLOŽENO</h2>
   <p class="sub" style="margin:0 0 .75rem">Matice <strong>lokalita × service-port</strong> „Porty poboček" (defaultně tiskové porty 9100/515/631) sondovaná z centrálního serveru, s prokliky na zařízení v buňce a OUI kategorií <strong>voip</strong>, plus operátorem spuštěný <strong>široký discovery sken portů</strong>. Zásahy do DB — <strong>migrace 065–070</strong>. Hotovo a vzápětí <strong>odloženo (parkováno)</strong>. Živý commit <span class="pill">d55552d</span>.</p>
@@ -518,7 +536,7 @@
     <a href="SETUP-SERVER.md">SETUP-SERVER.md</a> ·
     <a href="../HANDOFF.md">HANDOFF.md</a> ·
     <a href="../README.md">README.md</a><br>
-    Generováno jako statický status snapshot — 2026-06-30 (commit d55552d).<br>
+    Generováno jako statický status snapshot — 2026-07-01 (commit d7d6890).<br>
     © 2026 Milan Trnka, IT
   </footer>
 </main>

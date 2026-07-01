@@ -323,6 +323,36 @@ function downloadDeck(name){
   </div>
 </section>
 
+<!-- 7e — LINK SPEED: REAL THROUGHPUT TO EVERY MACHINE -->
+<section class="slide" id="link-speed">
+  <div class="kicker">New</div>
+  <h2>⚡ Link speed — reveals slow &amp; faulty connections across the fleet</h2>
+  <div class="grid g2">
+    <div>
+      <p>The server measures <strong>real download and upload speed</strong> and <strong>latency</strong> to each
+         PC, notebook and server — it writes and reads a test file, so you see exactly <strong>which machines have a
+         poor connection and where</strong>. It catches a bad cable, a port stuck at 100&nbsp;Mb instead of gigabit,
+         or a congested link.</p>
+      <p>One click tests a <strong>whole range or all active machines</strong>. Results come in <strong>live</strong>,
+         are sortable and filterable, exportable (CSV/HTML/PDF), and summarised on the homepage —
+         <strong>how many links are slow</strong>. It can run <strong>automatically on a schedule</strong> within a chosen time window.</p>
+      <p class="small muted">Benefit: a hidden slow connection that would otherwise go unnoticed is visible at a glance.</p>
+    </div>
+    <div class="card warn">
+      <h3>The very first run found a fault</h3>
+      <p class="small">A single fleet run found <strong>~25 slow connections</strong> — including a
+         <strong>server stuck at ~13&nbsp;Mb/s</strong> on a gigabit network.</p>
+      <table style="margin-top:8px">
+        <tr><th>Machine</th><th>↓ / ↑</th><th>Latency</th></tr>
+        <tr><td>🟢 PC-001</td><td class="muted">940 / 910 Mb/s</td><td class="muted">0.4 ms</td></tr>
+        <tr><td>🟢 PC-002</td><td class="muted">920 / 880 Mb/s</td><td class="muted">0.5 ms</td></tr>
+        <tr><td>🔴 SRV-007</td><td style="color:var(--bad);font-weight:700">13 / 12 Mb/s</td><td class="muted">2.1 ms</td></tr>
+      </table>
+      <p class="small muted" style="margin-top:10px">Illustrative values — the colour sums up each connection.</p>
+    </div>
+  </div>
+</section>
+
 <!-- 7d — CRASHES: CLEARER & MORE USEFUL -->
 <section class="slide" id="crashes">
   <div class="kicker">Improved</div>

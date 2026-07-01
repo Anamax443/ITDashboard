@@ -354,6 +354,35 @@ function downloadDeck(name){
   </div>
 </section>
 
+<!-- 7e — MĚŘENÍ LINKY: RYCHLOST KE KAŽDÉMU STROJI -->
+<section class="slide" id="mereni-linky">
+  <div class="kicker">Novinka</div>
+  <h2>⚡ Měření linky — odhalí pomalé a vadné připojení v celém parku</h2>
+  <div class="grid g2">
+    <div>
+      <p>Server změří <strong>skutečnou rychlost stahování i odesílání</strong> a <strong>odezvu</strong> ke každému
+         počítači, notebooku i serveru — zapíše a přečte testovací soubor, takže přesně vidíte, <strong>který stroj
+         má špatné připojení a kde</strong>. Odhalí vadný kabel, port zaseknutý na 100&nbsp;Mb místo gigabitu i přetíženou linku.</p>
+      <p>Jedním kliknutím otestujete <strong>celý rozsah nebo všechny aktivní stroje</strong>. Výsledky naskakují
+         <strong>živě</strong>, dají se řadit, filtrovat i exportovat (CSV/HTML/PDF) a na úvodní stránce je souhrn,
+         <strong>kolik linek je pomalých</strong>. Měření může běžet <strong>automaticky podle plánu</strong> ve zvoleném časovém okně.</p>
+      <p class="small muted">Přínos: skryté pomalé připojení, které by jinak zůstalo bez povšimnutí, uvidíte na první pohled.</p>
+    </div>
+    <div class="card warn">
+      <h3>Hned první měření odhalilo problém</h3>
+      <p class="small">Jeden běh přes park našel <strong>~25 pomalých připojení</strong> — mezi nimi
+         <strong>server zaseknutý na ~13&nbsp;Mb/s</strong> v gigabitové síti.</p>
+      <table style="margin-top:8px">
+        <tr><th>Stroj</th><th>↓ / ↑</th><th>Odezva</th></tr>
+        <tr><td>🟢 PC-001</td><td class="muted">940 / 910 Mb/s</td><td class="muted">0,4 ms</td></tr>
+        <tr><td>🟢 PC-002</td><td class="muted">920 / 880 Mb/s</td><td class="muted">0,5 ms</td></tr>
+        <tr><td>🔴 SRV-007</td><td style="color:var(--bad);font-weight:700">13 / 12 Mb/s</td><td class="muted">2,1 ms</td></tr>
+      </table>
+      <p class="small muted" style="margin-top:10px">Ilustrační hodnoty — barva shrne stav připojení.</p>
+    </div>
+  </div>
+</section>
+
 <!-- 7d — PÁDY: PŘEHLEDNĚJŠÍ A UŽITEČNĚJŠÍ -->
 <section class="slide" id="pady">
   <div class="kicker">Vylepšeno</div>

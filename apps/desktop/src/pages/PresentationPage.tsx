@@ -192,6 +192,18 @@ const CS_BODY = `
   </div>
 </section>
 <section class="slide">
+  <div class="kicker">Novinka</div>
+  <h2>⚡ Měření linky — odhalí pomalé a vadné připojení v celém parku</h2>
+  <div class="grid g2">
+    <div>
+      <p>Server změří <strong>skutečnou rychlost stahování i odesílání</strong> a <strong>odezvu</strong> ke každému počítači, notebooku i serveru — zapíše a přečte testovací soubor, takže přesně vidíte, <strong>který stroj má špatné připojení a kde</strong>. Odhalí vadný kabel, port zaseknutý na 100&nbsp;Mb místo gigabitu i přetíženou linku.</p>
+      <p>Jedním kliknutím otestujete <strong>celý rozsah nebo všechny aktivní stroje</strong>. Výsledky naskakují <strong>živě</strong>, dají se řadit, filtrovat i exportovat (CSV/HTML/PDF) a na úvodní stránce je souhrn, <strong>kolik linek je pomalých</strong>. Měření může běžet <strong>automaticky podle plánu</strong> ve zvoleném časovém okně.</p>
+      <p class="small muted">Přínos: skryté pomalé připojení, které by jinak zůstalo bez povšimnutí, uvidíte na první pohled.</p>
+    </div>
+    <div class="card warn"><h3>Hned první měření odhalilo problém</h3><p class="small">Jeden běh přes park našel <strong>~25 pomalých připojení</strong> — mezi nimi <strong>server zaseknutý na ~13&nbsp;Mb/s</strong> v gigabitové síti.</p><table style="margin-top:8px"><tr><th>Stroj</th><th>↓ / ↑</th><th>Odezva</th></tr><tr><td>🟢 PC-001</td><td class="muted">940 / 910 Mb/s</td><td class="muted">0,4 ms</td></tr><tr><td>🟢 PC-002</td><td class="muted">920 / 880 Mb/s</td><td class="muted">0,5 ms</td></tr><tr><td>🔴 SRV-007</td><td style="color:var(--bad);font-weight:700">13 / 12 Mb/s</td><td class="muted">2,1 ms</td></tr></table><p class="small muted" style="margin-top:10px">Ilustrační hodnoty — barva shrne stav připojení.</p></div>
+  </div>
+</section>
+<section class="slide">
   <div class="kicker">Vylepšeno</div>
   <h2>Pády (BSOD) — report, který předáte manažerovi i dodavateli</h2>
   <div class="grid g2">
@@ -356,6 +368,18 @@ const EN_BODY = `
       <p class="small muted">Benefit: see at a glance that every branch is running as it should.</p>
     </div>
     <div class="card ok"><h3>Link status</h3><table><tr><th>Site</th><th>Latency</th><th>Loss</th></tr><tr><td>🟢 Site A</td><td class="muted">8 ms</td><td class="muted">0 %</td></tr><tr><td>🟢 Site B</td><td class="muted">14 ms</td><td class="muted">0 %</td></tr><tr><td>🟠 Site C</td><td class="muted">42 ms</td><td class="muted">3 %</td></tr><tr><td>🟢 Internet</td><td class="muted">11 ms</td><td class="muted">↓ 240 Mb/s</td></tr></table><p class="small muted" style="margin-top:10px">Illustrative values — the chip colour sums up each link.</p></div>
+  </div>
+</section>
+<section class="slide">
+  <div class="kicker">New</div>
+  <h2>⚡ Link speed — reveals slow &amp; faulty connections across the fleet</h2>
+  <div class="grid g2">
+    <div>
+      <p>The server measures <strong>real download and upload speed</strong> and <strong>latency</strong> to each PC, notebook and server — it writes and reads a test file, so you see exactly <strong>which machines have a poor connection and where</strong>. It catches a bad cable, a port stuck at 100&nbsp;Mb instead of gigabit, or a congested link.</p>
+      <p>One click tests a <strong>whole range or all active machines</strong>. Results come in <strong>live</strong>, are sortable and filterable, exportable (CSV/HTML/PDF), and summarised on the homepage — <strong>how many links are slow</strong>. It can run <strong>automatically on a schedule</strong> within a chosen time window.</p>
+      <p class="small muted">Benefit: a hidden slow connection that would otherwise go unnoticed is visible at a glance.</p>
+    </div>
+    <div class="card warn"><h3>The very first run found a fault</h3><p class="small">A single fleet run found <strong>~25 slow connections</strong> — including a <strong>server stuck at ~13&nbsp;Mb/s</strong> on a gigabit network.</p><table style="margin-top:8px"><tr><th>Machine</th><th>↓ / ↑</th><th>Latency</th></tr><tr><td>🟢 PC-001</td><td class="muted">940 / 910 Mb/s</td><td class="muted">0.4 ms</td></tr><tr><td>🟢 PC-002</td><td class="muted">920 / 880 Mb/s</td><td class="muted">0.5 ms</td></tr><tr><td>🔴 SRV-007</td><td style="color:var(--bad);font-weight:700">13 / 12 Mb/s</td><td class="muted">2.1 ms</td></tr></table><p class="small muted" style="margin-top:10px">Illustrative values — the colour sums up each connection.</p></div>
   </div>
 </section>
 <section class="slide">
