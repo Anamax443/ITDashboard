@@ -114,6 +114,14 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
     { key: 'when', label: t('linkspeed.when'), type: 'date', hint: '2026-06-30..2026-07-01  >=2026-07-01', val: (r) => fmt(r.measured_at), iso: (r) => r.measured_at, sort: (r) => r.measured_at },
   ];
 
+  // Short help shown on hover over each history column header.
+  const headHelp: Record<SortKey, string> = {
+    target: t('linkspeed.h.target'), hostname: t('linkspeed.h.hostname'),
+    up: t('linkspeed.h.up'), down: t('linkspeed.h.down'), latency: t('linkspeed.h.latency'),
+    status: t('linkspeed.h.status'), size: t('linkspeed.h.size'), cycles: t('linkspeed.h.cycles'),
+    when: t('linkspeed.h.when'),
+  };
+
   const view = history.filter((r) => {
     if (fStatus !== 'all' && cat(r) !== fStatus) return false;
     if (fAll.trim() && !cols.map((c) => c.val(r)).join(' ').toLowerCase().includes(fAll.toLowerCase())) return false;
@@ -271,7 +279,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
           <table style={{ borderCollapse: 'collapse', fontSize: 12.5, width: '100%', maxWidth: 940 }}>
             <thead>
               <tr style={{ textAlign: 'left', color: 'var(--text-dim)' }}>
-                {cols.map((c) => <th key={c.key} style={th} onClick={() => toggleSort(c.key)}>{c.label}{sortKey === c.key ? (sortDir === 1 ? ' ▲' : ' ▼') : ''}</th>)}
+                {cols.map((c) => <th key={c.key} style={th} title={headHelp[c.key]} onClick={() => toggleSort(c.key)}>{c.label}{sortKey === c.key ? (sortDir === 1 ? ' ▲' : ' ▼') : ''}</th>)}
               </tr>
               <tr>
                 {cols.map((c) => <th key={c.key} style={{ padding: '2px 6px' }}><input value={colF[c.key]} onChange={(e) => setColF((f) => ({ ...f, [c.key]: e.target.value }))} title={c.hint} placeholder={c.type === 'num' ? '>,<,a..b' : c.type === 'date' ? 'a..b' : ''} style={{ width: '100%', boxSizing: 'border-box', fontSize: 11, padding: '2px 4px' }} /></th>)}
