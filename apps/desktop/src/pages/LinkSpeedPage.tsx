@@ -47,6 +47,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const { t } = useI18n();
   const [targets, setTargets] = useState('');
   const [size, setSize] = useState('');
+  const [cycles, setCycles] = useState('');   // empty = use linkspeed.cycles from settings
   const [status, setStatus] = useState<LinkSpeedStatus | null>(null);
   const [history, setHistory] = useState<LinkSpeedHistoryRow[]>([]);
   const [okMbps, setOkMbps] = useState(200);
@@ -138,7 +139,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const run = async () => {
     setError(null);
     try {
-      const r = await api.linkSpeedRun(targets, Number(size) || undefined);
+      const r = await api.linkSpeedRun(targets, Number(size) || undefined, Number(cycles) || undefined);
       if (r.error) setError(r.error === 'already_running' ? t('linkspeed.busy') : r.error);
       else { wasRunning.current = true; loadStatus(); }
     } catch (e) { setError(String(e)); }
@@ -186,6 +187,12 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
             <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 3 }}>{t('linkspeed.size')}</div>
             <input type="number" min={1} max={1024} value={size} onChange={(e) => setSize(e.target.value)} style={{ width: 90, padding: 5 }} />
             <div style={{ fontSize: 10.5, color: 'var(--text-dim)', marginTop: 4 }}>{t('linkspeed.okAt')} ≥ {okMbps} Mb/s</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 3 }}>{t('linkspeed.cyclesCol')}</div>
+            <input type="number" min={1} max={20} value={cycles} onChange={(e) => setCycles(e.target.value)}
+              placeholder={String(status?.defaultCycles ?? '')} title={t('linkspeed.cyclesHint')} style={{ width: 90, padding: 5 }} />
+            <div style={{ fontSize: 10.5, color: 'var(--text-dim)', marginTop: 4 }}>{t('linkspeed.cyclesDefault')}: {status?.defaultCycles ?? '—'}</div>
             <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
               <button className="refresh-btn" onClick={run} disabled={running || !targets.trim()} style={{ fontWeight: 600 }}>{running ? `… ${t('linkspeed.running')}` : `▶ ${t('linkspeed.run')}`}</button>
               {running && <button className="refresh-btn" onClick={() => api.linkSpeedStop().then(loadStatus).catch(() => {})} style={{ color: 'var(--critical)' }}>■ {t('linkspeed.stop')}</button>}

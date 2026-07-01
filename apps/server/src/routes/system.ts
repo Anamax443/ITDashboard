@@ -207,32 +207,41 @@ export async function registerSystemRoutes(app: FastifyInstance) {
   // Real link-speed test to one live PC: write an N-MB file to its C$ over SMB and
   // read it back, computing up/down Mb/s from the wall time. Deliberate transfer of
   // real data over the branch link — invoked on demand. VERIFY-CORE prototype.
-  app.post<{ Body: { pc?: string; sizeMB?: number } }>('/system/linkspeed/test', async (req, reply) => {
+  app.post<{ Body: { pc?: string; sizeMB?: number; cycles?: number } }>('/system/linkspeed/test', async (req, reply) => {
     const pc = (req.body?.pc ?? '').trim();
     if (!pc) { reply.code(400); return { error: 'pc required' }; }
     const s = await getAllSettings();
     const sizeMB = Math.max(1, Math.min(1024, Number(req.body?.sizeMB) || Number(s['linkspeed.size_mb']) || 100));
-    return runLinkSpeedTest(pc, sizeMB);
+    // Empty/0 → let the service fall back to the linkspeed.cycles setting.
+    const cycles = Number(req.body?.cycles) || undefined;
+    return runLinkSpeedTest(pc, sizeMB, cycles);
   });
 
   // Batch link-speed test (the "Měření linky" page) — targets = IP list / range
   // "10.8.2.*" / "10.8.2.180-182" / "all" (active PCs). Runs in the background;
   // poll /system/linkspeed/status. Each target is SMB-prechecked, so dead IPs are
   // skipped fast.
-  app.post<{ Body: { targets?: string; sizeMB?: number } }>('/system/linkspeed/run', async (req, reply) => {
+  app.post<{ Body: { targets?: string; sizeMB?: number; cycles?: number } }>('/system/linkspeed/run', async (req, reply) => {
     if (getLinkSpeedStatus().running) { reply.code(409); return { error: 'already_running' }; }
     const s = await getAllSettings();
     const sizeMB = Math.max(1, Math.min(1024, Number(req.body?.sizeMB) || Number(s['linkspeed.size_mb']) || 100));
+    // Empty/0 → let the service fall back to the linkspeed.cycles setting.
+    const cycles = Number(req.body?.cycles) || undefined;
     const raw = String(req.body?.targets ?? '');
     const targets = await expandTargets(raw);
     if (targets.length === 0) { reply.code(400); return { error: 'no targets' }; }
-    void runLinkSpeedBatch(targets, sizeMB);
+    void runLinkSpeedBatch(targets, sizeMB, cycles);
     return { started: true, count: targets.length };
   });
 
   app.get('/system/linkspeed/status', async () => {
     const s = await getAllSettings();
-    return { okMbps: Number(s['linkspeed.ok_mbps']) || 200, defaultSizeMB: Number(s['linkspeed.size_mb']) || 100, ...getLinkSpeedStatus() };
+    return {
+      okMbps: Number(s['linkspeed.ok_mbps']) || 200,
+      defaultSizeMB: Number(s['linkspeed.size_mb']) || 100,
+      defaultCycles: Math.max(1, Math.min(20, Number(s['linkspeed.cycles']) || 4)),
+      ...getLinkSpeedStatus(),
+    };
   });
 
   app.get<{ Querystring: { limit?: string } }>('/system/linkspeed/history', async (req) => {

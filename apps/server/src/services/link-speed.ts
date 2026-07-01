@@ -136,12 +136,17 @@ async function measure(target: string, sizeMB: number, cycles: number, filename:
   }
 }
 
+// Clamp a caller-supplied cycle count to 1..20, or fall back to the settings value
+// when it's missing/invalid — the UI field takes precedence over linkspeed.cycles.
+const effCycles = (override: number | undefined, fromSettings: number): number =>
+  override != null && Number.isFinite(override) && override >= 1 ? Math.min(20, Math.floor(override)) : fromSettings;
+
 let single = false;
 // On-demand single PC test (used by the per-PC button). Archived to DB.
-export async function runLinkSpeedTest(target: string, sizeMB: number): Promise<LinkSpeedResult> {
+export async function runLinkSpeedTest(target: string, sizeMB: number, cyclesOverride?: number): Promise<LinkSpeedResult> {
   if (single) return { target, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: 'already_running', measuredAt: new Date().toISOString() };
   single = true;
-  try { const { cycles, filename } = await readOpts(); const r = await measure(target, sizeMB, cycles, filename); await archive(r); return r; }
+  try { const { cycles, filename } = await readOpts(); const r = await measure(target, sizeMB, effCycles(cyclesOverride, cycles), filename); await archive(r); return r; }
   finally { single = false; }
 }
 
@@ -180,11 +185,12 @@ export function parseTargets(raw: string, allNames: string[]): string[] {
 // Run a batch sequentially in the background (200 MB/PC — don't flood). Each target
 // is SMB-prechecked (TCP 445) so dead/non-SMB IPs are skipped fast, then measured
 // and archived. Progress is polled via getLinkSpeedStatus().
-export async function runLinkSpeedBatch(targets: string[], sizeMB: number): Promise<void> {
+export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cyclesOverride?: number): Promise<void> {
   if (batch.running) return;
   stopRequested = false;
   batch = { running: true, total: targets.length, done: 0, current: null, sizeMB, startedAt: new Date().toISOString(), results: [] };
-  const { cycles, filename, okMbps } = await readOpts();
+  const { cycles: cyclesSetting, filename, okMbps } = await readOpts();
+  const cycles = effCycles(cyclesOverride, cyclesSetting);
   logActivity('info', 'linkspeed', `Měření spuštěno: ${targets.length} cílů · ${sizeMB} MB · ${cycles}× cyklů`);
   let nOk = 0, nSlow = 0, nOff = 0, nErr = 0;
   try {

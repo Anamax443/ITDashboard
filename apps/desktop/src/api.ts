@@ -817,9 +817,9 @@ export const api = {
   linkSpeedStop: () => jpost<{ stopped: boolean }>('/system/linkspeed/stop'),
   linkSpeedSummary: () => jget<LinkSpeedSummary>('/system/linkspeed/summary'),
   linkSpeedHistory: (limit = 300) => jget<{ okMbps: number; items: LinkSpeedHistoryRow[] }>(`/system/linkspeed/history?limit=${limit}`),
-  linkSpeedRun: async (targets: string, sizeMB?: number) => {
+  linkSpeedRun: async (targets: string, sizeMB?: number, cycles?: number) => {
     const r = await fetch(`${API_BASE}/system/linkspeed/run`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targets, sizeMB }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targets, sizeMB, cycles }),
     });
     if (!r.ok && r.status !== 409) throw new Error(`POST /system/linkspeed/run → ${r.status}`);
     return r.json() as Promise<{ started?: boolean; count?: number; error?: string }>;
@@ -1213,7 +1213,7 @@ export interface LinkSpeedResult {
   error?: string; measuredAt: string;
 }
 export interface LinkSpeedStatus {
-  okMbps: number; defaultSizeMB: number;
+  okMbps: number; defaultSizeMB: number; defaultCycles: number;
   running: boolean; total: number; done: number; current: string | null;
   sizeMB: number; startedAt: string | null; results: LinkSpeedResult[];
 }
