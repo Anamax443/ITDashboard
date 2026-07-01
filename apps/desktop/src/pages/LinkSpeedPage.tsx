@@ -90,7 +90,8 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
       for (const d of r.items) {
         if (!d.ip_address) continue;
         m.set(d.ip_address, d.computer_name || d.operator_name || d.host_name || '');
-        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(d.ip_address)) { const s = d.ip_address.replace(/\.\d+$/, '') + '.*'; sd.set(s, (sd.get(s) ?? 0) + 1); }
+        // Skip APIPA (169.254 = failed DHCP, not a real network), loopback and 0.x noise.
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(d.ip_address) && !/^(169\.254\.|127\.|0\.)/.test(d.ip_address)) { const s = d.ip_address.replace(/\.\d+$/, '') + '.*'; sd.set(s, (sd.get(s) ?? 0) + 1); }
       }
       setDevmap(m); setSubnetDev(sd);
     }).catch(() => {});
@@ -277,10 +278,27 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
     if (bars.length) check.push(`<p>🐌 <b>${t('linkspeed.slowest')}:</b> ${bars.slice(0, 10).map((b) => `${esc(nameOfRow(b.r))} ${b.mbps} Mb/s`).join(' · ')}</p>`);
     if (!check.length) check.push(`<p class="ok">✔ ${t('linkspeed.rep.allok')}</p>`);
 
+    // Networks as the on-screen bar visual (systemic red, isolated amber, ok green,
+    // "0 měřeno" hatched red) — technician sees at a glance which whole networks are bad
+    // and which were never measured.
+    const subColor = (v: string) => v === 'systemic' || v === 'unmeasured' ? '#b91c1c' : v === 'isolated' ? '#b45309' : '#157347';
+    const subLabel = (v: string) => v === 'systemic' ? t('linkspeed.subnetSystemic') : v === 'unmeasured' ? t('linkspeed.subnetUnmeasured') : v === 'isolated' ? t('linkspeed.subnetIsolated') : 'OK';
     const subnetTable = subnetStats.length
-      ? `<h2>${t('linkspeed.subnets')}</h2><table><thead><tr><th>${t('linkspeed.rep.network')}</th><th>${t('linkspeed.verdict')}</th><th>${t('linkspeed.problem')}/${t('linkspeed.rep.measured')}</th><th>off</th><th>err</th><th>${t('linkspeed.median')} Mb/s</th></tr></thead><tbody>`
-        + subnetStats.map((s) => { const lab = s.verdict === 'systemic' ? t('linkspeed.subnetSystemic') : s.verdict === 'unmeasured' ? t('linkspeed.subnetUnmeasured') : s.verdict === 'isolated' ? t('linkspeed.subnetIsolated') : 'OK'; const cls = s.verdict === 'systemic' || s.verdict === 'unmeasured' ? 'bad' : s.verdict === 'ok' ? 'ok' : ''; return `<tr><td>${esc(s.sub)}</td><td class="${cls}">${esc(lab)}</td><td>${s.verdict === 'unmeasured' ? `(${s.devices} ${esc(t('linkspeed.devicesShort'))})` : `${s.slow}/${s.measured}`}</td><td>${s.offline || ''}</td><td>${s.error || ''}</td><td>${s.median ?? '—'}</td></tr>`; }).join('')
-        + '</tbody></table>'
+      ? `<h2>${t('linkspeed.subnets')}</h2><div style="font-size:12px">`
+        + subnetStats.map((s) => {
+          const info = s.verdict === 'unmeasured' ? `${s.devices} ${t('linkspeed.devicesShort')}` : `${s.slow}/${s.measured} ${t('linkspeed.problem').toLowerCase()}${s.offline ? ` · ${s.offline} off` : ''}${s.error ? ` · ${s.error} err` : ''}`;
+          const fill = s.verdict === 'unmeasured'
+            ? 'width:100%;background:repeating-linear-gradient(45deg,#b91c1c,#b91c1c 5px,#fff 5px,#fff 10px)'
+            : `width:${Math.round(s.slowFrac * 100)}%;background:${subColor(s.verdict)}`;
+          return `<div style="display:flex;align-items:center;gap:10px;margin:2px 0">`
+            + `<span style="width:96px;font-family:monospace">${esc(s.sub)}</span>`
+            + `<span style="width:120px;color:${subColor(s.verdict)};font-weight:700">${esc(subLabel(s.verdict))}</span>`
+            + `<span style="width:150px;color:#555">${esc(info)}</span>`
+            + `<span style="flex:1;max-width:240px;height:11px;background:#eef2f7;border-radius:4px;overflow:hidden;display:inline-block"><span style="display:block;height:100%;border-radius:4px;${fill}"></span></span>`
+            + `<span style="width:96px;text-align:right;font-family:monospace;color:#555">${s.median != null ? `${t('linkspeed.median')} ${s.median}` : '—'}</span>`
+            + `</div>`;
+        }).join('')
+        + '</div>'
       : '';
 
     const rows = view.map((r) => `<tr>${cols.map((c) => c.key === 'status' ? `<td class="${verdictRow(r).cls}">${esc(c.val(r))}</td>` : `<td>${esc(c.val(r))}</td>`).join('')}</tr>`).join('');
