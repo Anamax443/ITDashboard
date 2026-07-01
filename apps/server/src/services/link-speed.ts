@@ -2,6 +2,7 @@ import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
+import { lookup as dnsLookup } from 'node:dns/promises';
 import { getPool } from '../db/pool.js';
 import { getAllSettings } from './settings.js';
 import { logActivity } from './activity-log.js';
@@ -65,7 +66,9 @@ function withinWindow(startStr: string | undefined, endStr: string | undefined):
 const LOCAL_DIR = 'C:\\tmp\\itdash-speedtest';
 
 export interface LinkSpeedResult {
-  target: string;
+  target: string;        // exactly what was entered (IP or hostname)
+  ip: string | null;     // resolved current IP of the target
+  hostname: string | null; // resolved computer name of the target
   sizeMB: number;
   upMbps: number | null;
   downMbps: number | null;
@@ -75,6 +78,29 @@ export interface LinkSpeedResult {
   cycles: number;
   error?: string;
   measuredAt: string;
+}
+
+const IP_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
+// Resolve a target string into BOTH its current IP and its hostname, so every result
+// carries both regardless of what was entered. A hostname target is forward-resolved
+// to its live IP (DNS/WINS) — that IP reveals which segment/interface answered (e.g.
+// wifi vs docked cable). An IP target's name comes from the inventory. Best-effort:
+// unresolved parts stay null.
+async function resolveEndpoint(target: string): Promise<{ ip: string | null; hostname: string | null }> {
+  const t = (target || '').trim();
+  const isIp = IP_RE.test(t);
+  let ip: string | null = isIp ? t : null;
+  let hostname: string | null = isIp ? null : t;
+  if (!ip && t) { try { ip = (await dnsLookup(t)).address; } catch { /* unresolved name */ } }
+  if (!hostname && ip) {
+    try {
+      const pool = await getPool();
+      const row = (await pool.request().input('ip', ip)
+        .query<{ name: string }>(`SELECT TOP 1 name FROM computers WHERE ip_address=@ip AND name IS NOT NULL`)).recordset[0];
+      hostname = row?.name ?? null;
+    } catch { /* inventory lookup failed — leave null */ }
+  }
+  return { ip, hostname };
 }
 
 // Cache a random source file of the requested size on .213 (reused across runs).
@@ -100,22 +126,22 @@ async function archive(r: LinkSpeedResult): Promise<void> {
   try {
     const pool = await getPool();
     await pool.request()
-      .input('t', r.target).input('up', r.upMbps).input('down', r.downMbps)
+      .input('t', r.target).input('ip', r.ip).input('hn', r.hostname).input('up', r.upMbps).input('down', r.downMbps)
       .input('ums', r.upMs).input('dms', r.downMs).input('sz', r.sizeMB).input('err', r.error ?? null).input('lat', r.latencyMs).input('cyc', r.cycles)
-      .query(`INSERT INTO link_speed_results (target, up_mbps, down_mbps, up_ms, down_ms, size_mb, error, latency_ms, cycles)
-              VALUES (@t,@up,@down,@ums,@dms,@sz,@err,@lat,@cyc)`);
+      .query(`INSERT INTO link_speed_results (target, ip_address, host_name, up_mbps, down_mbps, up_ms, down_ms, size_mb, error, latency_ms, cycles)
+              VALUES (@t,@ip,@hn,@up,@down,@ums,@dms,@sz,@err,@lat,@cyc)`);
   } catch (e) { console.error('link-speed archive failed', e); }
 }
 
 // One measurement (no concurrency guard) — N cycles of write-to-C$ + read-back, keep
 // the BEST up/down of the cycles (transient AV/CPU dips don't understate capacity),
 // plus a ping RTT. The test file (linkspeed.filename) is deleted afterwards.
-async function measure(target: string, sizeMB: number, cycles: number, filename: string, onCycle?: (done: number) => void): Promise<LinkSpeedResult> {
+async function measure(target: string, sizeMB: number, cycles: number, filename: string, ep: { ip: string | null; hostname: string | null }, onCycle?: (done: number) => void): Promise<LinkSpeedResult> {
   const bytes = sizeMB * 1024 * 1024;
   const remoteDir = `\\\\${target}\\C$\\tmp\\itdash-speedtest`;
   const remoteFile = `${remoteDir}\\${filename}`;
   const localBack = `${LOCAL_DIR}\\back-${target.replace(/[^\w.-]/g, '_')}.bin`;
-  const base = { target, sizeMB, cycles, measuredAt: new Date().toISOString() };
+  const base = { target, ip: ep.ip, hostname: ep.hostname, sizeMB, cycles, measuredAt: new Date().toISOString() };
   try {
     const src = await ensureSource(sizeMB);
     await fs.mkdir(remoteDir, { recursive: true });
@@ -151,12 +177,13 @@ const effCycles = (override: number | undefined, fromSettings: number): number =
 let single = false;
 // On-demand single PC test (used by the per-PC button). Archived to DB.
 export async function runLinkSpeedTest(target: string, sizeMB: number, cyclesOverride?: number): Promise<LinkSpeedResult> {
-  if (single) return { target, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: 'already_running', measuredAt: new Date().toISOString() };
+  if (single) return { target, ip: null, hostname: null, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: 'already_running', measuredAt: new Date().toISOString() };
   single = true;
   try {
     const { cycles, filename } = await readOpts();
+    const ep = await resolveEndpoint(target);
     const key = await hostKey(target);   // serialize per PC (identity, not IP) — no other heavy op runs on it meanwhile
-    const r = await withHostLock(key, () => measure(target, sizeMB, effCycles(cyclesOverride, cycles), filename));
+    const r = await withHostLock(key, () => measure(target, sizeMB, effCycles(cyclesOverride, cycles), filename, ep));
     await archive(r); return r;
   }
   finally { single = false; }
@@ -216,17 +243,18 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
       if (idx > 0 && pauseMs > 0) { await sleep(pauseMs); if (stopRequested) break; }
       batch.current = t;
       batch.cycleDone = 0; batch.cycleTotal = cycles;   // reset cycle progress for this target
+      const ep = await resolveEndpoint(t);   // capture IP + hostname even for skipped hosts
       let r: LinkSpeedResult;
       if ((await tcpProbeTimed(t, 445, 2500)) == null) {
         // Offline host (no ping) vs up-but-445-blocked — don't measure either, but
         // label them differently so offline isn't mistaken for a port problem.
         batch.cycleTotal = 0;   // skipped host — no cycles run
         const alive = await pingAlive(t, 1000);
-        r = { target: t, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
+        r = { target: t, ip: ep.ip, hostname: ep.hostname, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
       } else {
         // Serialize per PC identity so no other heavy op skews the transfer.
         const key = await hostKey(t);
-        r = await withHostLock(key, () => measure(t, sizeMB, cycles, filename, (d) => { batch.cycleDone = d; }));
+        r = await withHostLock(key, () => measure(t, sizeMB, cycles, filename, ep, (d) => { batch.cycleDone = d; }));
       }
       await archive(r);
       batch.results.push(r);

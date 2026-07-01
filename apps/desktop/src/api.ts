@@ -1207,7 +1207,7 @@ export interface DiscoCatProfile { category: string; sampled: { ip: string; name
 export interface DiscoResult { full: boolean; scannedPorts: number; durationMs: number; categories: DiscoCatProfile[]; ranAt: string; }
 
 export interface LinkSpeedResult {
-  target: string; sizeMB: number;
+  target: string; ip: string | null; hostname: string | null; sizeMB: number;
   upMbps: number | null; downMbps: number | null;
   upMs: number | null; downMs: number | null;
   latencyMs: number | null; cycles: number;
@@ -1221,7 +1221,7 @@ export interface LinkSpeedStatus {
   sizeMB: number; startedAt: string | null; results: LinkSpeedResult[];
 }
 export interface LinkSpeedHistoryRow {
-  id: number; target: string;
+  id: number; target: string; ip_address: string | null; host_name: string | null;
   up_mbps: number | null; down_mbps: number | null;
   up_ms: number | null; down_ms: number | null;
   latency_ms: number | null; cycles: number | null;

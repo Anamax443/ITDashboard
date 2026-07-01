@@ -32,10 +32,20 @@ function matchNum(val: number | null, expr: string): boolean {
 }
 // Date column: "d1..d2" (range), ">=d", "<d", … on the ISO timestamp; else substring
 // on the displayed local string. Accepts YYYY-MM-DD or anything Date can parse.
+// Parse a user-typed threshold. Accepts the Czech compact format the column shows —
+// "DD.MM.YYYY", optionally " HH:MM[:SS]" — as LOCAL time, plus anything Date can parse
+// (e.g. "2026-07-01"). Returns epoch ms or null. (Plain new Date("01.07.2026") is
+// invalid/ambiguous in V8, which is why >/< silently fell back to substring before.)
+function parseUserDate(s: string): number | null {
+  const q = (s || '').trim(); if (!q) return null;
+  const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(q);
+  if (m) return new Date(+m[3]!, +m[2]! - 1, +m[1]!, +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0)).getTime();
+  const d = new Date(q); return isNaN(d.getTime()) ? null : d.getTime();
+}
 function matchDate(iso: string, display: string, expr: string): boolean {
   const q = expr.trim(); if (!q) return true;
   const t = new Date(iso).getTime();
-  const p = (s: string) => { const d = new Date(s.trim()); return isNaN(d.getTime()) ? null : d.getTime(); };
+  const p = parseUserDate;
   let m = /^(.+?)\s*\.\.\s*(.+)$/.exec(q);
   if (m) { const a = p(m[1]!), b = p(m[2]!); if (a != null && b != null) return t >= Math.min(a, b) && t <= Math.max(a, b); }
   m = /^(>=|<=|>|<)\s*(.+)$/.exec(q);
@@ -88,6 +98,9 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
     return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   };
   const nameOf = (target: string) => devmap.get(target) || (/^\d{1,3}(\.\d{1,3}){3}$/.test(target) ? '' : target);
+  // Prefer the hostname resolved+stored at measurement time; fall back to the live
+  // IP→name map for older rows that predate the stored column.
+  const hostOf = (r: LinkSpeedHistoryRow) => r.host_name || nameOf(r.ip_address ?? r.target);
   const verdict = (up: number | null, down: number | null, err?: string | null) => {
     if (err) { const off = /offline/i.test(err); return { label: err, cls: off ? '' : 'bad', color: off ? 'var(--text-dim)' : 'var(--critical)' }; }
     if (up == null || down == null) return { label: '—', cls: '', color: 'var(--text-dim)' };
@@ -103,15 +116,15 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   // One column definition drives the header, per-column filter, sort and exports.
   type Col = { key: SortKey; label: string; type?: 'num' | 'date'; hint?: string; val: (r: LinkSpeedHistoryRow) => string; num?: (r: LinkSpeedHistoryRow) => number | null; iso?: (r: LinkSpeedHistoryRow) => string; sort: (r: LinkSpeedHistoryRow) => string | number };
   const cols: Col[] = [
-    { key: 'target', label: t('linkspeed.target'), val: (r) => r.target, sort: (r) => r.target },
-    { key: 'hostname', label: 'Hostname', val: (r) => nameOf(r.target), sort: (r) => nameOf(r.target).toLowerCase() },
+    { key: 'target', label: t('linkspeed.target'), val: (r) => r.ip_address ?? r.target, sort: (r) => r.ip_address ?? r.target },
+    { key: 'hostname', label: 'Hostname', val: (r) => hostOf(r), sort: (r) => hostOf(r).toLowerCase() },
     { key: 'up', label: '↑ Mb/s', type: 'num', hint: '>300  <100  300..500', val: (r) => (r.up_mbps ?? '—').toString(), num: (r) => r.up_mbps, sort: (r) => r.up_mbps ?? -1 },
     { key: 'down', label: '↓ Mb/s', type: 'num', hint: '>300  <100  300..500', val: (r) => (r.down_mbps ?? '—').toString(), num: (r) => r.down_mbps, sort: (r) => r.down_mbps ?? -1 },
     { key: 'latency', label: t('linkspeed.latency'), type: 'num', hint: '<10  >50  10..50', val: (r) => (r.latency_ms ?? '—').toString(), num: (r) => r.latency_ms, sort: (r) => r.latency_ms ?? 99999 },
     { key: 'status', label: t('linkspeed.verdict'), val: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label, sort: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label.toLowerCase() },
     { key: 'size', label: 'MB', type: 'num', hint: '>50  <200  50..200', val: (r) => String(r.size_mb), num: (r) => r.size_mb, sort: (r) => r.size_mb },
     { key: 'cycles', label: t('linkspeed.cyclesCol'), type: 'num', hint: '=4  >1', val: (r) => (r.cycles ?? '—').toString(), num: (r) => r.cycles, sort: (r) => r.cycles ?? -1 },
-    { key: 'when', label: t('linkspeed.when'), type: 'date', hint: '2026-06-30..2026-07-01  >=2026-07-01', val: (r) => fmt(r.measured_at), iso: (r) => r.measured_at, sort: (r) => r.measured_at },
+    { key: 'when', label: t('linkspeed.when'), type: 'date', hint: '>01.07.2026 06:00   <01.07.2026   30.06.2026..01.07.2026', val: (r) => fmt(r.measured_at), iso: (r) => r.measured_at, sort: (r) => r.measured_at },
   ];
 
   // Short help shown on hover over each history column header.
@@ -143,12 +156,12 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   // same machine measured by both IP and hostname is counted ONCE. Rows older than the
   // reset baseline are excluded (non-destructive reset — they stay in the history grid).
   const baselineAt = status?.baselineAt ?? null;
-  const identityKey = (target: string) => (nameOf(target) || target).toLowerCase();
+  const identityKey = (r: LinkSpeedHistoryRow) => (hostOf(r) || r.ip_address || r.target).toLowerCase();
   const latestPerTarget = (() => {
     const m = new Map<string, LinkSpeedHistoryRow>();
     for (const r of history) {
       if (baselineAt && r.measured_at < baselineAt) continue;
-      const k = identityKey(r.target);
+      const k = identityKey(r);
       if (!m.has(k)) m.set(k, r);
     }
     return [...m.values()];
@@ -240,8 +253,8 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
             {status.results.map((r, i) => {
               const off = r.error && /offline/i.test(r.error);
               const col = r.error ? (off ? '#8899aa' : '#ff6b6b') : (r.upMbps != null && r.downMbps != null && Math.min(r.upMbps, r.downMbps) < okMbps ? '#f5a524' : '#9fe6c4');
-              const host = nameOf(r.target);
-              const head = `${r.target}${host ? `  ${host}` : ''}`;
+              const host = r.hostname || nameOf(r.ip ?? r.target);
+              const head = `${r.ip ?? r.target}${host ? `  ${host}` : ''}`;
               const txt = r.error
                 ? `${head}  ${r.error}`
                 : `${head}  ↑${r.upMbps} ↓${r.downMbps} Mb/s${r.latencyMs != null ? `  ${r.latencyMs} ms` : ''}${r.cycles ? `  ${r.cycles}× cyklů` : ''}`;
@@ -269,9 +282,9 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
             </div>
             {bars.length > 0 && <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>{t('linkspeed.slowest')}</div>}
             {bars.map((b) => { const v = verdict(b.r.up_mbps, b.r.down_mbps, b.r.error); return (
-              <div key={b.r.target} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, fontSize: 11.5 }}>
-                <span style={{ width: 110, fontFamily: 'Consolas, monospace' }}>{b.r.target}</span>
-                <span style={{ width: 130, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameOf(b.r.target)}</span>
+              <div key={b.r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, fontSize: 11.5 }}>
+                <span style={{ width: 110, fontFamily: 'Consolas, monospace' }}>{b.r.ip_address ?? b.r.target}</span>
+                <span style={{ width: 130, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{hostOf(b.r)}</span>
                 <div style={{ flex: 1, maxWidth: 340, background: 'rgba(120,130,150,.12)', borderRadius: 4, height: 12 }}>
                   <div style={{ width: `${Math.min(100, b.mbps / barMax * 100)}%`, background: v.color, height: '100%', borderRadius: 4 }} />
                 </div>
@@ -312,8 +325,8 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
             <tbody>
               {view.map((r) => { const v = verdict(r.up_mbps, r.down_mbps, r.error); return (
                 <tr key={r.id} style={{ borderTop: '1px solid var(--border)', fontFamily: 'Consolas, monospace' }}>
-                  <td style={{ padding: '5px 10px' }}>{ipLink(r.target)}</td>
-                  <td style={{ padding: '5px 10px' }}>{nameOf(r.target) || '—'}</td>
+                  <td style={{ padding: '5px 10px' }}>{ipLink(r.ip_address ?? r.target)}</td>
+                  <td style={{ padding: '5px 10px' }}>{hostOf(r) || '—'}</td>
                   <td style={{ padding: '5px 10px' }}>{r.up_mbps ?? '—'}</td>
                   <td style={{ padding: '5px 10px' }}>{r.down_mbps ?? '—'}</td>
                   <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{r.latency_ms ?? '—'}</td>
