@@ -277,8 +277,9 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
 // Resolve a raw target string into a concrete IP/host list: expand "all" to the IPs
 // of active PCs/servers, expand ranges, then drop any host on the exclusion list
 // (linkspeed.exclude_hosts — matched by hostname or IP). Shared by the route + the
-// scheduler so both behave the same.
-export async function expandTargets(raw: string): Promise<string[]> {
+// scheduler so both behave the same. The scheduler ALWAYS honours exclusions; a manual
+// run may pass { ignoreExclusions } to deliberately measure excluded hosts too.
+export async function expandTargets(raw: string, opts?: { ignoreExclusions?: boolean }): Promise<string[]> {
   const s = await getAllSettings();
   let allTargets: string[] = [];
   if (/\ball\b/i.test(raw)) {
@@ -292,7 +293,7 @@ export async function expandTargets(raw: string): Promise<string[]> {
   // concrete IPs (hostnames pass through). A target is dropped if its IP is
   // excluded, or if the hostname behind that IP is excluded.
   const exclRaw = (s['linkspeed.exclude_hosts'] ?? '').trim();
-  const excl = new Set(parseTargets(exclRaw, []).map((x) => x.toLowerCase()));
+  const excl = new Set(opts?.ignoreExclusions ? [] : parseTargets(exclRaw, []).map((x) => x.toLowerCase()));
   if (excl.size && targets.length) {
     const pool = await getPool();
     const ipToName = new Map<string, string>();

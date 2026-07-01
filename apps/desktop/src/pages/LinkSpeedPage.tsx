@@ -58,6 +58,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const [targets, setTargets] = useState('');
   const [size, setSize] = useState('');
   const [cycles, setCycles] = useState('');   // empty = use linkspeed.cycles from settings
+  const [ignoreExcl, setIgnoreExcl] = useState(false);   // manual run: measure excluded hosts too
   const [status, setStatus] = useState<LinkSpeedStatus | null>(null);
   const [history, setHistory] = useState<LinkSpeedHistoryRow[]>([]);
   const [okMbps, setOkMbps] = useState(200);
@@ -179,7 +180,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const run = async () => {
     setError(null);
     try {
-      const r = await api.linkSpeedRun(targets, Number(size) || undefined, Number(cycles) || undefined);
+      const r = await api.linkSpeedRun(targets, Number(size) || undefined, Number(cycles) || undefined, ignoreExcl);
       if (r.error) setError(r.error === 'already_running' ? t('linkspeed.busy') : r.error);
       else { wasRunning.current = true; loadStatus(); }
     } catch (e) { setError(String(e)); }
@@ -244,6 +245,10 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
               <button className="refresh-btn" onClick={run} disabled={running || !targets.trim()} style={{ fontWeight: 600 }}>{running ? `… ${t('linkspeed.running')}` : `▶ ${t('linkspeed.run')}`}</button>
               {running && <button className="refresh-btn" onClick={() => api.linkSpeedStop().then(loadStatus).catch(() => {})} style={{ color: 'var(--critical)' }}>■ {t('linkspeed.stop')}</button>}
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11.5, color: 'var(--text-dim)', cursor: 'pointer' }} title={t('linkspeed.ignoreExclHint')}>
+              <input type="checkbox" checked={ignoreExcl} onChange={(e) => setIgnoreExcl(e.target.checked)} />
+              {t('linkspeed.ignoreExcl')}
+            </label>
           </div>
         </div>
         {error && <div style={{ color: 'var(--critical)', marginBottom: 10 }}>⚠ {error}</div>}

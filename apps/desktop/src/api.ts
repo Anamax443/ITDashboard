@@ -819,9 +819,9 @@ export const api = {
   serviceRestart: () => jpost<{ restarting: boolean; service: string }>('/system/service/restart'),
   linkSpeedSummary: () => jget<LinkSpeedSummary>('/system/linkspeed/summary'),
   linkSpeedHistory: (limit = 300) => jget<{ okMbps: number; items: LinkSpeedHistoryRow[] }>(`/system/linkspeed/history?limit=${limit}`),
-  linkSpeedRun: async (targets: string, sizeMB?: number, cycles?: number) => {
+  linkSpeedRun: async (targets: string, sizeMB?: number, cycles?: number, ignoreExclusions?: boolean) => {
     const r = await fetch(`${API_BASE}/system/linkspeed/run`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targets, sizeMB, cycles }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targets, sizeMB, cycles, ignoreExclusions }),
     });
     if (!r.ok && r.status !== 409) throw new Error(`POST /system/linkspeed/run → ${r.status}`);
     return r.json() as Promise<{ started?: boolean; count?: number; error?: string }>;

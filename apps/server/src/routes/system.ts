@@ -223,14 +223,16 @@ export async function registerSystemRoutes(app: FastifyInstance) {
   // "10.8.2.*" / "10.8.2.180-182" / "all" (active PCs). Runs in the background;
   // poll /system/linkspeed/status. Each target is SMB-prechecked, so dead IPs are
   // skipped fast.
-  app.post<{ Body: { targets?: string; sizeMB?: number; cycles?: number } }>('/system/linkspeed/run', async (req, reply) => {
+  app.post<{ Body: { targets?: string; sizeMB?: number; cycles?: number; ignoreExclusions?: boolean } }>('/system/linkspeed/run', async (req, reply) => {
     if (getLinkSpeedStatus().running) { reply.code(409); return { error: 'already_running' }; }
     const s = await getAllSettings();
     const sizeMB = Math.max(1, Math.min(1024, Number(req.body?.sizeMB) || Number(s['linkspeed.size_mb']) || 100));
     // Empty/0 → let the service fall back to the linkspeed.cycles setting.
     const cycles = Number(req.body?.cycles) || undefined;
     const raw = String(req.body?.targets ?? '');
-    const targets = await expandTargets(raw);
+    // Manual runs honour the settings exclusions by default; the page can opt out to
+    // deliberately measure excluded hosts (e.g. a one-off DC check).
+    const targets = await expandTargets(raw, { ignoreExclusions: !!req.body?.ignoreExclusions });
     if (targets.length === 0) { reply.code(400); return { error: 'no targets' }; }
     void runLinkSpeedBatch(targets, sizeMB, cycles);
     return { started: true, count: targets.length };
