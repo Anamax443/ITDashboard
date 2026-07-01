@@ -6,6 +6,7 @@ import { getPool } from '../db/pool.js';
 import { getAllSettings } from './settings.js';
 import { logActivity } from './activity-log.js';
 import { tcpProbeTimed } from './port-status-collector.js';
+import { withHostLock, hostKey } from './host-lock.js';
 
 // Quick "is it alive at all" ICMP check — to tell an OFFLINE host (no ping) from a
 // host that's up but has SMB/445 blocked (firewall), so offline doesn't read as a
@@ -152,7 +153,12 @@ let single = false;
 export async function runLinkSpeedTest(target: string, sizeMB: number, cyclesOverride?: number): Promise<LinkSpeedResult> {
   if (single) return { target, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: 'already_running', measuredAt: new Date().toISOString() };
   single = true;
-  try { const { cycles, filename } = await readOpts(); const r = await measure(target, sizeMB, effCycles(cyclesOverride, cycles), filename); await archive(r); return r; }
+  try {
+    const { cycles, filename } = await readOpts();
+    const key = await hostKey(target);   // serialize per PC (identity, not IP) — no other heavy op runs on it meanwhile
+    const r = await withHostLock(key, () => measure(target, sizeMB, effCycles(cyclesOverride, cycles), filename));
+    await archive(r); return r;
+  }
   finally { single = false; }
 }
 
@@ -218,7 +224,9 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
         const alive = await pingAlive(t, 1000);
         r = { target: t, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
       } else {
-        r = await measure(t, sizeMB, cycles, filename, (d) => { batch.cycleDone = d; });
+        // Serialize per PC identity so no other heavy op skews the transfer.
+        const key = await hostKey(t);
+        r = await withHostLock(key, () => measure(t, sizeMB, cycles, filename, (d) => { batch.cycleDone = d; }));
       }
       await archive(r);
       batch.results.push(r);

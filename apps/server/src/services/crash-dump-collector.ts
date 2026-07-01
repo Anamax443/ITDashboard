@@ -4,6 +4,7 @@ import sql from 'mssql/msnodesqlv8.js';
 import { getPool } from '../db/pool.js';
 import { getAllSettings } from './settings.js';
 import { logActivity } from './activity-log.js';
+import { tryWithHostLock, keyForComputerId } from './host-lock.js';
 
 // Pulls kernel minidumps from monitored, reachable PCs over the C$ admin share
 // (the service account is local-admin on clients via "Server Admins"). Reads each
@@ -64,39 +65,47 @@ export async function runCrashDumpCollectOnce(): Promise<{ pcs: number; collecte
         AND (reachable = 1 OR (reachable IS NULL AND consecutive_failures < 10))
     `)).recordset;
 
-    let collected = 0, skipped = 0;
+    let collected = 0, skipped = 0, busy = 0;
     for (const c of targets) {
-      if (!(await tcpProbe(c.name, 445, 2000))) continue;        // SMB not reachable → skip
-      const dir = `\\\\${c.name}\\${MINIDUMP_REL}`;
-      let files: string[];
-      try { files = (await fs.readdir(dir)).filter((f) => f.toLowerCase().endsWith('.dmp')); }
-      catch { continue; }                                        // no Minidump dir → healthy box
+      if (!(await tcpProbe(c.name, 445, 2000))) continue;        // SMB not reachable → skip (cheap probe, no lock)
 
-      for (const f of files) {
-        const exists = (await pool.request().input('cid', c.id).input('fn', f)
-          .query<{ n: number }>(`SELECT COUNT(*) AS n FROM crash_dumps WHERE computer_id=@cid AND source_filename=@fn`))
-          .recordset[0]!.n;
-        if (exists > 0) { skipped++; continue; }
+      // Serialize the C$ read against this PC's identity. Non-blocking: if a heavier op
+      // (e.g. a link-speed measurement) is on this PC right now, skip it this cycle and
+      // pick it up next round — never stall the whole sweep behind one busy box.
+      const outcome = await tryWithHostLock(keyForComputerId(c.id), async () => {
+        const dir = `\\\\${c.name}\\${MINIDUMP_REL}`;
+        let files: string[];
+        try { files = (await fs.readdir(dir)).filter((f) => f.toLowerCase().endsWith('.dmp')); }
+        catch { return; }                                        // no Minidump dir → healthy box
 
-        const full = `${dir}\\${f}`;
-        let buf: Buffer; let mtime: Date;
-        try {
-          const st = await fs.stat(full);
-          if (st.size > MAX_DMP_BYTES) { skipped++; continue; }
-          mtime = st.mtime;
-          buf = await fs.readFile(full);
-        } catch { continue; }
+        for (const f of files) {
+          const exists = (await pool.request().input('cid', c.id).input('fn', f)
+            .query<{ n: number }>(`SELECT COUNT(*) AS n FROM crash_dumps WHERE computer_id=@cid AND source_filename=@fn`))
+            .recordset[0]!.n;
+          if (exists > 0) { skipped++; continue; }
 
-        await pool.request()
-          .input('cid', c.id).input('cn', c.name).input('fn', f)
-          .input('occ', mtime).input('sz', buf.length)
-          .input('blob', sql.VarBinary(sql.MAX), buf)
-          .query(`INSERT INTO crash_dumps (computer_id, computer_name, source_filename, occurred_at, size_bytes, status, dmp_blob)
-                  VALUES (@cid, @cn, @fn, @occ, @sz, 'pending', @blob)`);
-        collected++;
-        logActivity('info', 'crash', `${c.name}: nový dump ${f} (${Math.round(buf.length / 1024)} kB) uložen, čeká na analýzu`);
-      }
+          const full = `${dir}\\${f}`;
+          let buf: Buffer; let mtime: Date;
+          try {
+            const st = await fs.stat(full);
+            if (st.size > MAX_DMP_BYTES) { skipped++; continue; }
+            mtime = st.mtime;
+            buf = await fs.readFile(full);
+          } catch { continue; }
+
+          await pool.request()
+            .input('cid', c.id).input('cn', c.name).input('fn', f)
+            .input('occ', mtime).input('sz', buf.length)
+            .input('blob', sql.VarBinary(sql.MAX), buf)
+            .query(`INSERT INTO crash_dumps (computer_id, computer_name, source_filename, occurred_at, size_bytes, status, dmp_blob)
+                    VALUES (@cid, @cn, @fn, @occ, @sz, 'pending', @blob)`);
+          collected++;
+          logActivity('info', 'crash', `${c.name}: nový dump ${f} (${Math.round(buf.length / 1024)} kB) uložen, čeká na analýzu`);
+        }
+      });
+      if (!outcome.ran) busy++;                                  // PC busy with another heavy op — next cycle
     }
+    if (busy > 0) logActivity('info', 'crash', `Sběr dumpů: ${busy} PC přeskočeno (zaneprázdněno jinou úlohou), zkusí se příště`);
     if (collected > 0) logActivity('info', 'crash', `Sběr dumpů: ${collected} nových · ${skipped} už v DB · ${targets.length} PC`);
     lastResult = { pcs: targets.length, collected, skipped };
     return lastResult;
