@@ -18,6 +18,31 @@ const REPORT_CSS = `.ls-rep{font-family:'Segoe UI',Arial,sans-serif;color:#111;m
 
 type SortKey = 'target' | 'hostname' | 'up' | 'down' | 'status' | 'size' | 'when';
 
+// Column filter expressions for numeric columns: "300..500" (range), ">300",
+// ">=300", "<100", "<=100", "=300"/"300" (exact), else substring fallback.
+function matchNum(val: number | null, expr: string): boolean {
+  const q = expr.trim(); if (!q) return true; if (val == null) return false;
+  let m = /^(-?\d+(?:[.,]\d+)?)\s*\.\.\s*(-?\d+(?:[.,]\d+)?)$/.exec(q);
+  if (m) { const a = +m[1]!.replace(',', '.'), b = +m[2]!.replace(',', '.'); return val >= Math.min(a, b) && val <= Math.max(a, b); }
+  m = /^(>=|<=|>|<)\s*(-?\d+(?:[.,]\d+)?)$/.exec(q);
+  if (m) { const n = +m[2]!.replace(',', '.'); return m[1] === '>' ? val > n : m[1] === '<' ? val < n : m[1] === '>=' ? val >= n : val <= n; }
+  m = /^=?\s*(-?\d+(?:[.,]\d+)?)$/.exec(q);
+  if (m) return val === +m[1]!.replace(',', '.');
+  return String(val).includes(q);
+}
+// Date column: "d1..d2" (range), ">=d", "<d", … on the ISO timestamp; else substring
+// on the displayed local string. Accepts YYYY-MM-DD or anything Date can parse.
+function matchDate(iso: string, display: string, expr: string): boolean {
+  const q = expr.trim(); if (!q) return true;
+  const t = new Date(iso).getTime();
+  const p = (s: string) => { const d = new Date(s.trim()); return isNaN(d.getTime()) ? null : d.getTime(); };
+  let m = /^(.+?)\s*\.\.\s*(.+)$/.exec(q);
+  if (m) { const a = p(m[1]!), b = p(m[2]!); if (a != null && b != null) return t >= Math.min(a, b) && t <= Math.max(a, b); }
+  m = /^(>=|<=|>|<)\s*(.+)$/.exec(q);
+  if (m) { const n = p(m[2]!); if (n != null) return m[1] === '>' ? t > n : m[1] === '<' ? t < n : m[1] === '>=' ? t >= n : t <= n; }
+  return display.toLowerCase().includes(q.toLowerCase());
+}
+
 export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: string) => void }) {
   const { t } = useI18n();
   const [targets, setTargets] = useState('');
@@ -67,20 +92,26 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const running = status?.running ?? false;
 
   // One column definition drives the header, per-column filter, sort and exports.
-  const cols: { key: SortKey; label: string; val: (r: LinkSpeedHistoryRow) => string; sort: (r: LinkSpeedHistoryRow) => string | number }[] = [
+  type Col = { key: SortKey; label: string; type?: 'num' | 'date'; hint?: string; val: (r: LinkSpeedHistoryRow) => string; num?: (r: LinkSpeedHistoryRow) => number | null; iso?: (r: LinkSpeedHistoryRow) => string; sort: (r: LinkSpeedHistoryRow) => string | number };
+  const cols: Col[] = [
     { key: 'target', label: t('linkspeed.target'), val: (r) => r.target, sort: (r) => r.target },
     { key: 'hostname', label: 'Hostname', val: (r) => nameOf(r.target), sort: (r) => nameOf(r.target).toLowerCase() },
-    { key: 'up', label: '↑ Mb/s', val: (r) => (r.up_mbps ?? '—').toString(), sort: (r) => r.up_mbps ?? -1 },
-    { key: 'down', label: '↓ Mb/s', val: (r) => (r.down_mbps ?? '—').toString(), sort: (r) => r.down_mbps ?? -1 },
+    { key: 'up', label: '↑ Mb/s', type: 'num', hint: '>300  <100  300..500', val: (r) => (r.up_mbps ?? '—').toString(), num: (r) => r.up_mbps, sort: (r) => r.up_mbps ?? -1 },
+    { key: 'down', label: '↓ Mb/s', type: 'num', hint: '>300  <100  300..500', val: (r) => (r.down_mbps ?? '—').toString(), num: (r) => r.down_mbps, sort: (r) => r.down_mbps ?? -1 },
     { key: 'status', label: t('linkspeed.verdict'), val: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label, sort: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label.toLowerCase() },
-    { key: 'size', label: 'MB', val: (r) => String(r.size_mb), sort: (r) => r.size_mb },
-    { key: 'when', label: t('linkspeed.when'), val: (r) => fmt(r.measured_at), sort: (r) => r.measured_at },
+    { key: 'size', label: 'MB', type: 'num', hint: '>50  <200  50..200', val: (r) => String(r.size_mb), num: (r) => r.size_mb, sort: (r) => r.size_mb },
+    { key: 'when', label: t('linkspeed.when'), type: 'date', hint: '2026-06-30..2026-07-01  >=2026-07-01', val: (r) => fmt(r.measured_at), iso: (r) => r.measured_at, sort: (r) => r.measured_at },
   ];
 
   const view = history.filter((r) => {
     if (fStatus !== 'all' && cat(r) !== fStatus) return false;
     if (fAll.trim() && !cols.map((c) => c.val(r)).join(' ').toLowerCase().includes(fAll.toLowerCase())) return false;
-    for (const c of cols) { const q = colF[c.key].trim().toLowerCase(); if (q && !c.val(r).toLowerCase().includes(q)) return false; }
+    for (const c of cols) {
+      const q = colF[c.key].trim(); if (!q) continue;
+      if (c.type === 'num') { if (!matchNum(c.num!(r), q)) return false; }
+      else if (c.type === 'date') { if (!matchDate(c.iso!(r), c.val(r), q)) return false; }
+      else if (!c.val(r).toLowerCase().includes(q.toLowerCase())) return false;
+    }
     return true;
   }).sort((a, b) => {
     const col = cols.find((c) => c.key === sortKey)!; const av = col.sort(a); const bv = col.sort(b);
@@ -207,7 +238,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
                 {cols.map((c) => <th key={c.key} style={th} onClick={() => toggleSort(c.key)}>{c.label}{sortKey === c.key ? (sortDir === 1 ? ' ▲' : ' ▼') : ''}</th>)}
               </tr>
               <tr>
-                {cols.map((c) => <th key={c.key} style={{ padding: '2px 6px' }}><input value={colF[c.key]} onChange={(e) => setColF((f) => ({ ...f, [c.key]: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box', fontSize: 11, padding: '2px 4px' }} /></th>)}
+                {cols.map((c) => <th key={c.key} style={{ padding: '2px 6px' }}><input value={colF[c.key]} onChange={(e) => setColF((f) => ({ ...f, [c.key]: e.target.value }))} title={c.hint} placeholder={c.type === 'num' ? '>,<,a..b' : c.type === 'date' ? 'a..b' : ''} style={{ width: '100%', boxSizing: 'border-box', fontSize: 11, padding: '2px 4px' }} /></th>)}
               </tr>
             </thead>
             <tbody>
