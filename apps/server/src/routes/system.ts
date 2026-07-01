@@ -239,7 +239,7 @@ export async function registerSystemRoutes(app: FastifyInstance) {
     const limit = Math.max(1, Math.min(2000, Number(req.query?.limit) || 300));
     const pool = await getPool();
     const rows = (await pool.request().input('lim', limit).query(`
-      SELECT TOP (@lim) id, target, up_mbps, down_mbps, up_ms, down_ms, latency_ms, size_mb, error, measured_at
+      SELECT TOP (@lim) id, target, up_mbps, down_mbps, up_ms, down_ms, latency_ms, size_mb, cycles, error, measured_at
       FROM link_speed_results ORDER BY id DESC`)).recordset;
     const s = await getAllSettings();
     return { okMbps: Number(s['linkspeed.ok_mbps']) || 200, items: rows };

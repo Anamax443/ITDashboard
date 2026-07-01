@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { getPool } from '../db/pool.js';
 import { getAllSettings } from './settings.js';
+import { logActivity } from './activity-log.js';
 import { tcpProbeTimed } from './port-status-collector.js';
 
 // Quick "is it alive at all" ICMP check — to tell an OFFLINE host (no ping) from a
@@ -28,11 +29,12 @@ function pingLatency(host: string, timeoutMs: number): Promise<number | null> {
 }
 
 // Cycles + test filename come from settings (linkspeed.cycles / linkspeed.filename).
-async function readOpts(): Promise<{ cycles: number; filename: string }> {
+async function readOpts(): Promise<{ cycles: number; filename: string; okMbps: number }> {
   const s = await getAllSettings();
   const cycles = Math.max(1, Math.min(20, Number(s['linkspeed.cycles']) || 4));
   const filename = ((s['linkspeed.filename'] ?? '').trim() || 'itdash-speedtest.tmp').replace(/[\\/:*?"<>|]/g, '_');
-  return { cycles, filename };
+  const okMbps = Number(s['linkspeed.ok_mbps']) || 200;
+  return { cycles, filename, okMbps };
 }
 
 // Is the current local time inside the [start,end] "HH:MM" window (empty = always)?
@@ -64,6 +66,7 @@ export interface LinkSpeedResult {
   upMs: number | null;
   downMs: number | null;
   latencyMs: number | null;
+  cycles: number;
   error?: string;
   measuredAt: string;
 }
@@ -92,9 +95,9 @@ async function archive(r: LinkSpeedResult): Promise<void> {
     const pool = await getPool();
     await pool.request()
       .input('t', r.target).input('up', r.upMbps).input('down', r.downMbps)
-      .input('ums', r.upMs).input('dms', r.downMs).input('sz', r.sizeMB).input('err', r.error ?? null).input('lat', r.latencyMs)
-      .query(`INSERT INTO link_speed_results (target, up_mbps, down_mbps, up_ms, down_ms, size_mb, error, latency_ms)
-              VALUES (@t,@up,@down,@ums,@dms,@sz,@err,@lat)`);
+      .input('ums', r.upMs).input('dms', r.downMs).input('sz', r.sizeMB).input('err', r.error ?? null).input('lat', r.latencyMs).input('cyc', r.cycles)
+      .query(`INSERT INTO link_speed_results (target, up_mbps, down_mbps, up_ms, down_ms, size_mb, error, latency_ms, cycles)
+              VALUES (@t,@up,@down,@ums,@dms,@sz,@err,@lat,@cyc)`);
   } catch (e) { console.error('link-speed archive failed', e); }
 }
 
@@ -106,7 +109,7 @@ async function measure(target: string, sizeMB: number, cycles: number, filename:
   const remoteDir = `\\\\${target}\\C$\\tmp\\itdash-speedtest`;
   const remoteFile = `${remoteDir}\\${filename}`;
   const localBack = `${LOCAL_DIR}\\back-${target.replace(/[^\w.-]/g, '_')}.bin`;
-  const base = { target, sizeMB, measuredAt: new Date().toISOString() };
+  const base = { target, sizeMB, cycles, measuredAt: new Date().toISOString() };
   try {
     const src = await ensureSource(sizeMB);
     await fs.mkdir(remoteDir, { recursive: true });
@@ -136,7 +139,7 @@ async function measure(target: string, sizeMB: number, cycles: number, filename:
 let single = false;
 // On-demand single PC test (used by the per-PC button). Archived to DB.
 export async function runLinkSpeedTest(target: string, sizeMB: number): Promise<LinkSpeedResult> {
-  if (single) return { target, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, error: 'already_running', measuredAt: new Date().toISOString() };
+  if (single) return { target, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: 'already_running', measuredAt: new Date().toISOString() };
   single = true;
   try { const { cycles, filename } = await readOpts(); const r = await measure(target, sizeMB, cycles, filename); await archive(r); return r; }
   finally { single = false; }
@@ -181,7 +184,9 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number): Prom
   if (batch.running) return;
   stopRequested = false;
   batch = { running: true, total: targets.length, done: 0, current: null, sizeMB, startedAt: new Date().toISOString(), results: [] };
-  const { cycles, filename } = await readOpts();
+  const { cycles, filename, okMbps } = await readOpts();
+  logActivity('info', 'linkspeed', `Měření spuštěno: ${targets.length} cílů · ${sizeMB} MB · ${cycles}× cyklů`);
+  let nOk = 0, nSlow = 0, nOff = 0, nErr = 0;
   try {
     for (const t of targets) {
       if (stopRequested) break;
@@ -191,14 +196,22 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number): Prom
         // Offline host (no ping) vs up-but-445-blocked — don't measure either, but
         // label them differently so offline isn't mistaken for a port problem.
         const alive = await pingAlive(t, 1000);
-        r = { target: t, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
+        r = { target: t, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
       } else {
         r = await measure(t, sizeMB, cycles, filename);
       }
       await archive(r);
       batch.results.push(r);
       batch.done++;
+      // Log each result to the activity feed (warn = slow, error = hard error).
+      const off = !!r.error && /offline/i.test(r.error);
+      const isErr = !!r.error && !off;
+      const slow = !r.error && r.upMbps != null && r.downMbps != null && Math.min(r.upMbps, r.downMbps) < okMbps;
+      if (off) nOff++; else if (isErr) nErr++; else if (slow) nSlow++; else nOk++;
+      const msg = r.error ? `${t}: ${r.error}` : `${t}: ↑${r.upMbps} ↓${r.downMbps} Mb/s${r.latencyMs != null ? ` · ${r.latencyMs} ms` : ''}${slow ? ' — POMALÉ' : ''}`;
+      logActivity(isErr ? 'error' : slow ? 'warn' : 'info', 'linkspeed', msg);
     }
+    logActivity('info', 'linkspeed', `Měření dokončeno: ${nOk} OK · ${nSlow} pomalé · ${nOff} offline · ${nErr} chyba`);
   } finally {
     batch.running = false;
     batch.current = null;

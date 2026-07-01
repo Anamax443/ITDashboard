@@ -16,7 +16,7 @@ const REPORT_CSS = `.ls-rep{font-family:'Segoe UI',Arial,sans-serif;color:#111;m
 .ls-rep .bad{color:#b91c1c;font-weight:700}.ls-rep .ok{color:#157347;font-weight:700}
 @media print{@page{margin:12mm}}`;
 
-type SortKey = 'target' | 'hostname' | 'up' | 'down' | 'latency' | 'status' | 'size' | 'when';
+type SortKey = 'target' | 'hostname' | 'up' | 'down' | 'latency' | 'status' | 'size' | 'cycles' | 'when';
 
 // Column filter expressions for numeric columns: "300..500" (range), ">300",
 // ">=300", "<100", "<=100", "=300"/"300" (exact), else substring fallback.
@@ -54,7 +54,8 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const [error, setError] = useState<string | null>(null);
   const [fStatus, setFStatus] = useState<'all' | 'ok' | 'problem' | 'offline' | 'error'>('all');
   const [fAll, setFAll] = useState('');
-  const [colF, setColF] = useState<Record<SortKey, string>>({ target: '', hostname: '', up: '', down: '', latency: '', status: '', size: '', when: '' });
+  const [colF, setColF] = useState<Record<SortKey, string>>({ target: '', hostname: '', up: '', down: '', latency: '', status: '', size: '', cycles: '', when: '' });
+  const consoleRef = useRef<HTMLDivElement>(null);
   const [sortKey, setSortKey] = useState<SortKey>('when');
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
   const wasRunning = useRef(false);
@@ -76,6 +77,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
     }).catch(() => {});
     const tmr = setInterval(loadStatus, 2000); return () => clearInterval(tmr);
   }, []);
+  useEffect(() => { const c = consoleRef.current; if (c) c.scrollTop = c.scrollHeight; }, [status?.results.length, status?.current]);
 
   const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
   const nameOf = (target: string) => devmap.get(target) || (/^\d{1,3}(\.\d{1,3}){3}$/.test(target) ? '' : target);
@@ -101,6 +103,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
     { key: 'latency', label: t('linkspeed.latency'), type: 'num', hint: '<10  >50  10..50', val: (r) => (r.latency_ms ?? '—').toString(), num: (r) => r.latency_ms, sort: (r) => r.latency_ms ?? 99999 },
     { key: 'status', label: t('linkspeed.verdict'), val: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label, sort: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label.toLowerCase() },
     { key: 'size', label: 'MB', type: 'num', hint: '>50  <200  50..200', val: (r) => String(r.size_mb), num: (r) => r.size_mb, sort: (r) => r.size_mb },
+    { key: 'cycles', label: t('linkspeed.cyclesCol'), type: 'num', hint: '=4  >1', val: (r) => (r.cycles ?? '—').toString(), num: (r) => r.cycles, sort: (r) => r.cycles ?? -1 },
     { key: 'when', label: t('linkspeed.when'), type: 'date', hint: '2026-06-30..2026-07-01  >=2026-07-01', val: (r) => fmt(r.measured_at), iso: (r) => r.measured_at, sort: (r) => r.measured_at },
   ];
 
@@ -190,7 +193,18 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
           </div>
         </div>
         {error && <div style={{ color: 'var(--critical)', marginBottom: 10 }}>⚠ {error}</div>}
-        {running && status && <div style={{ fontSize: 12, marginBottom: 10 }}>{t('linkspeed.progress')}: <b>{status.done}/{status.total}</b>{status.current ? ` · ${status.current}` : ''} <span style={{ color: 'var(--text-dim)' }}>({status.sizeMB} MB)</span></div>}
+        {running && status && <div style={{ fontSize: 12, marginBottom: 6 }}>{t('linkspeed.progress')}: <b>{status.done}/{status.total}</b>{status.current ? ` · ${status.current}` : ''} <span style={{ color: 'var(--text-dim)' }}>({status.sizeMB} MB)</span></div>}
+        {status && (running || status.results.length > 0) && (
+          <div ref={consoleRef} style={{ background: '#05070a', fontFamily: 'Consolas, monospace', fontSize: 11.5, lineHeight: 1.5, padding: 10, borderRadius: 6, maxHeight: 220, overflow: 'auto', marginBottom: 14 }}>
+            {status.results.map((r, i) => {
+              const off = r.error && /offline/i.test(r.error);
+              const col = r.error ? (off ? '#8899aa' : '#ff6b6b') : (r.upMbps != null && r.downMbps != null && Math.min(r.upMbps, r.downMbps) < okMbps ? '#f5a524' : '#9fe6c4');
+              const txt = r.error ? `${r.target}  ${r.error}` : `${r.target}  ↑${r.upMbps} ↓${r.downMbps} Mb/s${r.latencyMs != null ? `  ${r.latencyMs} ms` : ''}`;
+              return <div key={i} style={{ color: col, whiteSpace: 'pre-wrap' }}>{txt}</div>;
+            })}
+            {running && <div style={{ color: '#8899aa' }}>… {status.current ?? ''} ({status.done}/{status.total})</div>}
+          </div>
+        )}
 
         {latestPerTarget.length > 0 && (
           <div style={{ marginBottom: 16 }}>
@@ -252,6 +266,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
                   <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{r.latency_ms ?? '—'}</td>
                   <td style={{ padding: '5px 10px', color: v.color, fontWeight: 600 }}>{v.label}</td>
                   <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{r.size_mb}</td>
+                  <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{r.cycles ?? '—'}</td>
                   <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{fmt(r.measured_at)}</td>
                 </tr>
               ); })}
