@@ -318,7 +318,10 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
         + '</div>'
       : '';
 
-    const rows = view.map((r) => `<tr>${cols.map((c) => c.key === 'status' ? `<td class="${verdictRow(r).cls}">${esc(c.val(r))}</td>` : `<td>${esc(c.val(r))}</td>`).join('')}</tr>`).join('');
+    // The report table is always sorted by IP (numeric), regardless of the on-screen sort.
+    const ipKey = (r: LinkSpeedHistoryRow) => { const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(r.ip_address ?? r.target); return m ? ((+m[1]! * 256 + +m[2]!) * 256 + +m[3]!) * 256 + +m[4]! : Number.MAX_SAFE_INTEGER; };
+    const rows = [...view].sort((a, b) => ipKey(a) - ipKey(b) || (a.ip_address ?? a.target).localeCompare(b.ip_address ?? b.target))
+      .map((r) => `<tr>${cols.map((c) => c.key === 'status' ? `<td class="${verdictRow(r).cls}">${esc(c.val(r))}</td>` : `<td>${esc(c.val(r))}</td>`).join('')}</tr>`).join('');
     return '﻿<!DOCTYPE html><html lang="cs"><head><meta charset="utf-8"><title>' + t('linkspeed.title') + '</title><style>' + REPORT_CSS + '</style></head><body><div class="ls-rep">'
       + `<h1>⚡ ${t('linkspeed.title')}</h1><div class="meta">ITDashboard · ${scopeLabel} (${esc(runInfo)}) · ${t('linkspeed.okAt')} ≥ ${okMbps} Mb/s · ${new Date().toLocaleString()}</div>`
       + `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;margin:0 0 14px"><b>${t('linkspeed.rep.check')}</b>${check.join('')}</div>`
