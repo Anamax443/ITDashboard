@@ -63,6 +63,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const [history, setHistory] = useState<LinkSpeedHistoryRow[]>([]);
   const [okMbps, setOkMbps] = useState(200);
   const [devmap, setDevmap] = useState<Map<string, string>>(new Map());
+  const [subnetDev, setSubnetDev] = useState<Map<string, number>>(new Map());   // /24 → device count from inventory (cable+wifi)
   const [error, setError] = useState<string | null>(null);
   const [fStatus, setFStatus] = useState<'all' | 'ok' | 'problem' | 'offline' | 'error'>('all');
   const [runScope, setRunScope] = useState<'last' | 'last3' | 'last10' | 'all'>('last');   // which run(s) to show
@@ -85,8 +86,13 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
     loadStatus(); loadHistory();
     api.devices().then((r) => {
       const m = new Map<string, string>();
-      for (const d of r.items) if (d.ip_address) m.set(d.ip_address, d.computer_name || d.operator_name || d.host_name || '');
-      setDevmap(m);
+      const sd = new Map<string, number>();
+      for (const d of r.items) {
+        if (!d.ip_address) continue;
+        m.set(d.ip_address, d.computer_name || d.operator_name || d.host_name || '');
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(d.ip_address)) { const s = d.ip_address.replace(/\.\d+$/, '') + '.*'; sd.set(s, (sd.get(s) ?? 0) + 1); }
+      }
+      setDevmap(m); setSubnetDev(sd);
     }).catch(() => {});
     const tmr = setInterval(loadStatus, 2000); return () => clearInterval(tmr);
   }, []);
@@ -208,18 +214,27 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
       else if (c === 'offline') a.offline++; else a.error++;
       m.set(sub, a);
     }
-    return [...m.entries()].map(([sub, a]) => {
+    type Verdict = 'systemic' | 'isolated' | 'ok' | 'unmeasured';
+    type Row = { sub: string; measured: number; slow: number; offline: number; error: number; mbps: number[]; median: number | null; slowFrac: number; verdict: Verdict; devices: number };
+    const rows: Row[] = [...m.entries()].map(([sub, a]): Row => {
       const slowFrac = a.measured ? a.slow / a.measured : 0;
       const sorted = [...a.mbps].sort((x, y) => x - y);
       const median = sorted.length ? sorted[Math.floor(sorted.length / 2)]! : null;
       // Whole network flagged only with enough evidence (≥2 measured) and a slow majority;
       // otherwise "isolated" if any single host is slow, else OK.
-      const verdict: 'systemic' | 'isolated' | 'ok' = (a.measured >= 2 && slowFrac >= 0.5) ? 'systemic' : (a.slow > 0 ? 'isolated' : 'ok');
-      return { sub, ...a, median, slowFrac, verdict };
-    }).filter((s) => s.measured + s.offline + s.error > 0)
-      .sort((a, b) => (b.slowFrac - a.slowFrac) || ((a.median ?? 1e9) - (b.median ?? 1e9)) || (b.measured - a.measured));
+      const verdict: Verdict = (a.measured >= 2 && slowFrac >= 0.5) ? 'systemic' : (a.slow > 0 ? 'isolated' : 'ok');
+      return { sub, ...a, median, slowFrac, verdict, devices: subnetDev.get(sub) ?? a.measured };
+    }).filter((s) => s.measured + s.offline + s.error > 0);
+    // Networks that EXIST in the device inventory (cable + wifi) but got no measurement
+    // this scope — flagged "0 měřeno" so a never-tested network is obvious.
+    const measuredSubs = new Set(rows.map((r) => r.sub));
+    for (const [sub, cnt] of subnetDev) {
+      if (!measuredSubs.has(sub)) rows.push({ sub, measured: 0, slow: 0, offline: 0, error: 0, mbps: [], median: null, slowFrac: 0, verdict: 'unmeasured', devices: cnt });
+    }
+    const order: Record<Verdict, number> = { systemic: 0, unmeasured: 1, isolated: 2, ok: 3 };
+    return rows.sort((a, b) => (order[a.verdict] - order[b.verdict]) || (b.slowFrac - a.slowFrac) || (b.devices - a.devices) || a.sub.localeCompare(b.sub));
   })();
-  const subnetColor = (v: 'systemic' | 'isolated' | 'ok') => v === 'systemic' ? 'var(--critical)' : v === 'isolated' ? 'var(--warning)' : 'var(--ok)';
+  const subnetColor = (v: 'systemic' | 'isolated' | 'ok' | 'unmeasured') => v === 'systemic' ? 'var(--critical)' : v === 'unmeasured' ? 'var(--critical)' : v === 'isolated' ? 'var(--warning)' : 'var(--ok)';
 
   const ipLink = (target: string) => {
     const onClick = onJumpToComputer ? () => onJumpToComputer(nameOf(target) || target) : undefined;
@@ -264,7 +279,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
 
     const subnetTable = subnetStats.length
       ? `<h2>${t('linkspeed.subnets')}</h2><table><thead><tr><th>${t('linkspeed.rep.network')}</th><th>${t('linkspeed.verdict')}</th><th>${t('linkspeed.problem')}/${t('linkspeed.rep.measured')}</th><th>off</th><th>err</th><th>${t('linkspeed.median')} Mb/s</th></tr></thead><tbody>`
-        + subnetStats.map((s) => `<tr><td>${esc(s.sub)}</td><td class="${s.verdict === 'systemic' ? 'bad' : s.verdict === 'isolated' ? '' : 'ok'}">${s.verdict === 'systemic' ? esc(t('linkspeed.subnetSystemic')) : s.verdict === 'isolated' ? esc(t('linkspeed.subnetIsolated')) : 'OK'}</td><td>${s.slow}/${s.measured}</td><td>${s.offline || ''}</td><td>${s.error || ''}</td><td>${s.median ?? '—'}</td></tr>`).join('')
+        + subnetStats.map((s) => { const lab = s.verdict === 'systemic' ? t('linkspeed.subnetSystemic') : s.verdict === 'unmeasured' ? t('linkspeed.subnetUnmeasured') : s.verdict === 'isolated' ? t('linkspeed.subnetIsolated') : 'OK'; const cls = s.verdict === 'systemic' || s.verdict === 'unmeasured' ? 'bad' : s.verdict === 'ok' ? 'ok' : ''; return `<tr><td>${esc(s.sub)}</td><td class="${cls}">${esc(lab)}</td><td>${s.verdict === 'unmeasured' ? `(${s.devices} ${esc(t('linkspeed.devicesShort'))})` : `${s.slow}/${s.measured}`}</td><td>${s.offline || ''}</td><td>${s.error || ''}</td><td>${s.median ?? '—'}</td></tr>`; }).join('')
         + '</tbody></table>'
       : '';
 
@@ -376,16 +391,20 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
             {subnetStats.length > 0 && (
               <div style={{ marginTop: 12 }}>
                 <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }} title={t('linkspeed.subnetsHint')}>{t('linkspeed.subnets')}</div>
-                {subnetStats.slice(0, 12).map((s) => {
+                {subnetStats.slice(0, 24).map((s) => {
                   const col = subnetColor(s.verdict);
-                  const lab = s.verdict === 'systemic' ? t('linkspeed.subnetSystemic') : s.verdict === 'isolated' ? t('linkspeed.subnetIsolated') : 'OK';
+                  const unmeasured = s.verdict === 'unmeasured';
+                  const lab = s.verdict === 'systemic' ? t('linkspeed.subnetSystemic') : unmeasured ? t('linkspeed.subnetUnmeasured') : s.verdict === 'isolated' ? t('linkspeed.subnetIsolated') : 'OK';
+                  const info = unmeasured
+                    ? `${s.devices} ${t('linkspeed.devicesShort')}`
+                    : `${s.slow}/${s.measured} ${t('linkspeed.problem').toLowerCase()}${s.offline ? ` · ${s.offline} off` : ''}${s.error ? ` · ${s.error} err` : ''}${s.devices > s.measured ? ` · ${s.devices} ${t('linkspeed.devicesShort')}` : ''}`;
                   return (
-                    <div key={s.sub} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, fontSize: 11.5 }}>
+                    <div key={s.sub} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, fontSize: 11.5, opacity: unmeasured ? 0.85 : 1 }}>
                       <span onClick={() => setTargets(s.sub)} title={t('linkspeed.subnetClick')} style={{ width: 120, fontFamily: 'Consolas, monospace', color: 'var(--accent)', cursor: 'pointer' }}>{s.sub}</span>
                       <span style={{ width: 118, color: col, fontWeight: 600 }}>{lab}</span>
-                      <span style={{ width: 150, color: 'var(--text-dim)' }}>{s.slow}/{s.measured} {t('linkspeed.problem').toLowerCase()}{s.offline ? ` · ${s.offline} off` : ''}{s.error ? ` · ${s.error} err` : ''}</span>
-                      <div style={{ flex: 1, maxWidth: 200, background: 'rgba(120,130,150,.12)', borderRadius: 4, height: 10 }} title={`${Math.round(s.slowFrac * 100)} % ${t('linkspeed.problem').toLowerCase()}`}>
-                        <div style={{ width: `${Math.round(s.slowFrac * 100)}%`, background: col, height: '100%', borderRadius: 4 }} />
+                      <span style={{ width: 160, color: 'var(--text-dim)' }}>{info}</span>
+                      <div style={{ flex: 1, maxWidth: 200, background: 'rgba(120,130,150,.12)', borderRadius: 4, height: 10 }} title={unmeasured ? t('linkspeed.subnetUnmeasured') : `${Math.round(s.slowFrac * 100)} % ${t('linkspeed.problem').toLowerCase()}`}>
+                        <div style={{ width: unmeasured ? '100%' : `${Math.round(s.slowFrac * 100)}%`, background: unmeasured ? 'repeating-linear-gradient(45deg,var(--critical),var(--critical) 4px,transparent 4px,transparent 8px)' : col, height: '100%', borderRadius: 4 }} />
                       </div>
                       <span style={{ width: 96, textAlign: 'right', fontFamily: 'Consolas, monospace', color: 'var(--text-dim)' }}>{s.median != null ? `${t('linkspeed.median')} ${s.median}` : '—'}</span>
                     </div>
