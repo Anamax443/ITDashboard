@@ -737,6 +737,9 @@ export function SettingsPage() {
             <Field label={t('settings.field.lsCycles')}>
               <input type="number" min={1} max={20} value={value('linkspeed.cycles', '4')} onChange={(e) => set('linkspeed.cycles', e.target.value)} style={{ ...fieldStyle, width: 70 }} />
             </Field>
+            <Field label={t('settings.field.lsPause')}>
+              <input type="number" min={0} max={60000} step={500} value={value('linkspeed.pause_ms', '0')} onChange={(e) => set('linkspeed.pause_ms', e.target.value)} style={{ ...fieldStyle, width: 90 }} />
+            </Field>
           </FieldGroup>
           <FieldGroup>
             <Field label={t('settings.field.lsWindowFrom')}>

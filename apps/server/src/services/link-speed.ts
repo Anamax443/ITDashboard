@@ -29,13 +29,18 @@ function pingLatency(host: string, timeoutMs: number): Promise<number | null> {
 }
 
 // Cycles + test filename come from settings (linkspeed.cycles / linkspeed.filename).
-async function readOpts(): Promise<{ cycles: number; filename: string; okMbps: number }> {
+// pauseMs = idle gap left between consecutive PCs in a batch (linkspeed.pause_ms) —
+// spaces out the load on .213's uplink and lets other collectors slip in between.
+async function readOpts(): Promise<{ cycles: number; filename: string; okMbps: number; pauseMs: number }> {
   const s = await getAllSettings();
   const cycles = Math.max(1, Math.min(20, Number(s['linkspeed.cycles']) || 4));
   const filename = ((s['linkspeed.filename'] ?? '').trim() || 'itdash-speedtest.tmp').replace(/[\\/:*?"<>|]/g, '_');
   const okMbps = Number(s['linkspeed.ok_mbps']) || 200;
-  return { cycles, filename, okMbps };
+  const pauseMs = Math.max(0, Math.min(60000, Number(s['linkspeed.pause_ms']) || 0));
+  return { cycles, filename, okMbps, pauseMs };
 }
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // Is the current local time inside the [start,end] "HH:MM" window (empty = always)?
 function withinWindow(startStr: string | undefined, endStr: string | undefined): boolean {
@@ -192,13 +197,17 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
   if (batch.running) return;
   stopRequested = false;
   batch = { running: true, total: targets.length, done: 0, current: null, cycleDone: 0, cycleTotal: 0, sizeMB, startedAt: new Date().toISOString(), results: [] };
-  const { cycles: cyclesSetting, filename, okMbps } = await readOpts();
+  const { cycles: cyclesSetting, filename, okMbps, pauseMs } = await readOpts();
   const cycles = effCycles(cyclesOverride, cyclesSetting);
-  logActivity('info', 'linkspeed', `Měření spuštěno: ${targets.length} cílů · ${sizeMB} MB · ${cycles}× cyklů`);
+  logActivity('info', 'linkspeed', `Měření spuštěno: ${targets.length} cílů · ${sizeMB} MB · ${cycles}× cyklů${pauseMs ? ` · prodleva ${pauseMs} ms` : ''}`);
   let nOk = 0, nSlow = 0, nOff = 0, nErr = 0;
   try {
-    for (const t of targets) {
+    for (let idx = 0; idx < targets.length; idx++) {
+      const t = targets[idx]!;
       if (stopRequested) break;
+      // Idle gap between PCs (not before the first) — eases sustained load on .213's
+      // uplink and leaves room for other collectors. Interruptible via stopRequested.
+      if (idx > 0 && pauseMs > 0) { await sleep(pauseMs); if (stopRequested) break; }
       batch.current = t;
       batch.cycleDone = 0; batch.cycleTotal = cycles;   // reset cycle progress for this target
       let r: LinkSpeedResult;
