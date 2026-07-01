@@ -441,40 +441,56 @@ export async function expandTargets(raw: string, opts?: { ignoreExclusions?: boo
 const boolS = (v: string | undefined) => ['1', 'true', 'yes', 'on'].includes((v ?? '').toLowerCase());
 let schedTimer: NodeJS.Timeout | null = null;
 let schedStopped = false;
-// "When did link-speed last run" — PERSISTED via the DB (newest measurement), not the
-// process boot time. Otherwise every service restart (e.g. a deploy) reset the clock, so
-// with an interval in hours and frequent restarts the scheduled sweep never fired.
-let lastSchedRunMs = Date.now();
+
+// Rolling "continuous" monitoring: pick the STALEST targets whose last measurement is
+// older than the freshness window (interval_hours), oldest first, up to `n`. Freshness
+// comes from the DB (COALESCE(ip_address, target)) so it survives restarts. Returns [] if
+// everything is still fresh — then nothing runs this tick.
+async function pickDueTargets(candidates: string[], minAgeMs: number, n: number): Promise<string[]> {
+  if (!candidates.length) return [];
+  const pool = await getPool();
+  const rows = (await pool.request().query<{ k: string; t: Date }>(
+    `SELECT COALESCE(ip_address, target) AS k, MAX(measured_at) AS t FROM link_speed_results GROUP BY COALESCE(ip_address, target)`)).recordset;
+  const last = new Map<string, number>();
+  for (const r of rows) if (r.k) last.set(r.k.toLowerCase(), new Date(r.t).getTime());
+  const now = Date.now();
+  return candidates
+    .map((c) => ({ c, seen: last.get(c.toLowerCase()) ?? 0 }))   // never measured → 0 = most stale
+    .filter((x) => now - x.seen >= minAgeMs)
+    .sort((a, b) => a.seen - b.seen)
+    .slice(0, n)
+    .map((x) => x.c);
+}
 
 export async function startLinkSpeedSchedule(): Promise<void> {
   schedStopped = false;
   if (schedTimer) { clearTimeout(schedTimer); schedTimer = null; }
-  // Seed from the last actual measurement so restarts don't postpone the sweep.
-  try {
-    const pool = await getPool();
-    const row = (await pool.request().query<{ t: Date | null }>(`SELECT MAX(measured_at) AS t FROM link_speed_results`)).recordset[0];
-    lastSchedRunMs = row?.t ? new Date(row.t).getTime() : 0;   // no history → 0 = run at the next in-window check
-  } catch { lastSchedRunMs = 0; }
   const loop = async () => {
     if (schedStopped) return;
+    let tickMs = 20 * 60 * 1000;
     try {
       const s = await getAllSettings();
+      tickMs = Math.max(2, Math.min(240, Number(s['linkspeed.tick_min']) || 20)) * 60 * 1000;
       if (boolS(s['linkspeed.enabled'])) {
-        const hrs = Math.max(1, Number(s['linkspeed.interval_hours']) || 24);
         const raw = (s['linkspeed.targets'] ?? '').trim();
         const inWindow = withinWindow(s['linkspeed.window_start'], s['linkspeed.window_end']);
-        if (raw && inWindow && !batch.running && Date.now() - lastSchedRunMs >= hrs * 3600 * 1000) {
-          lastSchedRunMs = Date.now();
-          const sizeMB = Math.max(1, Math.min(1024, Number(s['linkspeed.size_mb']) || 100));
-          const targets = await expandTargets(raw);
-          if (targets.length) void runLinkSpeedBatch(targets, sizeMB);
+        if (raw && inWindow && !batch.running) {
+          // Each PC is re-measured roughly every interval_hours; we do a small batch per
+          // tick (batch_size) so the load is spread instead of one big hourly sweep.
+          const minAgeMs = Math.max(0.1, Number(s['linkspeed.interval_hours']) || 24) * 3600 * 1000;
+          const batchSize = Math.max(1, Math.min(200, Number(s['linkspeed.batch_size']) || 6));
+          const due = await pickDueTargets(await expandTargets(raw), minAgeMs, batchSize);
+          if (due.length) {
+            const sizeMB = Math.max(1, Math.min(1024, Number(s['linkspeed.size_mb']) || 100));
+            void runLinkSpeedBatch(due, sizeMB);
+          }
         }
       }
     } catch (e) {
       console.error('link-speed schedule error', e);
     }
-    if (!schedStopped) schedTimer = setTimeout(loop, 30 * 60 * 1000);   // re-check every 30 min; run gated by interval
+    if (!schedStopped) schedTimer = setTimeout(loop, tickMs);
   };
-  schedTimer = setTimeout(loop, 5 * 60 * 1000);   // first check 5 min after boot
-  console.log('Link-speed schedule started (DB-driven enable/interval)');
+  schedTimer = setTimeout(loop, 60 * 1000);   // first tick 1 min after boot
+  console.log('Link-speed rolling schedule started (stalest-N per tick)');
 }

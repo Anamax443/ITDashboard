@@ -744,7 +744,13 @@ export function SettingsPage() {
               onChange={(checked) => set('linkspeed.enabled', checked ? '1' : '0')}
             />
             <Field label={t('settings.field.lsInterval')}>
-              <input type="number" min={1} value={value('linkspeed.interval_hours', '24')} onChange={(e) => set('linkspeed.interval_hours', e.target.value)} style={{ ...fieldStyle, width: 90 }} />
+              <input type="number" min={0.1} step={0.5} value={value('linkspeed.interval_hours', '24')} onChange={(e) => set('linkspeed.interval_hours', e.target.value)} style={{ ...fieldStyle, width: 90 }} />
+            </Field>
+            <Field label={t('settings.field.lsBatch')}>
+              <input type="number" min={1} max={200} value={value('linkspeed.batch_size', '6')} onChange={(e) => set('linkspeed.batch_size', e.target.value)} style={{ ...fieldStyle, width: 80 }} />
+            </Field>
+            <Field label={t('settings.field.lsTick')}>
+              <input type="number" min={2} max={240} value={value('linkspeed.tick_min', '20')} onChange={(e) => set('linkspeed.tick_min', e.target.value)} style={{ ...fieldStyle, width: 80 }} />
             </Field>
             <Field label={t('settings.field.lsCycles')}>
               <input type="number" min={1} max={20} value={value('linkspeed.cycles', '4')} onChange={(e) => set('linkspeed.cycles', e.target.value)} style={{ ...fieldStyle, width: 70 }} />
