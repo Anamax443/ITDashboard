@@ -752,6 +752,9 @@ export function SettingsPage() {
             <Field label={t('settings.field.lsTick')}>
               <input type="number" min={2} max={240} value={value('linkspeed.tick_min', '20')} onChange={(e) => set('linkspeed.tick_min', e.target.value)} style={{ ...fieldStyle, width: 80 }} />
             </Field>
+            <Field label={t('settings.field.lsRetry')}>
+              <input type="number" min={5} max={1440} value={value('linkspeed.retry_min', '45')} onChange={(e) => set('linkspeed.retry_min', e.target.value)} style={{ ...fieldStyle, width: 90 }} />
+            </Field>
             <Field label={t('settings.field.lsCycles')}>
               <input type="number" min={1} max={20} value={value('linkspeed.cycles', '4')} onChange={(e) => set('linkspeed.cycles', e.target.value)} style={{ ...fieldStyle, width: 70 }} />
             </Field>

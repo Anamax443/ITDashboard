@@ -276,6 +276,8 @@ API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog 
 
 API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog collectoru, WAN monitoru a service-port scheduleru i **link-speed scheduler** — `startLinkSpeedSchedule()` (měření propustnosti linky na klientská PC). Žádná nová OS závislost: latenci měří vestavěný Windows `ping.exe` (stejný, co používají ostatní collectory), SMB přenos dělá Node `fs` přes share, orientační robocopy používá vestavěný Windows `robocopy.exe` a rychlost NIC portu se čte přes DCOM/CIM. Nová **tabulka `link_speed_results`** (migrace 071, sloupce doplněné 072/073 a 075–077: `ip_address`, `host_name`, `nic_mbps`, `nic_name`, `robo_up_mbps`, `robo_down_mbps`, `run_id`) drží výsledky. Enable/interval je DB-driven jako u ostatních collectorů (řízeno řádky v `settings`), takže se to nasadí samo s každým deployem — **nic se ručně neinstaluje**. Restart-safe.
 
+**Průběžný (rolling) plánovač — ne nárazový sweep.** Plánovač nespouští jeden velký „all" běh za interval. Každý **TIK** (`linkspeed.tick_min`, default 20 min) změří jen **pár NEJSTARŠÍCH splatných PC** (`linkspeed.batch_size`, default 6) — těch, jejichž poslední měření je starší než osvěžovací okno. `linkspeed.interval_hours` (default 24) tak už **neznamená periodu sweepu**, ale **„osvěžit každé PC po X h"** (freshness per PC; smí být i **< 1 h**). Zátěž je tím **rozprostřená** — pořád se něco měří po troškách místo nárazového hodinového sweepu — a když jsou všechna PC čerstvá, plánovač **idluje**. Freshness se čte **z DB** (`MAX(measured_at)` přes `COALESCE(ip_address, target)`), takže je **odolný vůči restartům služby** (dřívější reset `lastSchedRunMs` při každém deployi způsoboval, že se sweep nikdy nespustil). Podmínky běhu: `linkspeed.enabled` + nastavené cíle + uvnitř hodinového okna.
+
 **Stav: VYPNUTO defaultem.** Seed nastavuje `linkspeed.enabled=0`, takže scheduler při startu nastartuje, ale **nic neběží**, dokud ho někdo vědomě v Settings UI nezapne (a nenastaví cíle/okno).
 
 **Co dělá (po zapnutí):** ke každému cílovému klientskému PC změří propustnost linky až třemi doplňujícími se metodami (každá zvlášť zapnutelná) plus latenci přes `ping.exe`. Měří se v `linkspeed.cycles` cyklech:
@@ -290,7 +292,9 @@ API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog 
 | Klíč | Default | Význam |
 |------|---------|--------|
 | `linkspeed.enabled` | `0` | **vypnuto** — scheduler neběží |
-| `linkspeed.interval_hours` | `24` | perioda měření (když zapnuto) |
+| `linkspeed.interval_hours` | `24` | **osvěžit každé PC po (h)** — freshness per PC (rolling plánovač), smí být i < 1 h |
+| `linkspeed.tick_min` | `20` | tik plánovače (min) — jak často se měří další dávka nejstarších splatných PC |
+| `linkspeed.batch_size` | `6` | kolik nejstarších splatných PC změřit na jeden tik |
 | `linkspeed.window_start` | (prázdné) | začátek povoleného okna (HH:MM) |
 | `linkspeed.window_end` | (prázdné) | konec povoleného okna (HH:MM) |
 | `linkspeed.targets` | (prázdné) | seznam cílových PC (prázdné = žádné) |
@@ -306,7 +310,7 @@ API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog 
 
 **Požadavky / provoz (rebuild-relevant):**
 - **Admin C$ na klientech.** Zápis N-MB souboru na `C$` klienta vyžaduje, aby service account `svc-itdashboard` měl **admin C$ přístup na klientech** — což má (přes skupinu **Server Admins**). Servery a doménové řadiče **selžou s EPERM** (service account **není** Domain Admin) — to je **očekávané chování**, ne chyba; cíluj klientská PC, ne servery/DC.
-- **Datová náročnost.** Přenos = `size_mb` × počet PC × 2 (zápis+čtení) × `cycles`, takže „všechna PC" je **těžké** — nasazuj s **oknem** (`window_start`/`window_end`) a rozumným **intervalem** (`interval_hours`), ať to neběží celý den a nepřetíží linku.
+- **Datová náročnost.** Přenos = `size_mb` × počet PC × 2 (zápis+čtení) × `cycles`. Průběžný plánovač zátěž **rozprostírá** (jen `batch_size` PC za tik), takže nevznikne nárazový sweep — ale pořád nasazuj s **oknem** (`window_start`/`window_end`) a nastav **osvěžovací interval** (`interval_hours`) + **velikost dávky/tik** (`batch_size`/`tick_min`) tak, aby průběžná zátěž nepřetížila linku.
 - **AV (ESET) na klientech.** Testovací soubory + adresář `C:\tmp\itdash-speedtest` se sice vždy uklidí, ale **stále platí** — celá cesta `C:\tmp\itdash-speedtest` musí být v **PATH výjimkách antiviru (ESET)** na klientech. Do stejného adresáře sahá i **robocopy** (podadresář `rc`) a SMB chunky (`chunks-*`), takže výjimka na adresář pokryje všechny metody. Soubor je **bez přípony** záměrně (omezuje on-access sken), ale spolehlivě funguje jen **výjimka na cestu** — proto je jméno souboru konfigurovatelné (`linkspeed.filename`), aby šlo přesně vyloučit.
 
 **Egress / síť (rebuild-relevant):** čistě **vnitrosíťový** provoz z `.213` na klienty — **SMB** (445) na `C$` klientů, `ping.exe` a **DCOM/CIM** pro čtení rychlosti NIC portu (stejný kanál jako disk/services kolektor). **Žádné nové firewall pravidlo pro internet** — jen SMB (445) + DCOM na klientská PC musí být z `.213` průchozí (v doméně obvykle je). **DC/servery** NIC čtení přes DCOM CIM **odmítají** — očekávané.

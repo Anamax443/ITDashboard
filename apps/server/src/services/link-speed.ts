@@ -442,22 +442,26 @@ const boolS = (v: string | undefined) => ['1', 'true', 'yes', 'on'].includes((v 
 let schedTimer: NodeJS.Timeout | null = null;
 let schedStopped = false;
 
-// Rolling "continuous" monitoring: pick the STALEST targets whose last measurement is
-// older than the freshness window (interval_hours), oldest first, up to `n`. Freshness
-// comes from the DB (COALESCE(ip_address, target)) so it survives restarts. Returns [] if
-// everything is still fresh — then nothing runs this tick.
-async function pickDueTargets(candidates: string[], minAgeMs: number, n: number): Promise<string[]> {
+// Rolling "continuous" monitoring: pick the STALEST due targets, oldest attempt first, up
+// to `n`. Freshness is judged on the last SUCCESSFUL measurement (freshMs = interval); a
+// target with only an offline/error result is retried on a SHORT cadence (retryMs) so a PC
+// that's off in the morning gets caught the moment it comes online during the day, instead
+// of being written off as "offline" for the whole interval. Read from the DB (survives
+// restarts). Returns [] when nothing is due.
+async function pickDueTargets(candidates: string[], freshMs: number, retryMs: number, n: number): Promise<string[]> {
   if (!candidates.length) return [];
   const pool = await getPool();
-  const rows = (await pool.request().query<{ k: string; t: Date }>(
-    `SELECT COALESCE(ip_address, target) AS k, MAX(measured_at) AS t FROM link_speed_results GROUP BY COALESCE(ip_address, target)`)).recordset;
-  const last = new Map<string, number>();
-  for (const r of rows) if (r.k) last.set(r.k.toLowerCase(), new Date(r.t).getTime());
+  const rows = (await pool.request().query<{ k: string; t: Date; okt: Date | null }>(
+    `SELECT COALESCE(ip_address, target) AS k, MAX(measured_at) AS t,
+            MAX(CASE WHEN error IS NULL THEN measured_at END) AS okt
+     FROM link_speed_results GROUP BY COALESCE(ip_address, target)`)).recordset;
+  const lastAny = new Map<string, number>(), lastOk = new Map<string, number>();
+  for (const r of rows) { if (!r.k) continue; const k = r.k.toLowerCase(); lastAny.set(k, new Date(r.t).getTime()); if (r.okt) lastOk.set(k, new Date(r.okt).getTime()); }
   const now = Date.now();
   return candidates
-    .map((c) => ({ c, seen: last.get(c.toLowerCase()) ?? 0 }))   // never measured → 0 = most stale
-    .filter((x) => now - x.seen >= minAgeMs)
-    .sort((a, b) => a.seen - b.seen)
+    .map((c) => ({ c, any: lastAny.get(c.toLowerCase()) ?? 0, ok: lastOk.get(c.toLowerCase()) ?? 0 }))
+    .filter((x) => (now - x.ok >= freshMs) && (now - x.any >= retryMs))   // needs a fresh success AND not just attempted
+    .sort((a, b) => a.any - b.any)   // oldest attempt first — fair rotation
     .slice(0, n)
     .map((x) => x.c);
 }
@@ -477,9 +481,10 @@ export async function startLinkSpeedSchedule(): Promise<void> {
         if (raw && inWindow && !batch.running) {
           // Each PC is re-measured roughly every interval_hours; we do a small batch per
           // tick (batch_size) so the load is spread instead of one big hourly sweep.
-          const minAgeMs = Math.max(0.1, Number(s['linkspeed.interval_hours']) || 24) * 3600 * 1000;
+          const freshMs = Math.max(0.1, Number(s['linkspeed.interval_hours']) || 24) * 3600 * 1000;
+          const retryMs = Math.max(5, Math.min(1440, Number(s['linkspeed.retry_min']) || 45)) * 60 * 1000;
           const batchSize = Math.max(1, Math.min(200, Number(s['linkspeed.batch_size']) || 6));
-          const due = await pickDueTargets(await expandTargets(raw), minAgeMs, batchSize);
+          const due = await pickDueTargets(await expandTargets(raw), freshMs, retryMs, batchSize);
           if (due.length) {
             const sizeMB = Math.max(1, Math.min(1024, Number(s['linkspeed.size_mb']) || 100));
             void runLinkSpeedBatch(due, sizeMB);

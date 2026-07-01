@@ -108,6 +108,16 @@
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
 
+  <h2>Poslední změny (2026-07-01) — Měření linky: průběžný plánovač ⚡</h2>
+  <p class="sub" style="margin:0 0 .75rem">Plánovač modulu <strong>Měření linky</strong> je nově <strong>průběžný (rolling)</strong> místo nárazového sweepu. Živý commit <span class="pill">1687930</span>. <strong>Bez migrace</strong> (nová nastavení jsou plain settings s code-defaulty).</p>
+  <ul>
+    <li><strong>Dřív:</strong> plánovač spustil jeden velký „all" běh jednou za <code>linkspeed.interval_hours</code> (default 24 h).</li>
+    <li><strong>Teď:</strong> na každý <strong>tik</strong> (<code>linkspeed.tick_min</code>, default 20 min) změří jen <strong>pár nejstarších splatných PC</strong> (<code>linkspeed.batch_size</code>, default 6), jejichž poslední měření je starší než osvěžovací okno. Zátěž je <strong>rozprostřená</strong>, pořád se něco měří; když jsou všechna PC čerstvá, plánovač <strong>idluje</strong>.</li>
+    <li><code>linkspeed.interval_hours</code> teď znamená <strong>„osvěžit každé PC po X h"</strong> (freshness per PC) — smí být i <strong>&lt; 1 h</strong>.</li>
+    <li>Freshness se čte <strong>z DB</strong> (<code>MAX(measured_at)</code> přes <code>COALESCE(ip_address, target)</code>) → <strong>odolné vůči restartům služby</strong> (dřív reset <code>lastSchedRunMs</code> při každém deployi způsoboval, že se sweep nikdy nespustil).</li>
+    <li>Nová nastavení <code>linkspeed.tick_min</code> a <code>linkspeed.batch_size</code>. Podmínky běhu: <code>linkspeed.enabled</code> + cíle + hodinové okno.</li>
+  </ul>
+
   <h2>Poslední změny (2026-07-01) — Měření linky (kvalita spoje) ⚡</h2>
   <p class="sub" style="margin:0 0 .75rem">Záložka <strong>„Měření linky" (⚡)</strong> + homepage dlaždice: server přes SMB měří <strong>reálnou kvalitu drátěného spoje</strong> každého PC (rychlost nahoru/dolů + latence) a odhalí tak vadné kabely / 100Mb porty v gigabitové síti. Dnes výrazně rozšířeno — <strong>tři vypínatelné metody</strong>, klasifikace sítí, otisk běhu, cílení na AD s výjimkami a restart služby z UI. Zásahy do DB — <strong>migrace 071–077</strong>. Živý commit <span class="pill">848da26</span>.</p>
 
@@ -126,7 +136,7 @@
   <ul>
     <li>Server <strong>zapíše a přečte soubor</strong> na <code>C$</code> každého cílového PC přes SMB a spočítá <strong>rychlost nahoru/dolů (Mb/s) + latenci</strong> = reálná kvalita spoje (ne jen odkud/kam, ale <strong>jak dobře</strong> daný spoj vede) — chytí <strong>vadné kabely a 100Mb porty</strong> na gigabitové síti.</li>
     <li><strong>Řaditelná a filtrovatelná mřížka historie</strong>, <strong>živá konzole</strong>, export <strong>CSV / PDF</strong>, proklik z IP do záložky Počítače, sloupce <strong>Hostname / Latence / Cykly</strong>.</li>
-    <li><strong>Plánovač v Nastavení</strong> — interval, hodinové okno, výjimky, počet cyklů, název souboru. Endpointy <code>/system/linkspeed/*</code>; výsledky do tabulky <code>link_speed_results</code>. Loguje do <code>activity_log</code>; homepage dlaždice <strong>⚡ Linky</strong>.</li>
+    <li><strong>Plánovač v Nastavení</strong> — <strong>průběžný (rolling)</strong> model (viz níže): tik, velikost dávky, osvěžit PC po (h), hodinové okno, výjimky, počet cyklů, název souboru. Endpointy <code>/system/linkspeed/*</code>; výsledky do tabulky <code>link_speed_results</code>. Loguje do <code>activity_log</code>; homepage dlaždice <strong>⚡ Linky</strong>.</li>
   </ul>
 
   <div class="note">
