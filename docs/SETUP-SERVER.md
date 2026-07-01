@@ -6,7 +6,7 @@ Po dokončení už nikdy nemusíš na server ručně — každý `git push` do `
 
 **Real-world setup proběhl 2026-06-01.** Tento dokument reflektuje skutečnost, ne ideál.
 
-> **Stav dokumentu:** aktualizováno **2026-07-01**, živý commit `d7d6890`, migrace **001–074**. Rebuild dle tohoto dokumentu postaví systém včetně WAN monitoru (krok 7c), parkovaného service-port maticového scheduleru (krok 7d) a link-speed měření po SMB (krok 7e, default vypnuté).
+> **Stav dokumentu:** aktualizováno **2026-07-01**, živý commit `848da26`, migrace **001–077**. Rebuild dle tohoto dokumentu postaví systém včetně WAN monitoru (krok 7c), parkovaného service-port maticového scheduleru (krok 7d) a link-speed měření (krok 7e, default vypnuté — SMB verdikt + NIC/robocopy orientace). Restart NSSM služby jde z appky (Nastavení → ⟳ Restart služby, viz krok 7).
 
 ## Reference deployment values
 
@@ -165,7 +165,7 @@ npm run build
 npm run migrate
 ```
 
-**Pozn. k migracím:** `npm run migrate` aplikuje aktuálně migrace **001–074** (idempotentní, doběhne i na čerstvé i na existující DB). Migrace **062 `wan_monitor`**, **063 `wan_speedtest`** a **064 `wan_speedtest_streams`** **nezakládají žádné nové tabulky** — pouze seedují řádky do `settings` (default hodnoty WAN monitoru, viz krok 7c). Stejně tak migrace **065 `service_port_matrix`**, **066 `drop-phone-default`**, **067 `service_discovery`**, **068 `voip-web`**, **069 `drop-voip`** a **070 `park`** **nezakládají žádné nové tabulky** — jsou to čistě seedy/UPDATE řádků v `settings` (defaulty service-port matice + discovery, viz krok 7d; migrace **070** funkci parkuje nastavením `svcports.enabled=0`). Migrace **071 `link_speed`** **zakládá novou tabulku `link_speed_results`** (výsledky link-speed měření po SMB); migrace **072/073/074** k ní přidávají sloupce `latency_ms` + `cycles` a seedují řádky `linkspeed.*` do `settings` (defaulty link-speed měření, viz krok 7e — funkce je vypnutá defaultem `linkspeed.enabled=0`). Vše je přepsatelné v Settings UI, takže ručně nic nastavovat nemusíš.
+**Pozn. k migracím:** `npm run migrate` aplikuje aktuálně migrace **001–077** (idempotentní, doběhne i na čerstvé i na existující DB) — pipeline je pouští automaticky při každém deployi (`npm run migrate` v deploy workflow), takže ručně je aplikovat nemusíš. Migrace **062 `wan_monitor`**, **063 `wan_speedtest`** a **064 `wan_speedtest_streams`** **nezakládají žádné nové tabulky** — pouze seedují řádky do `settings` (default hodnoty WAN monitoru, viz krok 7c). Stejně tak migrace **065 `service_port_matrix`**, **066 `drop-phone-default`**, **067 `service_discovery`**, **068 `voip-web`**, **069 `drop-voip`** a **070 `park`** **nezakládají žádné nové tabulky** — jsou to čistě seedy/UPDATE řádků v `settings` (defaulty service-port matice + discovery, viz krok 7d; migrace **070** funkci parkuje nastavením `svcports.enabled=0`). Migrace **071 `link_speed`** **zakládá novou tabulku `link_speed_results`** (výsledky link-speed měření); migrace **072/073/074** k ní přidávají sloupce `latency_ms` + `cycles` a seedují řádky `linkspeed.*` do `settings` (defaulty link-speed měření, viz krok 7e — funkce je vypnutá defaultem `linkspeed.enabled=0`). Migrace **075/076/077** **přidávají do `link_speed_results` sloupce** `ip_address`, `host_name`, `nic_mbps`, `nic_name`, `robo_up_mbps`, `robo_down_mbps` a `run_id` (per-měření metadata + rychlost NIC portu a orientační robocopy výsledky, viz krok 7e) — **aplikují se automaticky při deployi**; nová měření je plní, **staré řádky mají v těchto sloupcích `NULL`**. Vše je přepsatelné v Settings UI, takže ručně nic nastavovat nemusíš.
 
 **Pozn:** Auto-deploy pipeline (GitHub Actions) **nečte** tento `.env` — migrace v deploy.yml berou `SQL_HOST` / `SQL_INSTANCE` / `SQL_DATABASE` z **repository Variables** (viz krok 10), ne ze souboru.
 
@@ -201,6 +201,8 @@ Start-Service $svc
 Invoke-RestMethod http://localhost:4000/health
 Invoke-RestMethod http://localhost:4000/health/db   # → ok:true
 ```
+
+**Restart služby z appky (bez RDP):** v UI *Nastavení → ⟳ Restart služby* restartuje NSSM službu `ITDashboardAPI` — tlačítko volá `POST /system/service/restart`, který odpálí **odpojený proces** `net stop` + `net start` (aby proces přežil vlastní restart). Jméno služby je konfigurovatelné volitelnou env proměnnou **`ITDASHBOARD_SERVICE_NAME`** (default `ITDashboardAPI`); pokud jsi službu pojmenoval jinak než výše, nastav ji v `.env` / NSSM `AppEnvironmentExtra`. **Pozn.:** samotná změna nastavení restart **nevyžaduje** — všechna nastavení (collectory, WAN, link-speed atd.) se aplikují **živě** za běhu; restart je jen pro plné znovunačtení procesu.
 
 ## 7b. Grant svc-itdashboard service control ACL (KRITICKÉ pro auto-deploy)
 
@@ -270,13 +272,18 @@ API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog 
 
 **Read-only endpointy** (žádná změna auth): `GET /system/service-ports`, `POST /system/service-discovery` (user-triggered širší TCP sken vzorku zařízení).
 
-## 7e. Link-speed měření po SMB — žádná nová infra, **default vypnuto** (zápis na C$ klientů)
+## 7e. Link-speed měření — žádná nová infra, **default vypnuto** (zápis na C$ klientů)
 
-API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog collectoru, WAN monitoru a service-port scheduleru i **link-speed scheduler** — `startLinkSpeedSchedule()` (měření propustnosti linky na klientská PC zápisem/čtením souboru po SMB). Žádná nová OS závislost: latenci měří vestavěný Windows `ping.exe` (stejný, co používají ostatní collectory) a přenos dělá Node `fs` přes SMB share. Nová **tabulka `link_speed_results`** (migrace 071, sloupce doplněné 072/073) drží výsledky. Enable/interval je DB-driven jako u ostatních collectorů (řízeno řádky v `settings`), takže se to nasadí samo s každým deployem — **nic se ručně neinstaluje**. Restart-safe.
+API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog collectoru, WAN monitoru a service-port scheduleru i **link-speed scheduler** — `startLinkSpeedSchedule()` (měření propustnosti linky na klientská PC). Žádná nová OS závislost: latenci měří vestavěný Windows `ping.exe` (stejný, co používají ostatní collectory), SMB přenos dělá Node `fs` přes share, orientační robocopy používá vestavěný Windows `robocopy.exe` a rychlost NIC portu se čte přes DCOM/CIM. Nová **tabulka `link_speed_results`** (migrace 071, sloupce doplněné 072/073 a 075–077: `ip_address`, `host_name`, `nic_mbps`, `nic_name`, `robo_up_mbps`, `robo_down_mbps`, `run_id`) drží výsledky. Enable/interval je DB-driven jako u ostatních collectorů (řízeno řádky v `settings`), takže se to nasadí samo s každým deployem — **nic se ručně neinstaluje**. Restart-safe.
 
 **Stav: VYPNUTO defaultem.** Seed nastavuje `linkspeed.enabled=0`, takže scheduler při startu nastartuje, ale **nic neběží**, dokud ho někdo vědomě v Settings UI nezapne (a nenastaví cíle/okno).
 
-**Co dělá (po zapnutí):** ke každému cílovému klientskému PC zapíše N-MB soubor na jeho `C$` share přes SMB a přečte ho zpět → z doby změří propustnost linky (Mbps), plus latenci přes `ping.exe`. Měří se v `linkspeed.cycles` cyklech. Testovací soubor i adresář `C:\tmp\itdash-speedtest` se **vždy po sobě uklidí**.
+**Co dělá (po zapnutí):** ke každému cílovému klientskému PC změří propustnost linky až třemi doplňujícími se metodami (každá zvlášť zapnutelná) plus latenci přes `ping.exe`. Měří se v `linkspeed.cycles` cyklech:
+- **SMB (`linkspeed.method.smb`, default `1`) = verdikt.** Zapíše N-MB soubor na `C$` klienta přes SMB a přečte zpět → z doby změří reálnou propustnost linky (Mbps). Toto je autoritní metoda pro hodnocení linky.
+- **NIC (`linkspeed.method.nic`, default `1`) = rychlost portu.** Přečte přes **DCOM/CIM** vyjednanou rychlost síťového portu klienta (uloží se do `nic_mbps` / `nic_name`). Funguje tam, kde funguje disk/services kolektor (stejný DCOM kanál); **doménové řadiče DCOM CIM odmítají**, takže na DC vyjde prázdné — to je očekávané.
+- **Robocopy (`linkspeed.method.robocopy`, default `0`) = jen orientační.** `robocopy /MT` (multi-thread) kopíruje testovací data → výsledek je **cache-inflated** (OS/SMB cache nafoukne čísla), takže slouží jen jako orientace, **ne jako verdikt** o lince; ukládá se do `robo_up_mbps` / `robo_down_mbps`. Default vypnuto.
+
+`linkspeed.pause_ms` (0–60000) vkládá pauzu mezi jednotlivými měřeními/cykly, aby se linka i klient nezahltily. Testovací soubory i adresář `C:\tmp\itdash-speedtest` (včetně `chunks-*` a podadresáře `rc` pro robocopy) se **vždy po sobě uklidí**.
 
 **Seedované settings** (migrace 074, vše přepsatelné v Settings UI; funkce vypnutá, takže je dormantní):
 
@@ -292,13 +299,17 @@ API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog 
 | `linkspeed.filename` | `itdash-speedtest.tmp` | jméno testovacího souboru (konfigurovatelné kvůli AV exclusion) |
 | `linkspeed.size_mb` | `100` | velikost testovacího souboru (MB) |
 | `linkspeed.ok_mbps` | `200` | práh „OK" propustnosti |
+| `linkspeed.method.smb` | `1` | SMB zápis/čtení — **verdikt** o lince (reálná propustnost) |
+| `linkspeed.method.nic` | `1` | rychlost NIC portu přes DCOM/CIM (na DC selže — očekávané) |
+| `linkspeed.method.robocopy` | `0` | orientační `robocopy /MT` — cache-inflated, **ne verdikt** |
+| `linkspeed.pause_ms` | `0`–`60000` | pauza (ms) mezi měřeními/cykly, ať se linka nezahltí |
 
 **Požadavky / provoz (rebuild-relevant):**
 - **Admin C$ na klientech.** Zápis N-MB souboru na `C$` klienta vyžaduje, aby service account `svc-itdashboard` měl **admin C$ přístup na klientech** — což má (přes skupinu **Server Admins**). Servery a doménové řadiče **selžou s EPERM** (service account **není** Domain Admin) — to je **očekávané chování**, ne chyba; cíluj klientská PC, ne servery/DC.
 - **Datová náročnost.** Přenos = `size_mb` × počet PC × 2 (zápis+čtení) × `cycles`, takže „všechna PC" je **těžké** — nasazuj s **oknem** (`window_start`/`window_end`) a rozumným **intervalem** (`interval_hours`), ať to neběží celý den a nepřetíží linku.
-- **AV (ESET) na klientech.** Testovací soubor + adresář `C:\tmp\itdash-speedtest` se sice vždy uklidí, ale měl by být přidán do **PATH výjimek antiviru (ESET)** na klientech. Soubor je **bez přípony** záměrně (omezuje on-access sken), ale spolehlivě funguje jen **výjimka na cestu** — proto je jméno souboru konfigurovatelné (`linkspeed.filename`), aby šlo přesně vyloučit.
+- **AV (ESET) na klientech.** Testovací soubory + adresář `C:\tmp\itdash-speedtest` se sice vždy uklidí, ale **stále platí** — celá cesta `C:\tmp\itdash-speedtest` musí být v **PATH výjimkách antiviru (ESET)** na klientech. Do stejného adresáře sahá i **robocopy** (podadresář `rc`) a SMB chunky (`chunks-*`), takže výjimka na adresář pokryje všechny metody. Soubor je **bez přípony** záměrně (omezuje on-access sken), ale spolehlivě funguje jen **výjimka na cestu** — proto je jméno souboru konfigurovatelné (`linkspeed.filename`), aby šlo přesně vyloučit.
 
-**Egress / síť (rebuild-relevant):** čistě **vnitrosíťový SMB** z `.213` na `C$` klientů + `ping.exe`. **Žádné nové firewall pravidlo pro internet** — jen SMB (445) na klientská PC musí být z `.213` průchozí (v doméně obvykle je).
+**Egress / síť (rebuild-relevant):** čistě **vnitrosíťový** provoz z `.213` na klienty — **SMB** (445) na `C$` klientů, `ping.exe` a **DCOM/CIM** pro čtení rychlosti NIC portu (stejný kanál jako disk/services kolektor). **Žádné nové firewall pravidlo pro internet** — jen SMB (445) + DCOM na klientská PC musí být z `.213` průchozí (v doméně obvykle je). **DC/servery** NIC čtení přes DCOM CIM **odmítají** — očekávané.
 
 **Read/action endpointy** (žádná změna auth): `POST /system/linkspeed/{test,run,stop}`, `GET /system/linkspeed/{status,history,summary}`.
 
@@ -390,7 +401,7 @@ Invoke-RestMethod http://localhost:4000/health
 6. **WAN monitor** = žádná nová infra (žádné tabulky, žádná OS závislost) — jen vestavěný `ping.exe` + `fetch`, řízeno z `settings`. Default speed test je **vypnutý** (`wan.speedtest_enabled=0`), protože stahuje reálný soubor a stojí pásmo. Viz krok 7c.
 7. **Rychlost linky pobočky NEMĚŘ přes router.** Měření per-pobočka rychlosti internetu přes MikroTik `/tool/fetch` **nefunguje** — RouterOS fetch je na hEX CPU/TLS-bound (naměřeno ~3.9 Mbps), takže odráží router, ne linku. Tudy už nechoď — zdraví linky pobočky je proto **jen latence + ztrátovost**.
 8. **Service-port matice je parkovaná (`svcports.enabled=0`, migrace 070).** Scheduler `startServicePortsSchedule()` startuje při boot, ale nic neběží — žádná nová infra, žádné nové firewall pravidlo (viz krok 7d). Discovery scan je výhradně user-triggered.
-9. **Link-speed měření po SMB je default vypnuté (`linkspeed.enabled=0`, migrace 074) a míří jen na klienty.** Scheduler `startLinkSpeedSchedule()` startuje při boot, ale nic neběží, dokud se v Settings UI nezapne + nenastaví cíle/okno. Zápis N-MB souboru jde na `C$` klientů přes SMB — service account `svc-itdashboard` tam má admin přístup (přes **Server Admins**), ale na **serverech/DC selže s EPERM** (není Domain Admin) — očekávané, cíluj klienty. Datová náročnost = `size_mb` × PC × 2 × `cycles`, takže „všechna PC" je těžké → nasazuj s oknem/intervalem. Testovací soubor `C:\tmp\itdash-speedtest\<linkspeed.filename>` se vždy uklidí, ale patří do **PATH výjimek AV (ESET)** na klientech (soubor je bez přípony záměrně, ale spolehlivá je jen výjimka na cestu — proto je jméno konfigurovatelné). Viz krok 7e.
+9. **Link-speed měření je default vypnuté (`linkspeed.enabled=0`, migrace 074) a míří jen na klienty.** Scheduler `startLinkSpeedSchedule()` startuje při boot, ale nic neběží, dokud se v Settings UI nezapne + nenastaví cíle/okno. Tři metody, každá zvlášť zapnutelná: **SMB** (`method.smb=1`) = **verdikt** o lince (zápis N-MB souboru na `C$` klientů — service account `svc-itdashboard` tam má admin přístup přes **Server Admins**, ale na **serverech/DC selže s EPERM**, není Domain Admin — očekávané, cíluj klienty); **NIC** (`method.nic=1`) = rychlost portu přes DCOM/CIM (funguje kde disk/services kolektor, **DC DCOM CIM odmítají**); **robocopy** (`method.robocopy=0`, default off) = jen **orientační**, cache-inflated, ne verdikt. `pause_ms` (0–60000) škrtí frekvenci. Datová náročnost = `size_mb` × PC × 2 × `cycles`, takže „všechna PC" je těžké → nasazuj s oknem/intervalem. Adresář `C:\tmp\itdash-speedtest` (soubory `<linkspeed.filename>`, `chunks-*`, podadresář `rc` pro robocopy) se vždy uklidí, ale **celá cesta patří do PATH výjimek AV (ESET)** na klientech (soubor je bez přípony záměrně, ale spolehlivá je jen výjimka na cestu — proto je jméno konfigurovatelné). Migrace 075–077 přidávají do `link_speed_results` sloupce `nic_mbps`/`robo_*`/`run_id` atd. (aplikují se při deployi; staré řádky NULL). Viz krok 7e.
 10. **„Dosáhne POBOČKA na tiskárnu" se NEMĚŘÍ z centra.** Probe z `.213` testuje vantage centra, ne pobočky — pro „umí pobočka dosáhnout svou tiskárnu" je správné měřit **z pobočkového routeru** (MikroTik netwatch / REST ping), ne centrálně. Zamítnuto/odloženo do doby, než probíhající SD-WAN separace tiskové sítě nadefinuje tiskový segment. Pozor: API user `dhcp-reader` je **read-only**, takže router-side test/netwatch by potřeboval vyšší policy.
 
 ## Hotovo

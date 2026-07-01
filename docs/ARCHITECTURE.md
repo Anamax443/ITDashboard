@@ -1,6 +1,6 @@
 # Architecture
 
-> **Document state:** 2026-07-01 · live commit `d7d6890` · migrations 001–074.
+> **Document state:** 2026-07-01 · live commit `848da26` · migrations 001–077.
 
 ## Components
 
@@ -39,7 +39,7 @@ Navigation tabs (Dashboard, Events, Computers, Services, Critical Services, Port
 - Runs under a domain service account (suggested name `svc-itdashboard`).
 - Endpoints organised by feature (see `routes/*.ts`):
   - `health`, `version`, `docs`
-  - `system` (`routes/system.ts`, registered as `registerSystemRoutes`) — `GET /system/comms` (one aggregated ok/degraded/down view over six communication channels — database, mikrotik_rest, ftp, collector, email, unifi — derived from existing data, no new probing), `GET /system/wan` (live WAN-link snapshot per branch + internet, thresholds, `nextRunAt`, optional speed), the **link-speed** methods `POST /system/linkspeed/test` (single target), `POST /system/linkspeed/run` (background batch), `POST /system/linkspeed/stop`, `GET /system/linkspeed/status` (live progress + results), `GET /system/linkspeed/history`, `GET /system/linkspeed/summary` (latest-per-target ok/slow/offline/error + slowest — see **### Link-speed measurement**), and the **PARKED** `GET /system/service-ports` + `POST /system/service-discovery` (per-branch service-port matrix + discovery; route content present, nav tab hidden, scheduler idle — see **### Per-branch service-port matrix + service discovery (PARKED)**). See **### Communication-channels health (`GET /system/comms`)** and **### Live WAN-link monitor**
+  - `system` (`routes/system.ts`, registered as `registerSystemRoutes`) — `GET /system/comms` (one aggregated ok/degraded/down view over six communication channels — database, mikrotik_rest, ftp, collector, email, unifi — derived from existing data, no new probing), `GET /system/wan` (live WAN-link snapshot per branch + internet, thresholds, `nextRunAt`, optional speed), the **link-speed** methods `POST /system/linkspeed/test` (single target), `POST /system/linkspeed/run` (background batch), `POST /system/linkspeed/stop`, `GET /system/linkspeed/status` (live progress + results), `GET /system/linkspeed/history`, `GET /system/linkspeed/summary` (latest-per-target ok/slow/offline/error + slowest — see **### Link-speed measurement**), the **service restart** `POST /system/service/restart` (detached `net stop`/`net start` outside the NSSM tree, service name from `ITDASHBOARD_SERVICE_NAME` — see **### Restart service (`POST /system/service/restart`)**), and the **PARKED** `GET /system/service-ports` + `POST /system/service-discovery` (per-branch service-port matrix + discovery; route content present, nav tab hidden, scheduler idle — see **### Per-branch service-port matrix + service discovery (PARKED)**). See **### Communication-channels health (`GET /system/comms`)** and **### Live WAN-link monitor**
   - `events` — list, summary, top-ids, timeline, top-computers, pc-health (reinstall-candidate scoring)
   - `computers` — list, sync, sync/last, sync/history, :id/monitor (PATCH), monitor/bulk (POST)
   - `collector` — status, run, stop
@@ -94,7 +94,7 @@ Tables:
 - `site_data_status` — per-site FTP freshness snapshot (migration 056): the two export-file header timestamps, parsed lease/ARP counts, `fetched_at`, `last_error`, and `file_changed_at` (real-UTC, moved only when the newest file timestamp increases). Drives the data-freshness alert + `GET /devices/site-status`. See **### MikroTik FTP file source + per-site data-freshness alert**
 - `data_freshness_alert_state` — per-site debounce/throttle state for the data-freshness / availability email agenda (migration 057); mirrors `printer_alert_state`.
 - `crash_dumps` — collected kernel minidumps + analysis (migration 061): `computer_id`, `computer_name`, `source_filename` (e.g. `062226-13765-01.dmp`), `occurred_at` (dump mtime ≈ crash time), `size_bytes`, `status` (`pending`/`analyzed`/`failed`), parsed `stop_code` / `bugcheck_name` / `hot_function` / `culprit_process` / `culprit_module`, `analyze_text` (full cdb output), `analyze_error`, `dmp_blob` (VARBINARY(MAX) — the raw minidump), `ingested_at`, `analyzed_at`; UNIQUE `(computer_id, source_filename)` is the dedup key, `status` is the work queue between collector and analyzer. See **### Crash-dump collection & analysis**
-- `link_speed_results` — per-target link-speed measurements (migration 071, `latency_ms` added 073, `cycles` added 074): `target`, `up_mbps`, `down_mbps`, `up_ms`, `down_ms`, `latency_ms`, `size_mb`, `cycles`, `error`, `measured_at`. Populated by the link-speed service (best up/down over N cycles), consumed by `GET /system/linkspeed/history` + `/summary`. See **### Link-speed measurement**
+- `link_speed_results` — per-target link-speed measurements (migration 071, `latency_ms` added 073, `cycles` added 074, `ip_address` + `host_name` added 075, `nic_mbps` / `nic_name` / `robo_up_mbps` / `robo_down_mbps` added 076, `run_id` added 077): `target`, `ip_address`, `host_name`, `up_mbps`, `down_mbps`, `up_ms`, `down_ms`, `latency_ms`, `nic_mbps`, `nic_name`, `robo_up_mbps`, `robo_down_mbps`, `size_mb`, `cycles`, `run_id`, `error`, `measured_at`. Populated by the link-speed service (best up/down over N cycles), consumed by `GET /system/linkspeed/history` + `/summary`. See **### Link-speed measurement**
 - `settings` — key-value, edited via Settings tab
 - `collector_runs` — eventlog collector run audit
 - `ad_sync_runs` — AD sync audit
@@ -531,25 +531,55 @@ Built to answer "does every branch reach the services it needs — chiefly **do 
 
 **VoIP out of scope from `.213`.** The IP phones are **Yealink** (OUI `24:9A:D8`) on a **T-Mobile cloud PBX (BroadWorks)**; they are **not in `dhcp_leases`** (separate voice network) and **unreachable from `.213`**, so VoIP monitoring is out of scope from the central server.
 
-### Link-speed measurement (migrations 071–074, 2026-07-01)
+### Link-speed measurement (migrations 071–077, 2026-07-01)
 
 Answers "how fast is the link to each PC/server, up and down, right now" by measuring the **real** end-to-end throughput over the existing **admin-share (C$) channel** — no agent, no router involvement. `services/link-speed.ts` runs on its **own self-rescheduling timer** (`startLinkSpeedSchedule` in `index.ts`, the same DB-driven, restart-safe enable/interval pattern as the WAN monitor).
 
-**How a target is measured.** For each target the service first caches an **N-MB random source file on `.213`** (`ensureSource`, sized by `linkspeed.size_mb`). Then, per cycle, it **pipelines that file up to `\\PC\C$\tmp\itdash-speedtest\<filename>`** (`linkspeed.filename`) and **back down**, timing each direction independently; it keeps the **BEST up/down over `linkspeed.cycles` cycles** (the fastest cycle represents the link's real ceiling, filtering out transient contention). It also pings the target for **RTT (latency)**. When done, the **whole client `itdash-speedtest` dir is removed**. It reuses **`tcpProbeTimed`** (a TCP/445 precheck — an unreachable box is recorded rather than blocking on a share timeout) and Windows **`ping.exe`**.
+**Three measurement methods (independently toggleable).** Each target can be measured by up to three methods, each gated by its own setting (`linkspeed.method.smb` / `.robocopy` / `.nic`):
 
-**Targets.** `expandTargets()` (shared by the route and the scheduler) resolves the target spec: **`"all"`** → the active PC/server IPs (`computers.ip_address` where `reachable=1`), explicit ranges, minus `linkspeed.exclude_hosts`.
+- **SMB single-stream (the verdict method).** For each target the service caches an **N-MB random source file on `.213`** (`ensureSource`, sized by `linkspeed.size_mb`), then per cycle **pipelines it up to `\\PC\C$\tmp\itdash-speedtest\<filename>`** (`linkspeed.filename`) and **back down** as a single stream, timing each direction independently, and keeps the **BEST up/down over `linkspeed.cycles` cycles** (the fastest cycle is the link's real ceiling, filtering out transient contention). This is the throughput number the summary classifies (ok/slow/…). When done the **whole client `itdash-speedtest` dir is removed**.
+- **Robocopy `/MT` multi-file (informational only).** `ensureChunkSource` builds a directory of many chunk files on `.213`; `roboMeasure` runs `robocopy /MT` (multi-threaded, many parallel files) up and down and reports `robo_up_mbps` / `robo_down_mbps`. **CAVEAT — the read-back is cache-inflated:** the files were just written to the client and come back out of the SMB/OS cache, so the down figure overstates the link. It is therefore surfaced as **informational only**, never as the verdict.
+- **NIC link speed (`readNicSpeed`).** Reads the negotiated adapter link rate over **DCOM `CimSession`** (same DCOM stack as the other collectors): it maps the target IP to the adapter via `Win32_NetworkAdapterConfiguration` (IP→interface index) and reads that `Win32_NetworkAdapter`'s reported speed → `nic_mbps` / `nic_name`. A **wireless or non-standard rate is labelled as wifi**. This is the link *capacity* (what the NIC negotiated), independent of the throughput a copy actually achieves.
 
-**Storage.** Table `link_speed_results` (migration 071) records every measurement: `target`, `up_mbps`, `down_mbps`, `up_ms`, `down_ms`, `latency_ms`, `size_mb`, `cycles`, `error`, `measured_at`. Unlike the WAN monitor (snapshot only), link-speed keeps **history**.
+It also pings the target for **RTT (latency)**. Reuses **`tcpProbeTimed`** (TCP/445 precheck) and Windows **`ping.exe`**.
 
-**Routes** (`system.ts`): `POST /system/linkspeed/test` (single target, foreground), `POST /system/linkspeed/run` (background batch), `POST /system/linkspeed/stop`, `GET /system/linkspeed/status` (live progress + partial results while a batch runs), `GET /system/linkspeed/history`, and `GET /system/linkspeed/summary` (latest-per-target classified **ok / slow / offline / error** + the **slowest** link).
+**Run fingerprint (`run_id`, migration 077).** Every result carries a `run_id` = the **start time of its batch**, so all rows from one "run all" share an id and can be grouped/compared as one pass. A **batch generates** the id; a **single-target test writes `run_id = null`** (it is not part of a batch).
+
+**Reachability gate (method-aware).** SMB and robocopy need **TCP/445** (a share); NIC-only needs just a **ping**. So a host that **blocks 445 but is alive** still yields a NIC reading — the NIC speed is read for 445-blocked-but-reachable hosts, while SMB/robocopy are skipped for them. A wholly unreachable box is recorded as such rather than blocking on a share timeout.
+
+**Non-destructive reset + summary dedup.** "Reset" does **not** delete rows — it stamps a baseline setting `linkspeed.baseline_at`. The **summary endpoint filters** results to those newer than the baseline and **dedups by identity** (LEFT JOIN `computers` so multiple IPs/names for one machine collapse to one), giving a clean latest-per-target view without destroying history.
+
+**Pause between targets.** `linkspeed.pause_ms` inserts a delay between consecutive targets in a batch (throttle so a big "run all" doesn't saturate the app server's own uplink).
+
+**Targets.** `expandTargets()` (shared by the route and the scheduler) resolves the target spec. **`"all"`** expands to the **`computers` table (AD)** — the machines where `reachable=1` **OR** (`reachable IS NULL` **AND** `consecutive_failures < 10`) (i.e. live, or not-yet-probed-and-not-chronically-failing). Explicit exceptions go through **`parseTargets`** (IP / range / wildcard / hostname); `ignoreExclusions` optionally bypasses `linkspeed.exclude_hosts`.
+
+**Storage.** Table `link_speed_results` (migration 071, extended 073–077) records every measurement: `target`, `ip_address` + `host_name` (075), `up_mbps`, `down_mbps`, `up_ms`, `down_ms`, `latency_ms`, `nic_mbps` + `nic_name` + `robo_up_mbps` + `robo_down_mbps` (076), `size_mb`, `cycles`, `run_id` (077), `error`, `measured_at`. Unlike the WAN monitor (snapshot only), link-speed keeps **history**.
+
+**Routes** (`system.ts`): `POST /system/linkspeed/test` (single target, foreground, `run_id=null`), `POST /system/linkspeed/run` (background batch), `POST /system/linkspeed/stop`, `GET /system/linkspeed/status` (live progress + partial results while a batch runs), `GET /system/linkspeed/history`, and `GET /system/linkspeed/summary` (baseline-filtered + identity-deduped, latest-per-target classified **ok / slow / offline / error** + the **slowest** link).
 
 **Logging.** The background batch logs to `activity_log` under source **`linkspeed`**: a start line, a per-result line (**warn** on a slow link, **error** on a hard failure), and a finish line.
 
 **Frontend.** `LinkSpeedPage.tsx` renders a **live console** (running batch progress), a **sortable + per-column-filter results grid** with exports, and the single-test / run-batch / stop controls; a **"⚡ Linky" SummaryCards tile** on the dashboard surfaces the summary (ok/slow/offline/error + slowest) and opens the tab.
 
-**Settings & migrations.** Migration **071** creates `link_speed_results` and seeds `linkspeed.size_mb` + `linkspeed.ok_mbps`; **072** seeds the schedule (`linkspeed.enabled`, `linkspeed.interval_hours`, `linkspeed.targets`, `linkspeed.exclude_hosts`); **073** adds the `latency_ms` column plus the `linkspeed.cycles` / `linkspeed.window_start` / `linkspeed.window_end` / `linkspeed.filename` settings; **074** adds the `cycles` column to `link_speed_results`.
+**Settings & migrations.** Migration **071** creates `link_speed_results` and seeds `linkspeed.size_mb` + `linkspeed.ok_mbps`; **072** seeds the schedule (`linkspeed.enabled`, `linkspeed.interval_hours`, `linkspeed.targets`, `linkspeed.exclude_hosts`); **073** adds the `latency_ms` column plus the `linkspeed.cycles` / `linkspeed.window_start` / `linkspeed.window_end` / `linkspeed.filename` settings; **074** adds the `cycles` column to `link_speed_results`; **075** adds `ip_address` + `host_name`; **076** adds `nic_mbps` / `nic_name` / `robo_up_mbps` / `robo_down_mbps`; **077** adds `run_id`. The per-method toggles (`linkspeed.method.smb` / `.robocopy` / `.nic`), the non-destructive `linkspeed.baseline_at`, and `linkspeed.pause_ms` are plain settings keys with code defaults.
 
 **Why this measures the REAL link (a vantage decision, unlike the parked matrix / WAN speed test).** Both the parked service-port matrix and the WAN `/tool/fetch` speed test suffer the central-vantage / router-CPU limit — they measure `.213`→device or a CPU-bound router, not the real link. Link-speed avoids both: **both endpoints are real machines** (the app server and the client) exchanging bytes over the **existing C$ channel**, so there is **no router-CPU bottleneck and no central-vantage problem** — the number is the actual link throughput between the two hosts.
+
+### Per-host lock (2026-07-01)
+
+Heavy per-PC operations (a link-speed copy, a crash-dump pull) must not run against the **same machine** concurrently — two link-speed batches, or a link-speed copy racing a crash-dump collect on the same box, would contend for the same C$ channel and mangle each other's timing. `services/host-lock.ts` serializes them **per identity**.
+
+**Keyed on identity, not IP.** The lock key is **`pc:<id>`** (the `computers.id`), deliberately **not the IP** — a PC's IP is dynamic (DHCP), so locking on IP would let the same machine be hit twice under two addresses, or needlessly block two different machines that transiently share a recycled IP. An **ip↔name resolver** maps whatever a caller has (IP or hostname) to the stable computer id via the DB, cached with a **30 s TTL** so the resolve doesn't hit SQL on every acquire.
+
+**Two acquire modes.**
+- **`withHostLock`** — a **blocking FIFO** wait: the caller queues and runs when the host is free. Used by **link-speed** (a batch should wait its turn rather than skip a host).
+- **`tryWithHostLock`** — **skip if busy**: returns immediately without running when the host is already locked. Used by the **crash-dump** collector (if that box is mid-measurement, just try it next cycle — no point queueing).
+
+**Scope limit.** The lock serializes work **on a given target host**; it deliberately does **not** cover the **shared uplink of `.213`** itself — two operations against two *different* hosts still both consume the app server's single link, which is what `linkspeed.pause_ms` (above) throttles instead.
+
+### Restart service (`POST /system/service/restart`)
+
+A Settings action restarts the API service (`ITDashboardAPI`) from the UI — but the service **hosts the very process** handling the request, so it can't `net stop` itself inline (the stop would kill the handler mid-response). The route therefore **spawns a detached process outside the NSSM tree** (`spawn` of `cmd start …`, so it is **not** a child of the service and survives the service dying) that runs `net stop` then `net start` on the service. The service name is configurable via **`ITDASHBOARD_SERVICE_NAME`** env (defaults to `ITDashboardAPI`), so a differently-named install restarts correctly. This mirrors the deploy workflow's `sc stop`/`sc start` sequencing (see **### Deploy.yml restart with sc + STOPPED polling**) but is operator-triggered rather than CI-triggered.
 
 ### Database overview route
 
@@ -827,5 +857,8 @@ Fleet rollout via single "ITDashboard collection" GPO linked to OUs containing t
 | 072_linkspeed_schedule | `linkspeed.enabled` / `linkspeed.interval_hours` / `linkspeed.targets` / `linkspeed.exclude_hosts` settings seed — DB-driven, restart-safe self-rescheduling batch (`startLinkSpeedSchedule`); `targets` supports `"all"` (active reachable PC/server IPs) + ranges minus the exclude list |
 | 073_linkspeed_latency | `link_speed_results.latency_ms` column (RTT from the ping) + `linkspeed.cycles` / `linkspeed.window_start` / `linkspeed.window_end` / `linkspeed.filename` settings seed |
 | 074_linkspeed_cycles | `link_speed_results.cycles` column — how many up/down cycles the best result was chosen from |
+| 075_linkspeed_identity | `link_speed_results.ip_address` + `host_name` columns — record the resolved IP and hostname per result so the summary can dedup by machine identity (LEFT JOIN `computers`) instead of by raw target string. See **### Link-speed measurement** |
+| 076_linkspeed_methods | `link_speed_results.nic_mbps` / `nic_name` / `robo_up_mbps` / `robo_down_mbps` columns — the NIC negotiated link speed (`readNicSpeed` over DCOM `CimSession`; wireless/non-standard rate flagged as wifi) and the robocopy `/MT` multi-file figures (informational only — the read-back is cache-inflated), alongside the SMB single-stream verdict. Methods are independently toggled by `linkspeed.method.smb` / `.robocopy` / `.nic` settings |
+| 077_linkspeed_run_id | `link_speed_results.run_id` column — a per-batch fingerprint (= batch start time) shared by every row of one "run all" pass; a single-target test writes `run_id=null`. Groups a run for comparison/dedup |
 
 > `alerts.dashboard_url` (added 2026-06-11 for the redesigned disk alert email report) is a runtime settings key created on first save — it has **no migration** of its own (it was added alongside the 029→030 work but is not part of any migration).

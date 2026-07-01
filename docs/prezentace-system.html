@@ -360,13 +360,15 @@ function downloadDeck(name){
   <h2>⚡ Měření linky — odhalí pomalé a vadné připojení v celém parku</h2>
   <div class="grid g2">
     <div>
-      <p>Server změří <strong>skutečnou rychlost stahování i odesílání</strong> a <strong>odezvu</strong> ke každému
-         počítači, notebooku i serveru — zapíše a přečte testovací soubor, takže přesně vidíte, <strong>který stroj
-         má špatné připojení a kde</strong>. Odhalí vadný kabel, port zaseknutý na 100&nbsp;Mb místo gigabitu i přetíženou linku.</p>
-      <p>Jedním kliknutím otestujete <strong>celý rozsah nebo všechny aktivní stroje</strong>. Výsledky naskakují
-         <strong>živě</strong>, dají se řadit, filtrovat i exportovat (CSV/HTML/PDF) a na úvodní stránce je souhrn,
-         <strong>kolik linek je pomalých</strong>. Měření může běžet <strong>automaticky podle plánu</strong> ve zvoleném časovém okně.</p>
-      <p class="small muted">Přínos: skryté pomalé připojení, které by jinak zůstalo bez povšimnutí, uvidíte na první pohled.</p>
+      <p>Server měří rychlost <strong>třemi metodami</strong>: <strong>SMB</strong> (skutečná rychlost zápisem a čtením
+         souboru), <strong>rychlost portu síťové karty</strong> (odhalí port zaseknutý na 100&nbsp;Mb nebo Wi-Fi místo
+         drátu) a <strong>Robocopy</strong> (orientační kontrola). Přesně tak vidíte, <strong>který stroj má špatné
+         připojení a čím to je</strong> — vadný kabel, pomalý port i přetíženou linku.</p>
+      <p>Výsledky se navíc <strong>vyhodnotí po sítích (/24)</strong>: systém pozná, jestli je pomalá <strong>celá síť</strong>
+         (pobočka / WAN), nebo jen <strong>jednotlivé PC</strong> — a ukáže i sítě, které se zatím <strong>neměřily</strong>.
+         Pro technika je připravený <strong>report v HTML</strong> „co kontrolovat", seřazený podle IP.</p>
+      <p class="small muted">Každý běh má svůj <strong>otisk</strong> — historie měření po bězích, takže je vidět vývoj i to,
+         zda oprava zabrala.</p>
     </div>
     <div class="card warn">
       <h3>Hned první měření odhalilo problém</h3>

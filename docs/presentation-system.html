@@ -329,14 +329,15 @@ function downloadDeck(name){
   <h2>⚡ Link speed — reveals slow &amp; faulty connections across the fleet</h2>
   <div class="grid g2">
     <div>
-      <p>The server measures <strong>real download and upload speed</strong> and <strong>latency</strong> to each
-         PC, notebook and server — it writes and reads a test file, so you see exactly <strong>which machines have a
-         poor connection and where</strong>. It catches a bad cable, a port stuck at 100&nbsp;Mb instead of gigabit,
-         or a congested link.</p>
-      <p>One click tests a <strong>whole range or all active machines</strong>. Results come in <strong>live</strong>,
-         are sortable and filterable, exportable (CSV/HTML/PDF), and summarised on the homepage —
-         <strong>how many links are slow</strong>. It can run <strong>automatically on a schedule</strong> within a chosen time window.</p>
-      <p class="small muted">Benefit: a hidden slow connection that would otherwise go unnoticed is visible at a glance.</p>
+      <p>The server measures speed with <strong>three methods</strong>: <strong>SMB</strong> (real throughput by writing
+         and reading a file), <strong>NIC port speed</strong> (reveals a port stuck at 100&nbsp;Mb or Wi-Fi instead of
+         wired) and <strong>Robocopy</strong> (a rough cross-check). So you see exactly <strong>which machine has a poor
+         connection and why</strong> — a bad cable, a slow port or a congested link.</p>
+      <p>Results are also <strong>evaluated per network (/24)</strong>: the system tells whether a <strong>whole network</strong>
+         is slow (a branch / WAN) or just <strong>individual PCs</strong> — and it flags networks <strong>not yet measured</strong>.
+         For the technician there is an <strong>HTML report</strong> of "what to check", sorted by IP.</p>
+      <p class="small muted">Every run keeps its own <strong>snapshot</strong> — measurement history per run, so you can see
+         the trend and whether a fix worked.</p>
     </div>
     <div class="card warn">
       <h3>The very first run found a fault</h3>
