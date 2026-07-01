@@ -412,8 +412,13 @@ export async function expandTargets(raw: string, opts?: { ignoreExclusions?: boo
   let allTargets: string[] = [];
   if (/\ball\b/i.test(raw)) {
     const pool = await getPool();
+    // Same leniency as the crash-dump collector: take reachable PCs AND not-yet-checked
+    // ones that aren't persistently failing — branch PCs flap on slow links, so strict
+    // reachable=1 dropped too many. The fast 445/ping probe skips the genuinely dead.
     allTargets = (await pool.request().query<{ ip_address: string }>(
-      `SELECT ip_address FROM computers WHERE enabled=1 AND excluded=0 AND reachable=1 AND ip_address IS NOT NULL`)).recordset.map((r) => r.ip_address);
+      `SELECT ip_address FROM computers
+       WHERE enabled=1 AND excluded=0 AND ip_address IS NOT NULL
+         AND (reachable=1 OR (reachable IS NULL AND consecutive_failures < 10))`)).recordset.map((r) => r.ip_address);
   }
   let targets = parseTargets(raw, allTargets);
   // Exclusions accept the SAME syntax as targets — bare hostnames/IPs, ranges
