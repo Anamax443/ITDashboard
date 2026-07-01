@@ -580,6 +580,10 @@ const dict = {
     'settings.unsaved': 'neuložené změny',
     'settings.saved': 'Uloženo',
     'settings.saving': 'Ukládám…',
+    'settings.restartBtn': 'Restart služby',
+    'settings.restartHint': 'Restartuje serverovou službu ITDashboardAPI (nasazení nového kódu, zaseknutý scheduler). Nastavení se aplikují živě i bez restartu. Krátký výpadek ~5 s.',
+    'settings.restartConfirm': 'Restartovat serverovou službu ITDashboardAPI? Dashboard bude na pár sekund nedostupný, než služba naběhne.',
+    'settings.restartStarted': 'Restart služby spuštěn — služba se během chvíle vrátí (obnovte stránku za ~10 s).',
 
     'settings.section.periodic': 'Periodické checks',
     'settings.section.periodicDesc': 'Jeden scheduler spouští vybrané checks v pořadí. Změny se aplikují okamžitě, restart služby není potřeba.',
@@ -1427,6 +1431,10 @@ const dict = {
     'settings.unsaved': 'unsaved change(s)',
     'settings.saved': 'Saved',
     'settings.saving': 'Saving…',
+    'settings.restartBtn': 'Restart service',
+    'settings.restartHint': 'Restarts the ITDashboardAPI server service (new-code deploy, stuck scheduler). Settings apply live without a restart. Brief ~5 s outage.',
+    'settings.restartConfirm': 'Restart the ITDashboardAPI server service? The dashboard will be unavailable for a few seconds while it comes back up.',
+    'settings.restartStarted': 'Service restart started — it will be back shortly (refresh in ~10 s).',
 
     'settings.section.periodic': 'Periodic checks',
     'settings.section.periodicDesc': 'One scheduler runs selected checks in order. Changes apply immediately, no service restart needed.',

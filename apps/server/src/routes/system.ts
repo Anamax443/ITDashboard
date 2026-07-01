@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
+import { spawn } from 'node:child_process';
 import { getPool } from '../db/pool.js';
 import { getAllSettings, setSetting } from '../services/settings.js';
+import { logActivity } from '../services/activity-log.js';
 import { getWanSnapshot, getWanNextRun } from '../services/wan-monitor.js';
 import { getSvcMatrix, getSvcNextRun } from '../services/service-port-matrix.js';
 import { runServiceDiscovery } from '../services/service-discovery.js';
@@ -265,6 +267,23 @@ export async function registerSystemRoutes(app: FastifyInstance) {
   });
 
   app.post('/system/linkspeed/stop', async () => ({ stopped: stopLinkSpeed() }));
+
+  // Restart the API Windows service (NSSM 'ITDashboardAPI'). The service CANNOT restart
+  // itself in-process — stopping it kills this Node process mid-command — so we launch a
+  // fully DETACHED shell via `start`, which spawns an independent console process OUTSIDE
+  // NSSM's process tree. It waits ~2 s (so this HTTP response flushes first), then stops
+  // and starts the service. `net` is synchronous, so `net start` waits for the stop to
+  // finish. Needs the service account's already-granted stop/start rights on the service.
+  app.post('/system/service/restart', async () => {
+    const svc = (process.env.ITDASHBOARD_SERVICE_NAME || 'ITDashboardAPI').replace(/[^\w.-]/g, '');
+    const inner = `ping 127.0.0.1 -n 3 >nul & net stop ${svc} & net start ${svc}`;
+    const child = spawn('cmd.exe', ['/c', 'start', '""', '/min', 'cmd', '/c', inner], {
+      detached: true, windowsHide: true, stdio: 'ignore',
+    });
+    child.unref();
+    logActivity('warn', 'system', `Vyžádán restart služby ${svc} z Nastavení`);
+    return { restarting: true, service: svc };
+  });
 
   // Summary over the LATEST measurement per target (for the homepage tile + the page
   // visual): how many links are OK / slow / offline / errored, and the slowest few.

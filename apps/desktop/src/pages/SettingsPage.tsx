@@ -462,6 +462,18 @@ export function SettingsPage() {
           {message && <span style={{ color: 'var(--ok)', fontSize: 11 }}>✓ {message}</span>}
           {error && <span style={{ color: 'var(--critical)', fontSize: 11 }}>⚠ {error}</span>}
           {hasChanges && <span style={{ color: 'var(--warning)', fontSize: 11 }}>{Object.keys(dirty).length} {t('settings.unsaved')}</span>}
+          <button
+            className="refresh-btn"
+            title={t('settings.restartHint')}
+            onClick={async () => {
+              if (!window.confirm(t('settings.restartConfirm'))) return;
+              try { await api.serviceRestart(); setMessage(t('settings.restartStarted')); }
+              catch { setMessage(t('settings.restartStarted')); }   // connection may drop as the service cycles — expected
+            }}
+            style={{ color: 'var(--warning)' }}
+          >
+            ⟳ {t('settings.restartBtn')}
+          </button>
           <button className="refresh-btn" onClick={save} disabled={!hasChanges || saving} style={{ minWidth: 80 }}>
             {saving ? t('settings.saving') : t('btn.save')}
           </button>

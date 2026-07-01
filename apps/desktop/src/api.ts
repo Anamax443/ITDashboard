@@ -816,6 +816,7 @@ export const api = {
   linkSpeedStatus: () => jget<LinkSpeedStatus>('/system/linkspeed/status'),
   linkSpeedStop: () => jpost<{ stopped: boolean }>('/system/linkspeed/stop'),
   linkSpeedReset: () => jpost<{ baselineAt: string }>('/system/linkspeed/reset'),
+  serviceRestart: () => jpost<{ restarting: boolean; service: string }>('/system/service/restart'),
   linkSpeedSummary: () => jget<LinkSpeedSummary>('/system/linkspeed/summary'),
   linkSpeedHistory: (limit = 300) => jget<{ okMbps: number; items: LinkSpeedHistoryRow[] }>(`/system/linkspeed/history?limit=${limit}`),
   linkSpeedRun: async (targets: string, sizeMB?: number, cycles?: number) => {
