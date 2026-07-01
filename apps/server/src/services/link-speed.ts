@@ -237,7 +237,12 @@ export async function expandTargets(raw: string): Promise<string[]> {
       `SELECT ip_address FROM computers WHERE enabled=1 AND excluded=0 AND reachable=1 AND ip_address IS NOT NULL`)).recordset.map((r) => r.ip_address);
   }
   let targets = parseTargets(raw, allTargets);
-  const excl = new Set((s['linkspeed.exclude_hosts'] ?? '').split(/[,;\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean));
+  // Exclusions accept the SAME syntax as targets — bare hostnames/IPs, ranges
+  // "10.8.2.180-182" and wildcards "10.8.2.*" — so ranges/IPs are expanded to
+  // concrete IPs (hostnames pass through). A target is dropped if its IP is
+  // excluded, or if the hostname behind that IP is excluded.
+  const exclRaw = (s['linkspeed.exclude_hosts'] ?? '').trim();
+  const excl = new Set(parseTargets(exclRaw, []).map((x) => x.toLowerCase()));
   if (excl.size && targets.length) {
     const pool = await getPool();
     const ipToName = new Map<string, string>();

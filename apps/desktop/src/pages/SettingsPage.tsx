@@ -753,7 +753,7 @@ export function SettingsPage() {
             <textarea value={value('linkspeed.targets', '')} onChange={(e) => set('linkspeed.targets', e.target.value)} rows={2} placeholder={"all\n10.8.2.*"} style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }} />
           </Field>
           <Field label={t('settings.field.lsExclude')}>
-            <textarea value={value('linkspeed.exclude_hosts', '')} onChange={(e) => set('linkspeed.exclude_hosts', e.target.value)} rows={2} placeholder={"SERVER01\nNTB-VIP"} style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }} />
+            <textarea value={value('linkspeed.exclude_hosts', '')} onChange={(e) => set('linkspeed.exclude_hosts', e.target.value)} rows={2} placeholder={"SERVER01\n10.8.2.254\n10.8.2.180-182"} style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }} />
           </Field>
           <FieldGroup>
             <Field label={t('settings.field.lsSize')}>
