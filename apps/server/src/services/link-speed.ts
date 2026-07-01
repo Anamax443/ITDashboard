@@ -104,7 +104,7 @@ async function archive(r: LinkSpeedResult): Promise<void> {
 // One measurement (no concurrency guard) — N cycles of write-to-C$ + read-back, keep
 // the BEST up/down of the cycles (transient AV/CPU dips don't understate capacity),
 // plus a ping RTT. The test file (linkspeed.filename) is deleted afterwards.
-async function measure(target: string, sizeMB: number, cycles: number, filename: string): Promise<LinkSpeedResult> {
+async function measure(target: string, sizeMB: number, cycles: number, filename: string, onCycle?: (done: number) => void): Promise<LinkSpeedResult> {
   const bytes = sizeMB * 1024 * 1024;
   const remoteDir = `\\\\${target}\\C$\\tmp\\itdash-speedtest`;
   const remoteFile = `${remoteDir}\\${filename}`;
@@ -124,6 +124,7 @@ async function measure(target: string, sizeMB: number, cycles: number, filename:
       const u = mbps(bytes, upMs) ?? 0, d = mbps(bytes, downMs) ?? 0;
       if (u > bU) { bU = u; bUms = upMs; }
       if (d > bD) { bD = d; bDms = downMs; }
+      onCycle?.(i + 1);   // report cycle progress for the live terminal
     }
     const latencyMs = await pingLatency(target, 1000);
     await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});
@@ -156,11 +157,13 @@ export interface BatchState {
   total: number;
   done: number;
   current: string | null;
+  cycleDone: number;    // cycles finished on the CURRENT target (live)
+  cycleTotal: number;   // cycles planned per target this run (0 = skipped host)
   sizeMB: number;
   startedAt: string | null;
   results: LinkSpeedResult[];
 }
-let batch: BatchState = { running: false, total: 0, done: 0, current: null, sizeMB: 0, startedAt: null, results: [] };
+let batch: BatchState = { running: false, total: 0, done: 0, current: null, cycleDone: 0, cycleTotal: 0, sizeMB: 0, startedAt: null, results: [] };
 let stopRequested = false;
 export function getLinkSpeedStatus(): BatchState { return batch; }
 // Abort a running batch after the current PC finishes (an in-flight transfer isn't
@@ -188,7 +191,7 @@ export function parseTargets(raw: string, allNames: string[]): string[] {
 export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cyclesOverride?: number): Promise<void> {
   if (batch.running) return;
   stopRequested = false;
-  batch = { running: true, total: targets.length, done: 0, current: null, sizeMB, startedAt: new Date().toISOString(), results: [] };
+  batch = { running: true, total: targets.length, done: 0, current: null, cycleDone: 0, cycleTotal: 0, sizeMB, startedAt: new Date().toISOString(), results: [] };
   const { cycles: cyclesSetting, filename, okMbps } = await readOpts();
   const cycles = effCycles(cyclesOverride, cyclesSetting);
   logActivity('info', 'linkspeed', `Měření spuštěno: ${targets.length} cílů · ${sizeMB} MB · ${cycles}× cyklů`);
@@ -197,14 +200,16 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
     for (const t of targets) {
       if (stopRequested) break;
       batch.current = t;
+      batch.cycleDone = 0; batch.cycleTotal = cycles;   // reset cycle progress for this target
       let r: LinkSpeedResult;
       if ((await tcpProbeTimed(t, 445, 2500)) == null) {
         // Offline host (no ping) vs up-but-445-blocked — don't measure either, but
         // label them differently so offline isn't mistaken for a port problem.
+        batch.cycleTotal = 0;   // skipped host — no cycles run
         const alive = await pingAlive(t, 1000);
         r = { target: t, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
       } else {
-        r = await measure(t, sizeMB, cycles, filename);
+        r = await measure(t, sizeMB, cycles, filename, (d) => { batch.cycleDone = d; });
       }
       await archive(r);
       batch.results.push(r);

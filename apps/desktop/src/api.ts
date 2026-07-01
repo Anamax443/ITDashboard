@@ -1215,6 +1215,7 @@ export interface LinkSpeedResult {
 export interface LinkSpeedStatus {
   okMbps: number; defaultSizeMB: number; defaultCycles: number;
   running: boolean; total: number; done: number; current: string | null;
+  cycleDone: number; cycleTotal: number;
   sizeMB: number; startedAt: string | null; results: LinkSpeedResult[];
 }
 export interface LinkSpeedHistoryRow {

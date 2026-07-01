@@ -200,16 +200,24 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
           </div>
         </div>
         {error && <div style={{ color: 'var(--critical)', marginBottom: 10 }}>⚠ {error}</div>}
-        {running && status && <div style={{ fontSize: 12, marginBottom: 6 }}>{t('linkspeed.progress')}: <b>{status.done}/{status.total}</b>{status.current ? ` · ${status.current}` : ''} <span style={{ color: 'var(--text-dim)' }}>({status.sizeMB} MB)</span></div>}
+        {running && status && <div style={{ fontSize: 12, marginBottom: 6 }}>{t('linkspeed.progress')}: <b>{status.done}/{status.total}</b>{status.current ? ` · ${status.current}${nameOf(status.current) ? ` (${nameOf(status.current)})` : ''}` : ''}{status.cycleTotal > 0 ? ` · ${t('linkspeed.cycleN')} ${status.cycleDone}/${status.cycleTotal}` : ''} <span style={{ color: 'var(--text-dim)' }}>({status.sizeMB} MB)</span></div>}
         {status && (running || status.results.length > 0) && (
           <div ref={consoleRef} style={{ background: '#05070a', fontFamily: 'Consolas, monospace', fontSize: 11.5, lineHeight: 1.5, padding: 10, borderRadius: 6, maxHeight: 220, overflow: 'auto', marginBottom: 14 }}>
             {status.results.map((r, i) => {
               const off = r.error && /offline/i.test(r.error);
               const col = r.error ? (off ? '#8899aa' : '#ff6b6b') : (r.upMbps != null && r.downMbps != null && Math.min(r.upMbps, r.downMbps) < okMbps ? '#f5a524' : '#9fe6c4');
-              const txt = r.error ? `${r.target}  ${r.error}` : `${r.target}  ↑${r.upMbps} ↓${r.downMbps} Mb/s${r.latencyMs != null ? `  ${r.latencyMs} ms` : ''}`;
+              const host = nameOf(r.target);
+              const head = `${r.target}${host ? `  ${host}` : ''}`;
+              const txt = r.error
+                ? `${head}  ${r.error}`
+                : `${head}  ↑${r.upMbps} ↓${r.downMbps} Mb/s${r.latencyMs != null ? `  ${r.latencyMs} ms` : ''}${r.cycles ? `  ${r.cycles}× cyklů` : ''}`;
               return <div key={i} style={{ color: col, whiteSpace: 'pre-wrap' }}>{txt}</div>;
             })}
-            {running && <div style={{ color: '#8899aa' }}>… {status.current ?? ''} ({status.done}/{status.total})</div>}
+            {running && (() => {
+              const curHost = status.current ? nameOf(status.current) : '';
+              const cyc = status.cycleTotal > 0 ? ` · ${t('linkspeed.cycleN')} ${status.cycleDone}/${status.cycleTotal}` : '';
+              return <div style={{ color: '#8899aa' }}>… {status.current ?? ''}{curHost ? `  ${curHost}` : ''}{cyc} ({status.done}/{status.total})</div>;
+            })()}
           </div>
         )}
 
