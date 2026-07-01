@@ -80,7 +80,13 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   }, []);
   useEffect(() => { const c = consoleRef.current; if (c) c.scrollTop = c.scrollHeight; }, [status?.results.length, status?.current]);
 
-  const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : '—');
+  // Compact, fixed-width timestamp "DD.MM.YYYY HH:MM:SS" — toLocaleString() renders
+  // "1. 7. 2026 7:02:16" (spaces + variable width) which wraps the KDY column onto 3 lines.
+  const fmt = (iso: string | null) => {
+    if (!iso) return '—';
+    const d = new Date(iso); const p = (n: number) => String(n).padStart(2, '0');
+    return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  };
   const nameOf = (target: string) => devmap.get(target) || (/^\d{1,3}(\.\d{1,3}){3}$/.test(target) ? '' : target);
   const verdict = (up: number | null, down: number | null, err?: string | null) => {
     if (err) { const off = /offline/i.test(err); return { label: err, cls: off ? '' : 'bad', color: off ? 'var(--text-dim)' : 'var(--critical)' }; }
@@ -282,7 +288,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
                   <td style={{ padding: '5px 10px', color: v.color, fontWeight: 600 }}>{v.label}</td>
                   <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{r.size_mb}</td>
                   <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{r.cycles ?? '—'}</td>
-                  <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{fmt(r.measured_at)}</td>
+                  <td style={{ padding: '5px 10px', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{fmt(r.measured_at)}</td>
                 </tr>
               ); })}
             </tbody>
