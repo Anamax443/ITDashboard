@@ -16,6 +16,35 @@ function pingAlive(host: string, timeoutMs: number): Promise<boolean> {
   });
 }
 
+// Average ping RTT in ms (2 echoes), or null if unreachable — recorded per measurement.
+function pingLatency(host: string, timeoutMs: number): Promise<number | null> {
+  return new Promise((resolve) => {
+    execFile('ping', ['-n', '2', '-w', String(timeoutMs), host], { windowsHide: true, timeout: timeoutMs * 2 + 2000, maxBuffer: 1 << 16 },
+      (_e, stdout) => {
+        const t = [...(stdout || '').matchAll(/[<=]\s*(\d+)\s*ms/gi)].map((m) => Number(m[1]));
+        resolve(t.length ? Math.round(t.reduce((a, b) => a + b, 0) / t.length) : null);
+      });
+  });
+}
+
+// Cycles + test filename come from settings (linkspeed.cycles / linkspeed.filename).
+async function readOpts(): Promise<{ cycles: number; filename: string }> {
+  const s = await getAllSettings();
+  const cycles = Math.max(1, Math.min(20, Number(s['linkspeed.cycles']) || 4));
+  const filename = ((s['linkspeed.filename'] ?? '').trim() || 'itdash-speedtest.tmp').replace(/[\\/:*?"<>|]/g, '_');
+  return { cycles, filename };
+}
+
+// Is the current local time inside the [start,end] "HH:MM" window (empty = always)?
+function withinWindow(startStr: string | undefined, endStr: string | undefined): boolean {
+  const a = /^(\d{1,2}):(\d{2})$/.exec((startStr ?? '').trim());
+  const b = /^(\d{1,2}):(\d{2})$/.exec((endStr ?? '').trim());
+  if (!a || !b) return true;
+  const now = new Date(); const cur = now.getHours() * 60 + now.getMinutes();
+  const s = +a[1]! * 60 + +a[2]!; const e = +b[1]! * 60 + +b[2]!;
+  return s <= e ? (cur >= s && cur <= e) : (cur >= s || cur <= e);
+}
+
 // Real link-speed test to a live PC/notebook: write an N-MB file from .213 to the
 // client's C$ over SMB (= upload), read it back to .213 (= download), and compute
 // Mb/s from the wall time. Both endpoints are real machines (not a weak router CPU),
@@ -34,6 +63,7 @@ export interface LinkSpeedResult {
   downMbps: number | null;
   upMs: number | null;
   downMs: number | null;
+  latencyMs: number | null;
   error?: string;
   measuredAt: string;
 }
@@ -62,44 +92,53 @@ async function archive(r: LinkSpeedResult): Promise<void> {
     const pool = await getPool();
     await pool.request()
       .input('t', r.target).input('up', r.upMbps).input('down', r.downMbps)
-      .input('ums', r.upMs).input('dms', r.downMs).input('sz', r.sizeMB).input('err', r.error ?? null)
-      .query(`INSERT INTO link_speed_results (target, up_mbps, down_mbps, up_ms, down_ms, size_mb, error)
-              VALUES (@t,@up,@down,@ums,@dms,@sz,@err)`);
+      .input('ums', r.upMs).input('dms', r.downMs).input('sz', r.sizeMB).input('err', r.error ?? null).input('lat', r.latencyMs)
+      .query(`INSERT INTO link_speed_results (target, up_mbps, down_mbps, up_ms, down_ms, size_mb, error, latency_ms)
+              VALUES (@t,@up,@down,@ums,@dms,@sz,@err,@lat)`);
   } catch (e) { console.error('link-speed archive failed', e); }
 }
 
-// One measurement (no concurrency guard) — write to client C$, read back, clean up.
-async function measure(target: string, sizeMB: number): Promise<LinkSpeedResult> {
+// One measurement (no concurrency guard) — N cycles of write-to-C$ + read-back, keep
+// the BEST up/down of the cycles (transient AV/CPU dips don't understate capacity),
+// plus a ping RTT. The test file (linkspeed.filename) is deleted afterwards.
+async function measure(target: string, sizeMB: number, cycles: number, filename: string): Promise<LinkSpeedResult> {
   const bytes = sizeMB * 1024 * 1024;
   const remoteDir = `\\\\${target}\\C$\\tmp\\itdash-speedtest`;
-  const remoteFile = `${remoteDir}\\spd-${sizeMB}.tmp`;   // benign ext (not .bin) to lower AV friction
+  const remoteFile = `${remoteDir}\\${filename}`;
   const localBack = `${LOCAL_DIR}\\back-${target.replace(/[^\w.-]/g, '_')}.bin`;
   const base = { target, sizeMB, measuredAt: new Date().toISOString() };
   try {
     const src = await ensureSource(sizeMB);
     await fs.mkdir(remoteDir, { recursive: true });
-    const t1 = Date.now();
-    await pipeline(createReadStream(src), createWriteStream(remoteFile));
-    const upMs = Date.now() - t1;
-    const t2 = Date.now();
-    await pipeline(createReadStream(remoteFile), createWriteStream(localBack));
-    const downMs = Date.now() - t2;
-    await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});   // remove our whole test dir on the client
+    let bU = 0, bUms: number | null = null, bD = 0, bDms: number | null = null;
+    for (let i = 0; i < cycles; i++) {
+      const t1 = Date.now();
+      await pipeline(createReadStream(src), createWriteStream(remoteFile));
+      const upMs = Date.now() - t1;
+      const t2 = Date.now();
+      await pipeline(createReadStream(remoteFile), createWriteStream(localBack));
+      const downMs = Date.now() - t2;
+      const u = mbps(bytes, upMs) ?? 0, d = mbps(bytes, downMs) ?? 0;
+      if (u > bU) { bU = u; bUms = upMs; }
+      if (d > bD) { bD = d; bDms = downMs; }
+    }
+    const latencyMs = await pingLatency(target, 1000);
+    await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});
     await fs.rm(localBack, { force: true }).catch(() => {});
-    return { ...base, upMbps: mbps(bytes, upMs), downMbps: mbps(bytes, downMs), upMs, downMs };
+    return { ...base, upMbps: bU || null, downMbps: bD || null, upMs: bUms, downMs: bDms, latencyMs };
   } catch (e) {
     await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});
     await fs.rm(localBack, { force: true }).catch(() => {});
-    return { ...base, upMbps: null, downMbps: null, upMs: null, downMs: null, error: String(e).split('\n')[0]!.slice(0, 200) };
+    return { ...base, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, error: String(e).split('\n')[0]!.slice(0, 200) };
   }
 }
 
 let single = false;
 // On-demand single PC test (used by the per-PC button). Archived to DB.
 export async function runLinkSpeedTest(target: string, sizeMB: number): Promise<LinkSpeedResult> {
-  if (single) return { target, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, error: 'already_running', measuredAt: new Date().toISOString() };
+  if (single) return { target, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, error: 'already_running', measuredAt: new Date().toISOString() };
   single = true;
-  try { const r = await measure(target, sizeMB); await archive(r); return r; }
+  try { const { cycles, filename } = await readOpts(); const r = await measure(target, sizeMB, cycles, filename); await archive(r); return r; }
   finally { single = false; }
 }
 
@@ -142,6 +181,7 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number): Prom
   if (batch.running) return;
   stopRequested = false;
   batch = { running: true, total: targets.length, done: 0, current: null, sizeMB, startedAt: new Date().toISOString(), results: [] };
+  const { cycles, filename } = await readOpts();
   try {
     for (const t of targets) {
       if (stopRequested) break;
@@ -151,9 +191,9 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number): Prom
         // Offline host (no ping) vs up-but-445-blocked — don't measure either, but
         // label them differently so offline isn't mistaken for a port problem.
         const alive = await pingAlive(t, 1000);
-        r = { target: t, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
+        r = { target: t, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
       } else {
-        r = await measure(t, sizeMB);
+        r = await measure(t, sizeMB, cycles, filename);
       }
       await archive(r);
       batch.results.push(r);
@@ -205,7 +245,8 @@ export async function startLinkSpeedSchedule(): Promise<void> {
       if (boolS(s['linkspeed.enabled'])) {
         const hrs = Math.max(1, Number(s['linkspeed.interval_hours']) || 24);
         const raw = (s['linkspeed.targets'] ?? '').trim();
-        if (raw && !batch.running && Date.now() - lastSchedRunMs >= hrs * 3600 * 1000) {
+        const inWindow = withinWindow(s['linkspeed.window_start'], s['linkspeed.window_end']);
+        if (raw && inWindow && !batch.running && Date.now() - lastSchedRunMs >= hrs * 3600 * 1000) {
           lastSchedRunMs = Date.now();
           const sizeMB = Math.max(1, Math.min(1024, Number(s['linkspeed.size_mb']) || 100));
           const targets = await expandTargets(raw);

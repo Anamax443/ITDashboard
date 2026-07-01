@@ -734,7 +734,21 @@ export function SettingsPage() {
             <Field label={t('settings.field.lsInterval')}>
               <input type="number" min={1} value={value('linkspeed.interval_hours', '24')} onChange={(e) => set('linkspeed.interval_hours', e.target.value)} style={{ ...fieldStyle, width: 90 }} />
             </Field>
+            <Field label={t('settings.field.lsCycles')}>
+              <input type="number" min={1} max={20} value={value('linkspeed.cycles', '4')} onChange={(e) => set('linkspeed.cycles', e.target.value)} style={{ ...fieldStyle, width: 70 }} />
+            </Field>
           </FieldGroup>
+          <FieldGroup>
+            <Field label={t('settings.field.lsWindowFrom')}>
+              <input type="time" value={value('linkspeed.window_start', '')} onChange={(e) => set('linkspeed.window_start', e.target.value)} style={{ ...fieldStyle, minWidth: 120 }} />
+            </Field>
+            <Field label={t('settings.field.lsWindowTo')}>
+              <input type="time" value={value('linkspeed.window_end', '')} onChange={(e) => set('linkspeed.window_end', e.target.value)} style={{ ...fieldStyle, minWidth: 120 }} />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.lsFilename')}>
+            <input type="text" value={value('linkspeed.filename', 'itdash-speedtest.tmp')} onChange={(e) => set('linkspeed.filename', e.target.value)} style={{ ...fieldStyle, width: 260, fontFamily: 'Consolas, monospace' }} />
+          </Field>
           <Field label={t('settings.field.lsTargets')}>
             <textarea value={value('linkspeed.targets', '')} onChange={(e) => set('linkspeed.targets', e.target.value)} rows={2} placeholder={"all\n10.8.2.*"} style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'Consolas, monospace', resize: 'vertical' }} />
           </Field>

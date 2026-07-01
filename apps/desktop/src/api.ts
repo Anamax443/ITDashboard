@@ -1209,6 +1209,7 @@ export interface LinkSpeedResult {
   target: string; sizeMB: number;
   upMbps: number | null; downMbps: number | null;
   upMs: number | null; downMs: number | null;
+  latencyMs: number | null;
   error?: string; measuredAt: string;
 }
 export interface LinkSpeedStatus {
@@ -1220,6 +1221,7 @@ export interface LinkSpeedHistoryRow {
   id: number; target: string;
   up_mbps: number | null; down_mbps: number | null;
   up_ms: number | null; down_ms: number | null;
+  latency_ms: number | null;
   size_mb: number; error: string | null; measured_at: string;
 }
 

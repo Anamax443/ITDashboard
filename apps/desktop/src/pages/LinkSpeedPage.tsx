@@ -16,7 +16,7 @@ const REPORT_CSS = `.ls-rep{font-family:'Segoe UI',Arial,sans-serif;color:#111;m
 .ls-rep .bad{color:#b91c1c;font-weight:700}.ls-rep .ok{color:#157347;font-weight:700}
 @media print{@page{margin:12mm}}`;
 
-type SortKey = 'target' | 'hostname' | 'up' | 'down' | 'status' | 'size' | 'when';
+type SortKey = 'target' | 'hostname' | 'up' | 'down' | 'latency' | 'status' | 'size' | 'when';
 
 // Column filter expressions for numeric columns: "300..500" (range), ">300",
 // ">=300", "<100", "<=100", "=300"/"300" (exact), else substring fallback.
@@ -54,7 +54,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
   const [error, setError] = useState<string | null>(null);
   const [fStatus, setFStatus] = useState<'all' | 'ok' | 'problem' | 'offline' | 'error'>('all');
   const [fAll, setFAll] = useState('');
-  const [colF, setColF] = useState<Record<SortKey, string>>({ target: '', hostname: '', up: '', down: '', status: '', size: '', when: '' });
+  const [colF, setColF] = useState<Record<SortKey, string>>({ target: '', hostname: '', up: '', down: '', latency: '', status: '', size: '', when: '' });
   const [sortKey, setSortKey] = useState<SortKey>('when');
   const [sortDir, setSortDir] = useState<1 | -1>(-1);
   const wasRunning = useRef(false);
@@ -98,6 +98,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
     { key: 'hostname', label: 'Hostname', val: (r) => nameOf(r.target), sort: (r) => nameOf(r.target).toLowerCase() },
     { key: 'up', label: '↑ Mb/s', type: 'num', hint: '>300  <100  300..500', val: (r) => (r.up_mbps ?? '—').toString(), num: (r) => r.up_mbps, sort: (r) => r.up_mbps ?? -1 },
     { key: 'down', label: '↓ Mb/s', type: 'num', hint: '>300  <100  300..500', val: (r) => (r.down_mbps ?? '—').toString(), num: (r) => r.down_mbps, sort: (r) => r.down_mbps ?? -1 },
+    { key: 'latency', label: t('linkspeed.latency'), type: 'num', hint: '<10  >50  10..50', val: (r) => (r.latency_ms ?? '—').toString(), num: (r) => r.latency_ms, sort: (r) => r.latency_ms ?? 99999 },
     { key: 'status', label: t('linkspeed.verdict'), val: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label, sort: (r) => verdict(r.up_mbps, r.down_mbps, r.error).label.toLowerCase() },
     { key: 'size', label: 'MB', type: 'num', hint: '>50  <200  50..200', val: (r) => String(r.size_mb), num: (r) => r.size_mb, sort: (r) => r.size_mb },
     { key: 'when', label: t('linkspeed.when'), type: 'date', hint: '2026-06-30..2026-07-01  >=2026-07-01', val: (r) => fmt(r.measured_at), iso: (r) => r.measured_at, sort: (r) => r.measured_at },
@@ -248,6 +249,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
                   <td style={{ padding: '5px 10px' }}>{nameOf(r.target) || '—'}</td>
                   <td style={{ padding: '5px 10px' }}>{r.up_mbps ?? '—'}</td>
                   <td style={{ padding: '5px 10px' }}>{r.down_mbps ?? '—'}</td>
+                  <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{r.latency_ms ?? '—'}</td>
                   <td style={{ padding: '5px 10px', color: v.color, fontWeight: 600 }}>{v.label}</td>
                   <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{r.size_mb}</td>
                   <td style={{ padding: '5px 10px', color: 'var(--text-dim)' }}>{fmt(r.measured_at)}</td>
