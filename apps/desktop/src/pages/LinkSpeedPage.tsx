@@ -392,7 +392,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
               const txt = r.error
                 ? `${head}  ${r.error}`
                 : `${head}  ${parts.join(' · ') || '—'} Mb/s${r.latencyMs != null ? `  ${r.latencyMs} ms` : ''}${r.cycles ? `  ${r.cycles}×` : ''}`;
-              return <div key={i} style={{ color: col, whiteSpace: 'pre-wrap' }}>{txt}</div>;
+              return <div key={i} style={{ color: col, whiteSpace: 'pre-wrap' }}><span style={{ color: '#5b6b7f' }}>{fmt(r.measuredAt)}</span>  {txt}</div>;
             })}
             {running && (() => {
               const curHost = status.current ? nameOf(status.current) : '';
