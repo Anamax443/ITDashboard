@@ -202,11 +202,13 @@ export function SummaryCards({
     ...(crashes ? [{ id: 'crashes', el: <Card label={`💥 ${t('cards.crashes')}`} value={crashes.total === 0 ? '—' : crashes.pcs} sub={crashes.total === 0 ? t('cards.crashesNone') : `${crashes.total} ${t('cards.crashesDumps')}`} kind={crashes.total > 0 ? 'critical' as const : 'ok' as const} onClick={onClickCrashes} /> }] : []),
     ...(linkspeed && linkspeed.total > 0 ? [{ id: 'linkspeed', el: <Card label={`⚡ ${t('cards.linkspeed')}`} value={linkspeed.measuredCount === 0 ? '—' : linkspeed.slow} sub={linkspeed.measuredCount === 0 ? '—' : `${linkspeed.ok}/${linkspeed.measuredCount} OK${linkspeed.offline ? ` · ${linkspeed.offline} off` : ''}`} kind={linkspeed.slow > 0 ? 'critical' as const : linkspeed.measuredCount > 0 ? 'ok' as const : 'info' as const} onClick={onClickLinkspeed} /> }] : []),
     ...(comms ? [{ id: 'comms', el: <Card label={`📶 ${t('cards.comms')}`} value={comms.overall === 'ok' ? '✓' : `${comms.okCount}/${comms.total}`} sub={comms.overall === 'down' ? t('cards.commsDbDown') : comms.overall === 'ok' ? `${comms.total} ${t('cards.commsOk')}` : `${comms.total - comms.okCount} ${t('cards.commsDown')}`} kind={comms.overall === 'down' ? 'critical' as const : comms.overall === 'degraded' ? 'warning' as const : 'ok' as const} onClick={onClickComms} /> }] : []),
-    // Zakázané doplňky Office. Dlaždice je jen když je sken zapnutý (jinak by trvale
-    // svítilo '—' za featuru, kterou nikdo nepoužívá). Počítá se JEN z PC, kde sken
-    // proběhl — PC bez přihlášeného uživatele jde do badge jako neznámé, ne do "OK",
-    // protože o nich fakt nic nevíme (HKU nemá hive odhlášeného uživatele).
-    ...(officeAddins?.enabled ? [{ id: 'officeAddins', el: <Card
+    // Zakázané doplňky Office. Dlaždice se ukáže, když je sken zapnutý NEBO když už
+    // nějaká data jsou (ruční sken jde spustit i při vypnutém plánovači — přesně tak se
+    // funkce ověřuje po nasazení, a výsledky by jinak nebylo kde vidět). Bez dat a bez
+    // zapnutí se dlaždice nekreslí, ať tam netrčí trvalé '—' za nepoužívanou featuru.
+    // Počítá se JEN z PC, kde sken proběhl — PC bez přihlášeného uživatele jde do badge
+    // jako neznámé, ne do "OK", protože o nich fakt nic nevíme.
+    ...(officeAddins && (officeAddins.enabled || officeAddins.summary.scannedPcs > 0) ? [{ id: 'officeAddins', el: <Card
       label={`🧩 ${t('cards.officeAddins')}`}
       value={officeAddins.summary.scannedPcs === 0 ? '—' : officeAddins.summary.pcsWithIssues}
       sub={officeAddins.summary.scannedPcs === 0 ? t('cards.officeAddinsNone')

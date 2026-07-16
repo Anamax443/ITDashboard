@@ -27,16 +27,21 @@ interface AddinRow {
 
 export async function registerOfficeAddinsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/office-addins', async () => {
-    // Dashboard se ptá každých 30 s. Když je funkce vypnutá (výchozí stav), nemá smysl
-    // kvůli tomu mlít JOIN a agregaci nad prázdnými tabulkami — frontend stejně jen
-    // zjistí enabled=false a dlaždici nevykreslí.
     const s = await getAllSettings();
     const enabled = ['1', 'true', 'yes', 'on'].includes((s['officeaddins.enabled'] ?? '').toLowerCase());
-    if (!enabled) {
-      return { enabled: false, items: [], summary: { scannedPcs: 0, pcsWithIssues: 0, navPcs: 0, errorPcs: 0, noUserPcs: 0 } };
-    }
-
     const pool = await getPool();
+
+    // Dashboard se ptá každých 30 s, takže při vypnuté funkci nemá smysl mlít JOIN a
+    // agregaci nad prázdnými tabulkami. Nestačí ale odříznout to podle 'enabled':
+    // POST /office-addins/scan jde spustit ručně i při vypnutém plánovači (přesně tak se
+    // funkce ověřuje po nasazení) a jeho výsledky by pak nebylo přes co vidět. Rozhoduje
+    // tedy existence dat, ne přepínač — jeden triviální dotaz místo dvou větších.
+    if (!enabled) {
+      const any = (await pool.request().query<{ n: number }>('SELECT TOP 1 1 AS n FROM office_addin_scans')).recordset[0];
+      if (!any) {
+        return { enabled: false, items: [], summary: { scannedPcs: 0, pcsWithIssues: 0, navPcs: 0, errorPcs: 0, noUserPcs: 0 } };
+      }
+    }
 
     const items = (await pool.request().query<AddinRow>(`
       SELECT a.id, a.computer_id, a.computer_name, a.user_account, a.user_sid,
@@ -60,7 +65,7 @@ export async function registerOfficeAddinsRoutes(app: FastifyInstance): Promise<
     `)).recordset[0] ?? { scannedPcs: 0, pcsWithIssues: 0, navPcs: 0, errorPcs: 0, noUserPcs: 0 };
 
     return {
-      enabled: true,
+      enabled,
       items,
       summary: {
         scannedPcs: sum.scannedPcs ?? 0,
