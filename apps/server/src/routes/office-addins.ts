@@ -21,6 +21,7 @@ interface AddinRow {
   addin_path: string | null;
   addin_name: string | null;
   is_nav: boolean;
+  item_kind: 'addin' | 'document' | null;
   detected_at: Date;
   scanned_at: Date | null;
 }
@@ -43,13 +44,15 @@ export async function registerOfficeAddinsRoutes(app: FastifyInstance): Promise<
       }
     }
 
+    // Vrací se doplňky i dokumenty (item_kind je odliší), ale doplňky první — dokument
+    // v seznamu je jen historie jednoho pádu Office, ne tiše rozbitá aplikace.
     const items = (await pool.request().query<AddinRow>(`
       SELECT a.id, a.computer_id, a.computer_name, a.user_account, a.user_sid,
              a.office_app, a.office_version, a.addin_path, a.addin_name, a.is_nav,
-             a.detected_at, s.scanned_at
+             a.item_kind, a.detected_at, s.scanned_at
       FROM office_disabled_addins a
       LEFT JOIN office_addin_scans s ON s.computer_id = a.computer_id
-      ORDER BY a.is_nav DESC, a.computer_name, a.office_app
+      ORDER BY CASE WHEN a.item_kind = 'addin' THEN 0 ELSE 1 END, a.is_nav DESC, a.computer_name, a.office_app
     `)).recordset;
 
     const sum = (await pool.request().query<{

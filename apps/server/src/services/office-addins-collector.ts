@@ -56,8 +56,17 @@ export interface DisabledAddin {
   valueName: string;
   path: string | null;
   name: string | null;
+  /**
+   * DisabledItems drží i dokumenty, na kterých Office spadl (reálně nalezeno .pdf/.doc),
+   * ne jen doplňky. Do provozních počtů patří jen 'addin' — zakázaný dokument je jen
+   * historie jednoho pádu, ne tiše rozbitá aplikace.
+   */
+  kind: 'addin' | 'document';
+  rawType: number;
   isNav: boolean;
 }
+
+export const isAddin = (i: DisabledAddin): boolean => i.kind === 'addin';
 
 interface ScanOutput { users: number; items: DisabledAddin[] }
 
@@ -127,23 +136,37 @@ try {
       foreach ($app in $apps) {
         $key = "$sid\\SOFTWARE\\Microsoft\\Office\\$ver\\$app\\Resiliency\\DisabledItems"
         foreach ($vn in (EnumVals $key)) {
-          $bytes = GetBin $key $vn
-          if (-not $bytes) { continue }
-          # Hodnota je REG_BINARY: hlavička + UTF-16 řetězce oddělené nulami.
-          # Formát není dokumentovaný, tak z něj taháme čitelné běhy znaků.
-          $u = [System.Text.Encoding]::Unicode.GetString([byte[]]$bytes)
-          $tokens = @([regex]::Matches($u, '[^\\x00-\\x1F]{4,}') | ForEach-Object { $_.Value.Trim() } | Where-Object { $_ })
-          $path = $null
-          foreach ($tk in $tokens) {
-            $m = [regex]::Match($tk, '[A-Za-z]:\\\\.*?\\.(dll|xll|xlam|ocx|exe|vsto)', 'IgnoreCase')
-            if ($m.Success) { $path = $m.Value; break }
-          }
-          $nm = if ($tokens.Count -gt 0) { $tokens[$tokens.Count - 1] } else { $null }
-          $blob = ($tokens -join ' ')
-          $isNav = ($blob -match 'dynamics\\.nav') -or ($blob -match 'exceladdin')
+          $bytes = [byte[]](GetBin $key $vn)
+          if (-not $bytes -or $bytes.Count -lt 12) { continue }
+
+          # REG_BINARY má pevnou strukturu (ověřeno na reálné hodnotě, sedí na byte):
+          #   0x00 DWORD typ, 0x04 DWORD cbPath, 0x08 DWORD cbName,
+          #   0x0C UTF-16LE cesta (cbPath B vč. NUL), pak UTF-16LE jméno (cbName B vč. NUL).
+          #   12 + cbPath + cbName == celková délka hodnoty.
+          # Dřív se z toho tahaly "čitelné běhy znaků" regexem, což na jména lepilo smetí
+          # z hlavičky (dekódovalo se jako CJK) — délkové prefixy to řeší přesně.
+          $type   = [System.BitConverter]::ToUInt32($bytes, 0)
+          $cbPath = [System.BitConverter]::ToUInt32($bytes, 4)
+          $cbName = [System.BitConverter]::ToUInt32($bytes, 8)
+          if ((12 + $cbPath + $cbName) -gt $bytes.Count) { continue }   # neznámá varianta → radši nic než smetí
+
+          $path = ''
+          if ($cbPath -gt 0) { $path = [System.Text.Encoding]::Unicode.GetString($bytes, 12, $cbPath).Trim([char]0) }
+          $nm = ''
+          if ($cbName -gt 0) { $nm = [System.Text.Encoding]::Unicode.GetString($bytes, 12 + $cbPath, $cbName).Trim([char]0) }
+
+          # DisabledItems nedrží jen doplňky — Office sem zapisuje i DOKUMENTY, na kterých
+          # spadl (typicky .pdf/.doc, co rozhodil Word). Pro tuhle agendu je to šum, ale
+          # mazat ho zahodí informaci, tak se jen odliší. Rozhoduje přípona cesty, ne
+          # hlavičkový typ — přípona je ověřitelná, význam typu ne.
+          $kind = 'document'
+          if ($path -match '\\.(dll|xll|xlam|xla|xll|ocx|vsto|wll|exe|olb|tlb)$') { $kind = 'addin' }
+
+          $isNav = (($path + ' ' + $nm) -match 'dynamics\\.nav') -or (($path + ' ' + $nm) -match 'exceladdin')
           $items += [pscustomobject]@{
             sid = $sid; account = $account; app = $app; version = $ver
-            valueName = $vn; path = $path; name = $nm; isNav = [bool]$isNav
+            valueName = $vn; path = $path; name = $nm; kind = $kind
+            rawType = [int]$type; isNav = [bool]$isNav
           }
         }
       }
@@ -203,7 +226,11 @@ async function previouslyNavDisabled(computerId: number): Promise<boolean> {
 // disabled_count>0 — sloupec by hlásil "⚠ 2" a drill-down by byl prázdný.
 async function persist(c: Target, out: ScanOutput, status: string, error: string | null): Promise<void> {
   const pool = await getPool();
-  const navCount = out.items.filter((i) => i.isNav).length;
+  // Do počtů jdou JEN doplňky. Zakázaný dokument se uloží (je to informace), ale nesmí
+  // nafouknout číslo, podle kterého se někdo rozhoduje — první živý sken ukázal, že jinak
+  // se mezi "tiše rozbité Office" započítá i PDF, co kdysi rozhodilo Word.
+  const addinCount = out.items.filter(isAddin).length;
+  const navCount = out.items.filter((i) => isAddin(i) && i.isNav).length;
   const tx = new sql.Transaction(pool);
   await tx.begin();
   try {
@@ -216,9 +243,10 @@ async function persist(c: Target, out: ScanOutput, status: string, error: string
           .input('app', i.app).input('ver', i.version).input('vn', i.valueName)
           .input('path', i.path ?? null).input('nm', i.name ?? null)
           .input('nav', i.isNav ? 1 : 0)
+          .input('kind', i.kind).input('rt', i.rawType)
           .query(`INSERT INTO office_disabled_addins
-                    (computer_id, computer_name, user_sid, user_account, office_app, office_version, value_name, addin_path, addin_name, is_nav)
-                  VALUES (@cid, @cn, @sid, @acct, @app, @ver, @vn, @path, @nm, @nav)`);
+                    (computer_id, computer_name, user_sid, user_account, office_app, office_version, value_name, addin_path, addin_name, is_nav, item_kind, raw_type)
+                  VALUES (@cid, @cn, @sid, @acct, @app, @ver, @vn, @path, @nm, @nav, @kind, @rt)`);
       }
     }
 
@@ -229,7 +257,7 @@ async function persist(c: Target, out: ScanOutput, status: string, error: string
     // řádku byly promíchané dvě různé časové roviny.
     await new sql.Request(tx)
       .input('cid', c.id).input('cn', c.name).input('st', status).input('err', error)
-      .input('us', out.users).input('dc', out.items.length).input('nav', navCount > 0 ? 1 : 0)
+      .input('us', out.users).input('dc', addinCount).input('nav', navCount > 0 ? 1 : 0)
       .query(`
         MERGE office_addin_scans AS t
         USING (SELECT @cid AS computer_id) AS s ON t.computer_id = s.computer_id
@@ -292,8 +320,8 @@ export async function runOfficeAddinScanOnce(): Promise<{ pcs: number; scanned: 
 
         if (status === 'ok') {
           scanned++;
-          if (out.items.length > 0) withIssues++;
-          const navs = out.items.filter((i) => i.isNav);
+          if (out.items.some(isAddin)) withIssues++;          // dokumenty se nepočítají
+          const navs = out.items.filter((i) => isAddin(i) && i.isNav);
           if (navs.length > 0) {
             navDisabled++;
             // Jen nový výskyt. Bez téhle podmínky by se u neopraveného PC psalo totéž

@@ -536,6 +536,11 @@ export interface OfficeAddinRow {
   addin_path: string | null;
   addin_name: string | null;
   is_nav: boolean;
+  /**
+   * DisabledItems drží i dokumenty, na kterých Office spadl (.pdf/.doc), ne jen doplňky.
+   * Do provozních počtů jde jen 'addin' — zakázaný dokument je historie jednoho pádu.
+   */
+  item_kind: 'addin' | 'document' | null;
   detected_at: string;
   scanned_at: string | null;
 }

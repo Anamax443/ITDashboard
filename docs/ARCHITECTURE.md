@@ -1,6 +1,6 @@
 # Architecture
 
-> **Document state:** 2026-07-16 · live commit `ba999ab` · migrations 001–078.
+> **Document state:** 2026-07-16 · live commit `ba999ab` · migrations 001–079.
 
 ## Components
 
@@ -595,7 +595,27 @@ That is why `office_addin_scans.status` is **`ok` | `no_users` | `error`**, and 
 
 **Storage is current state, not history.** Each successful scan **deletes and rewrites** that PC's detail rows: an add-in can be re-enabled, and it must then disappear from the view. `office_addin_scans` keeps one row per PC (including clean ones, so "verified clean" is distinguishable from "never scanned" — a missing row).
 
-**Decoding.** The `DisabledItems` value is `REG_BINARY` in an undocumented layout (header + UTF-16 strings). Rather than guess the structure, readable character runs are extracted and the `.dll`/`.xll` path plus add-in name pulled out of them — verified against a real captured value (330 bytes → correct path, name, and NAV detection). The PowerShell is generated in a TS template literal, which makes escaping (TS → PS → regex) a **silent** failure mode: PowerShell does not treat `\` as an escape, so a malformed registry path never throws — it just never matches, and every PC would cheerfully report "clean". `buildScanScript()` is therefore exported and unit-tested for exactly that.
+**Decoding (rewritten 2026-07-16 after the first live scan — migration 079).** The `DisabledItems` value is `REG_BINARY` and Microsoft doesn't document it, but it has a **fixed structure**, confirmed to the byte against a real capture:
+
+```
+0x00  DWORD   type      (1 in the observed add-in case)
+0x04  DWORD   cbPath    byte length of path incl. NUL
+0x08  DWORD   cbName    byte length of name incl. NUL
+0x0C  WSTR    path      UTF-16LE
+      WSTR    name      UTF-16LE
+        →  12 + cbPath + cbName == total value size   (12 + 250 + 68 = 330)
+```
+
+The first implementation **guessed** — it scraped "readable character runs" with a regex. That decode was *self-consistently wrong*: it passed the unit tests and a PowerShell parser check, and only real fleet data exposed it, in two ways:
+
+- **Header garbage glued onto names**: `愀蓶ｼ侴산촂뙿﹨Prohlížeč náhledů: Náhled Microsoft Wordu` — header bytes happened to decode as printable CJK and the regex swallowed them.
+- **Disabled *documents* counted as add-ins**: `DisabledItems` also records files that crashed Office (real finds: `c:\mail\*.pdf`, a `.doc` from Word's `content.mso` cache). A PDF that once upset Word is **not** a silently broken application, and counting it inflated the headline number.
+
+Both are gone. The value is parsed by its length prefixes, and a value whose lengths don't fit the size is **dropped, not guessed at**. Each row carries `item_kind` = `addin` | `document`, classified by **path extension** — verifiable, unlike the header `type`, whose meaning is known only for `type=1` (kept as `raw_type` for future evidence, not trusted). **Only `item_kind='addin'` feeds `disabled_count`, the tile, the Computers column and the manager KPI.**
+
+**Escaping is a silent failure mode too.** The PowerShell is generated in a TS template literal (TS → PS → regex). PowerShell does not treat `\` as an escape, so a malformed registry path never throws — it just never matches, and every PC would cheerfully report "clean". `buildScanScript()` is therefore exported and unit-tested for exactly that.
+
+**What this episode is worth remembering:** those tests were green the whole time the decode was wrong. Structure checks catch structure, not meaning — a collector reading an undocumented format is not verified until someone has read its real output.
 
 Settings: `officeaddins.enabled` (**off by default**, like every new per-PC sweep) and `officeaddins.interval_sec` (**6 h** — this state changes when an application crashes, not by the minute; scanning more often would only load client DCOM for nothing).
 
