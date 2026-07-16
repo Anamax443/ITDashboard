@@ -1110,6 +1110,23 @@ export function SettingsPage() {
         </Section>
 
         <Section
+          title={t('settings.section.officeAddins')}
+          description={t('settings.section.officeAddinsDesc')}
+        >
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.officeAddinsEnabled')}
+              checked={value('officeaddins.enabled', '0') === '1'}
+              onChange={(checked) => set('officeaddins.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.officeAddinsInterval')}>
+              <NumberInput v={value('officeaddins.interval_sec', '21600')} onChange={(v) => set('officeaddins.interval_sec', v)} suffix={t('settings.unit.seconds')} />
+            </Field>
+          </FieldGroup>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>{t('settings.officeAddins.help')}</p>
+        </Section>
+
+        <Section
           title={t('settings.section.adsync')}
           description={t('settings.section.adsyncDesc')}
         >

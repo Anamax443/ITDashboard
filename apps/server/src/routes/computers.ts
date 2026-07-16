@@ -9,15 +9,20 @@ import { probeComputerNow } from '../services/port-status-collector.js';
 export async function registerComputersRoutes(app: FastifyInstance) {
   app.get('/computers', async () => {
     const pool = await getPool();
+    // LEFT JOIN na sken doplňků Office: chybějící řádek = nikdy neskenováno (null),
+    // což UI musí odlišit od "oskenováno, čisto" (status='ok', disabled_count=0).
     const r = await pool.request().query(`
-      SELECT id, name, fqdn, os_version, last_seen, enabled, monitor_enabled, excluded,
-             disk_email_monitor, disk_email_drives, service_email_monitor,
-             service_monitor, service_exceptions, critical_service_exceptions,
-             last_collected_at, last_error, consecutive_failures, ou_path, distinguished_name,
-             last_status, [current_user], current_user_seen_at, ip_address, pc_info_collected_at,
-             reachable, last_reachable_at, reach_checked_at
-      FROM computers
-      ORDER BY enabled DESC, excluded, name
+      SELECT c.id, c.name, c.fqdn, c.os_version, c.last_seen, c.enabled, c.monitor_enabled, c.excluded,
+             c.disk_email_monitor, c.disk_email_drives, c.service_email_monitor,
+             c.service_monitor, c.service_exceptions, c.critical_service_exceptions,
+             c.last_collected_at, c.last_error, c.consecutive_failures, c.ou_path, c.distinguished_name,
+             c.last_status, c.[current_user], c.current_user_seen_at, c.ip_address, c.pc_info_collected_at,
+             c.reachable, c.last_reachable_at, c.reach_checked_at,
+             oa.status AS office_addin_status, oa.disabled_count AS office_addin_count,
+             oa.nav_disabled AS office_addin_nav, oa.scanned_at AS office_addin_scanned_at
+      FROM computers c
+      LEFT JOIN office_addin_scans oa ON oa.computer_id = c.id
+      ORDER BY c.enabled DESC, c.excluded, c.name
     `);
     return { items: r.recordset };
   });

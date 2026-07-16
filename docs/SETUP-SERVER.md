@@ -6,7 +6,7 @@ Po dokončení už nikdy nemusíš na server ručně — každý `git push` do `
 
 **Real-world setup proběhl 2026-06-01.** Tento dokument reflektuje skutečnost, ne ideál.
 
-> **Stav dokumentu:** aktualizováno **2026-07-01**, živý commit `848da26`, migrace **001–077**. Rebuild dle tohoto dokumentu postaví systém včetně WAN monitoru (krok 7c), parkovaného service-port maticového scheduleru (krok 7d) a link-speed měření (krok 7e, default vypnuté — SMB verdikt + NIC/robocopy orientace). Restart NSSM služby jde z appky (Nastavení → ⟳ Restart služby, viz krok 7).
+> **Stav dokumentu:** aktualizováno **2026-07-16**, živý commit `4783787`, migrace **001–078**. Rebuild dle tohoto dokumentu postaví systém včetně WAN monitoru (krok 7c), parkovaného service-port maticového scheduleru (krok 7d), link-speed měření (krok 7e, default vypnuté — SMB verdikt + NIC/robocopy orientace) a skenu zakázaných doplňků Office (krok 7f, default vypnuté). Restart NSSM služby jde z appky (Nastavení → ⟳ Restart služby, viz krok 7).
 
 ## Reference deployment values
 
@@ -316,6 +316,27 @@ API service při startu (`dist/index.js`, `index.ts`) spouští kromě eventlog 
 **Egress / síť (rebuild-relevant):** čistě **vnitrosíťový** provoz z `.213` na klienty — **SMB** (445) na `C$` klientů, `ping.exe` a **DCOM/CIM** pro čtení rychlosti NIC portu (stejný kanál jako disk/services kolektor). **Žádné nové firewall pravidlo pro internet** — jen SMB (445) + DCOM na klientská PC musí být z `.213` průchozí (v doméně obvykle je). **DC/servery** NIC čtení přes DCOM CIM **odmítají** — očekávané.
 
 **Read/action endpointy** (žádná změna auth): `POST /system/linkspeed/{test,run,stop}`, `GET /system/linkspeed/{status,history,summary}`.
+
+### 7f. Zakázané doplňky Office (migrace 078, default vypnuté)
+
+Office si po pádu doplňku sám doplněk zakáže (`Resiliency\DisabledItems`) a **nikam to nenahlásí** — v Event Logu nic není a aplikace se tváří zdravě, jen tiše nedělá, co má. Sken to čte a hlásí. Vzniklo z reálného případu: zakázaný **NAV Excel Add-in** = export z Navisionu do Excelu vrátí **prázdný sešit** (NAV posílá jen `.xltx` šablonu s připojením, data doplní až doplněk přes OData).
+
+**Seedované settings** (migrace 078, přepsatelné v Settings UI; funkce vypnutá, takže je dormantní):
+
+| Klíč | Default | Význam |
+|------|---------|--------|
+| `officeaddins.enabled` | `0` | **vypnuto** — sken neběží |
+| `officeaddins.interval_sec` | `21600` | interval skenu (s) = 6 h; minimum 300 s, jinak fallback na 6 h |
+
+**Požadavky / provoz (rebuild-relevant):**
+- **Vzdálený registr přes DCOM.** Čte se hive **`HKEY_USERS`** (hDefKey `2147483651`) přes **WMI `StdRegProv` v DCOM CIM session** — stejný kanál jako disk/services kolektor (obyčejný `Get-CimInstance` by chtěl **WinRM**, které na doménových PC není nakonfigurované). Službu `RemoteRegistry` **není třeba zapínat** — je `Automatic (trigger-start)` a nastartuje si sama při připojení.
+- **Práva.** Vzdálený registr je hlídaný ACL klíče `winreg` (jen Administrators/Backup Operators). `svc-itdashboard` je ve skupině **Server Admins**, která je v lokálních Administrators na klientech — tím je splněno. **Servery/DC selžou** (účet tam admin není) — očekávané, stejně jako u ostatních per-PC kolektorů.
+- **Jen přihlášení uživatelé — zásadní omezení.** `DisabledItems` je v **HKCU**, tedy v profilu uživatele. `HKEY_USERS` obsahuje hive **jen přihlášených** uživatelů a `NTUSER.DAT` je za běhu **exkluzivně zamčený**, takže **offline cesta přes `C$` (jakou používá sběr BSOD dumpů) tady nefunguje**. PC, kde nikdo nesedí, se uloží jako `status='no_users'` = **neznámo, ne čisto**; UI to počítá zvlášť a nezahrnuje do OK. Pokrytí se tedy dobírá postupně, jak lidi přes den sedí u počítačů — **není to inventář, kde je hned všechno**.
+- **Zátěž.** Jeden krátký DCOM dotaz na PC, per-PC zámek (`pc:<id>`, `tryWithHostLock` — zaneprázdněné PC se přeskočí), pre-flight TCP/135. Interval 6 h je záměrný: stav se mění po pádu aplikace, ne po minutách.
+
+**Egress / síť (rebuild-relevant):** čistě **vnitrosíťový** provoz z `.213` na klienty přes **DCOM/WMI** (135 + dynamické porty) — stejný kanál, jaký už používá disk/services kolektor. **Žádné nové firewall pravidlo.**
+
+**Read/action endpointy** (žádná změna auth): `GET /office-addins`, `GET /office-addins/status`, `POST /office-addins/scan`.
 
 ## 8. Firewall — whitelist konkrétních IP
 

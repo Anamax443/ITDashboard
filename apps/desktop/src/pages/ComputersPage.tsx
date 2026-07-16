@@ -198,6 +198,9 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
     { key: 'consecutive_failures', label: 'Fails', get: (r) => r.consecutive_failures ?? 0 },
     { key: 'last_collected_at', label: 'Last collected', get: (r) => r.last_collected_at ?? '' },
     { key: 'ou_path', label: 'OU', get: (r) => r.ou_path ?? '' },
+    // Neskenováno a "nikdo přihlášen" se exportují jako prázdné/slovem, ne jako 0 —
+    // v CSV by nula vypadala jako ověřené "čisto".
+    { key: 'office_addin_count', label: 'Office add-ins disabled', get: (r) => r.office_addin_status === 'ok' ? (r.office_addin_count ?? 0) : (r.office_addin_status ?? '') },
   ];
   const monitored = items.filter((c) => c.enabled && !c.excluded && c.monitor_enabled).length;
   const unmonitored = items.filter((c) => c.enabled && !c.excluded && !c.monitor_enabled).length;
@@ -406,6 +409,7 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                 <SortHeader<ComputerItem> col="current_user" label="User" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="last_seen" label="Last seen" sort={sort} toggle={toggle} />
                 <SortHeader<ComputerItem> col="last_status" label="Status" sort={sort} toggle={toggle} />
+                <th style={{ width: 110, textAlign: 'center' }} title={t('computers.officeAddins.title')}>🧩 {t('computers.officeAddins.header')}</th>
                 <th style={{ width: 160 }}>Disks</th>
                 <th style={{ width: 120 }}>Last collected</th>
                 <th>Last error</th>
@@ -505,6 +509,33 @@ export function ComputersPage({ items, onRefreshLocal, initialFilter, onFilterCo
                         : c.last_status === 'access_denied' ? <span style={{ color: 'var(--critical)' }}>✗ Access denied</span>
                         : c.last_status === 'unknown' ? <span style={{ color: 'var(--critical)' }}>? Unknown</span>
                         : <span style={{ color: 'var(--text-dim)' }}>— not probed</span>;
+                    })()}
+                  </td>
+                  <td style={{ fontSize: 11, textAlign: 'center' }}>
+                    {(() => {
+                      // Zakázané doplňky Office. Stav se dá zjistit JEN u přihlášeného
+                      // uživatele (DisabledItems je v HKCU → vzdáleně přes HKU, a ten
+                      // obsahuje jen hive přihlášených; NTUSER.DAT je za běhu zamčený).
+                      // Proto se tu rozlišují čtyři různé věci a žádná z nich se nesmí
+                      // tvářit jako ta druhá:
+                      //   —          nikdy neskenováno (řádek skenu chybí)
+                      //   · nikdo    nikdo přihlášen → neznámo, NE "čisto"
+                      //   ✗ chyba    sken selhal (DCOM/práva)
+                      //   ● OK       oskenováno, žádný doplněk zakázaný
+                      //   ⚠ N        N zakázaných doplňků (NAV zvlášť — kvůli němu to vzniklo)
+                      const st = c.office_addin_status;
+                      if (!st) return <span style={{ color: 'var(--text-dim)' }} title={t('computers.officeAddins.never')}>—</span>;
+                      const when = c.office_addin_scanned_at ? timeAgo(c.office_addin_scanned_at) : '';
+                      if (st === 'error') return <span style={{ color: 'var(--critical)' }} title={t('computers.officeAddins.error')}>✗</span>;
+                      if (st === 'no_users') return <span style={{ color: 'var(--text-dim)' }} title={t('computers.officeAddins.noUsers')}>· {t('computers.officeAddins.noUsersShort')}</span>;
+                      const n = c.office_addin_count ?? 0;
+                      if (n === 0) return <span style={{ color: 'var(--ok)' }} title={`${t('computers.officeAddins.clean')}${when ? ` · ${when}` : ''}`}>●</span>;
+                      return (
+                        <span style={{ color: c.office_addin_nav ? 'var(--critical)' : 'var(--warning)' }}
+                              title={`${c.office_addin_nav ? t('computers.officeAddins.navTip') : t('computers.officeAddins.someTip')}${when ? ` · ${when}` : ''}`}>
+                          ⚠ {n}{c.office_addin_nav ? ' NAV' : ''}
+                        </span>
+                      );
                     })()}
                   </td>
                   <td><DisksCell disks={disksByComputer.get(c.id) ?? []} thresholds={thresholds} /></td>

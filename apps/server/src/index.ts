@@ -26,6 +26,7 @@ import { registerDeviceWebProxyRoutes } from './routes/device-web-proxy.js';
 import { registerPrinterSuppliesRoutes } from './routes/printer-supplies.js';
 import { registerDatabaseRoutes } from './routes/database.js';
 import { registerCrashRoutes } from './routes/crashes.js';
+import { registerOfficeAddinsRoutes } from './routes/office-addins.js';
 import { registerSystemRoutes } from './routes/system.js';
 import { registerFrontendRoutes } from './routes/frontend.js';
 import { startChecksSchedule } from './services/checks-runner.js';
@@ -42,6 +43,7 @@ import { startCrashAnalyzerSchedule } from './services/crash-analyzer-worker.js'
 import { startWanMonitorSchedule } from './services/wan-monitor.js';
 import { startServicePortsSchedule } from './services/service-port-matrix.js';
 import { startLinkSpeedSchedule } from './services/link-speed.js';
+import { startOfficeAddinSchedule } from './services/office-addins-collector.js';
 
 const PORT = Number(process.env.API_PORT ?? 4000);
 const BIND = process.env.API_BIND ?? '0.0.0.0';
@@ -84,6 +86,7 @@ await registerDeviceWebProxyRoutes(app);
 await registerPrinterSuppliesRoutes(app);
 await registerDatabaseRoutes(app);
 await registerCrashRoutes(app);
+await registerOfficeAddinsRoutes(app);
 await registerSystemRoutes(app);
 await registerFrontendRoutes(app);
 
@@ -110,6 +113,7 @@ app.listen({ port: PORT, host: BIND }).then(async () => {
   await startWanMonitorSchedule();
   await startServicePortsSchedule();
   await startLinkSpeedSchedule();
+  await startOfficeAddinSchedule();
 }).catch((err) => {
   app.log.error(err);
   process.exit(1);

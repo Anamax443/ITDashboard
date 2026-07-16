@@ -138,6 +138,12 @@ export function ManagerSummaryPage({ settings = {} }: { settings?: Record<string
   const diskCrit = diskSum.criticalPcs;
   const diskWarn = diskSum.warningPcs;
 
+  // PC, kde si Office sám zakázal doplněk (tiše rozbitá aplikace — typicky export do
+  // Excelu vracející prázdný sešit). Počítá se JEN ze skutečně oskenovaných strojů:
+  // 'no_users' znamená, že u PC nikdo neseděl a stav neznáme — do manažerského čísla
+  // nesmí spadnout jako by bylo v pořádku. Data jdou z /computers, žádný další dotaz.
+  const addinPcs = managed.filter((c) => c.office_addin_status === 'ok' && (c.office_addin_count ?? 0) > 0).length;
+
   // OS breakdown over the managed fleet (W11 / W10 / Server / other).
   const osCount = (re: RegExp) => managed.filter((c) => re.test(c.os_version ?? '')).length;
   const osW11 = osCount(/windows 11/i);
@@ -257,6 +263,7 @@ export function ManagerSummaryPage({ settings = {} }: { settings?: Record<string
           <Kpi label={t('summary.problemPcs')} value={riskPcs} tone={riskPcs ? 'crit' : undefined} />
           <Kpi label={t('summary.diskCrit')} value={diskCrit} tone={diskCrit ? 'crit' : undefined} />
           <Kpi label={t('summary.diskWarn')} value={diskWarn} tone={diskWarn ? 'warn' : undefined} />
+          <Kpi label={t('summary.officeAddins')} value={addinPcs} tone={addinPcs ? 'warn' : undefined} />
           <Kpi label={t('summary.inactive')} value={stale} />
           <Kpi label={t('summary.disabled')} value={disabled} />
         </div>

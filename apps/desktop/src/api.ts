@@ -514,6 +514,45 @@ export interface ComputerItem {
   reachable?: boolean | null;
   last_reachable_at?: string | null;
   reach_checked_at?: string | null;
+  /**
+   * Office add-in scan. null/undefined = never scanned. 'no_users' means nobody was
+   * logged on, so HKEY_USERS had nothing to read — that is NOT the same as "clean".
+   */
+  office_addin_status?: 'ok' | 'no_users' | 'error' | null;
+  office_addin_count?: number | null;
+  office_addin_nav?: boolean | null;
+  office_addin_scanned_at?: string | null;
+}
+
+/** One disabled Office add-in on one PC, for one user. */
+export interface OfficeAddinRow {
+  id: number;
+  computer_id: number;
+  computer_name: string;
+  user_account: string | null;
+  user_sid: string;
+  office_app: string;
+  office_version: string;
+  addin_path: string | null;
+  addin_name: string | null;
+  is_nav: boolean;
+  detected_at: string;
+  scanned_at: string | null;
+}
+
+export interface OfficeAddinsResult {
+  enabled: boolean;
+  items: OfficeAddinRow[];
+  summary: {
+    /** PCs where the scan actually ran (somebody logged on). */
+    scannedPcs: number;
+    pcsWithIssues: number;
+    /** PCs with the NAV/BC Excel add-in disabled — the export-returns-nothing case. */
+    navPcs: number;
+    errorPcs: number;
+    /** Nobody logged on → HKU unreadable. Unknown, not clean. */
+    noUserPcs: number;
+  };
 }
 
 /** One PC's latest verdict for a single configured port (Ports tab grid). */
@@ -811,6 +850,8 @@ export const api = {
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
   comms: () => jget<CommsResult>('/system/comms'),
+  officeAddins: () => jget<OfficeAddinsResult>('/office-addins'),
+  officeAddinsScan: () => jpost<{ started: boolean }>('/office-addins/scan'),
   wan: () => jget<WanStatus>('/system/wan'),
   servicePorts: () => jget<ServicePortMatrix>('/system/service-ports'),
   linkSpeedStatus: () => jget<LinkSpeedStatus>('/system/linkspeed/status'),

@@ -1,6 +1,6 @@
 # Architecture
 
-> **Document state:** 2026-07-01 · live commit `848da26` · migrations 001–077.
+> **Document state:** 2026-07-16 · live commit `4783787` · migrations 001–078.
 
 ## Components
 
@@ -578,6 +578,26 @@ Heavy per-PC operations (a link-speed copy, a crash-dump pull) must not run agai
 - **`tryWithHostLock`** — **skip if busy**: returns immediately without running when the host is already locked. Used by the **crash-dump** collector (if that box is mid-measurement, just try it next cycle — no point queueing).
 
 **Scope limit.** The lock serializes work **on a given target host**; it deliberately does **not** cover the **shared uplink of `.213`** itself — two operations against two *different* hosts still both consume the app server's single link, which is what `linkspeed.pause_ms` (above) throttles instead.
+
+### Disabled Office add-ins (2026-07-16, migration 078)
+
+Office **silently disables an add-in after it crashes** — it records it in `Resiliency\DisabledItems` and reports it **nowhere**: no Event Log entry, no dialog on next start. The application then looks perfectly healthy while quietly not doing its job. This is invisible to every other collector we have, because there is no event to collect.
+
+It surfaced through Navision: "export to Excel" started opening an **empty workbook**. NAV does not build the table — it writes a bare **`.xltx` template** containing only the connection (`Server`, `ClientServicesPort`, `ServerInstance`, `CompanyName`) in `CustomProperty*.bin`, and the **NAV Excel add-in fetches the rows over OData** once Excel opens it. With the add-in disabled, the template opens and stays empty. It worked for a colleague on identical Microsoft 365 because **`DisabledItems` is in `HKEY_CURRENT_USER` — per user, not per Office version**. (Office bitness, the `.xltx` association, `LoadBehavior` and the PIAs are all red herrings; each was checked.)
+
+`services/office-addins-collector.ts` therefore reports **any** disabled Office add-in across **Excel, Word, Outlook, PowerPoint** — the same single read finds them all, and NAV is merely flagged separately (`is_nav`) because its consequence is known and invisible.
+
+**Transport: HKEY_USERS over DCOM.** Because the data is in HKCU, a remote read means **`HKEY_USERS`** (hDefKey `2147483651`) through **WMI `StdRegProv` in a DCOM CimSession** — the same shape as `services-collector.ts`, for the same reason (plain `Get-CimInstance` needs WinRM, which domain PCs don't have). Cheap **TCP/135** pre-flight before the lock, then **`tryWithHostLock(pc:<id>)`** — a PC busy with a link-speed run is skipped and retried next cycle rather than stalling the sweep.
+
+**The constraint that shaped the model: only logged-on users are readable.** `HKEY_USERS` holds hives of **logged-on users only**, and **`NTUSER.DAT` is exclusively locked** while the profile is loaded — so the **offline `C$` route that crash-dump collection uses does not work here** (verified, not assumed). A powered-on but logged-off PC yields nothing.
+
+That is why `office_addin_scans.status` is **`ok` | `no_users` | `error`**, and why **`no_users` is not `ok`**: it means *unknown*, not *clean*. The Computers column renders five distinct states (`—` never scanned · `· nikdo` nobody logged on · `✗` scan failed · `●` scanned and clean · `⚠ N` disabled count), and the homepage tile counts **only `status='ok'`** PCs, pushing unknowns into a badge. Same tri-state discipline as `computers.reachable` — an unknown must never be presented as a healthy result. Coverage fills in gradually as people sit at their machines, which is a different freshness profile from inventory data and is deliberately visible in the UI.
+
+**Storage is current state, not history.** Each successful scan **deletes and rewrites** that PC's detail rows: an add-in can be re-enabled, and it must then disappear from the view. `office_addin_scans` keeps one row per PC (including clean ones, so "verified clean" is distinguishable from "never scanned" — a missing row).
+
+**Decoding.** The `DisabledItems` value is `REG_BINARY` in an undocumented layout (header + UTF-16 strings). Rather than guess the structure, readable character runs are extracted and the `.dll`/`.xll` path plus add-in name pulled out of them — verified against a real captured value (330 bytes → correct path, name, and NAV detection). The PowerShell is generated in a TS template literal, which makes escaping (TS → PS → regex) a **silent** failure mode: PowerShell does not treat `\` as an escape, so a malformed registry path never throws — it just never matches, and every PC would cheerfully report "clean". `buildScanScript()` is therefore exported and unit-tested for exactly that.
+
+Settings: `officeaddins.enabled` (**off by default**, like every new per-PC sweep) and `officeaddins.interval_sec` (**6 h** — this state changes when an application crashes, not by the minute; scanning more often would only load client DCOM for nothing).
 
 ### Restart service (`POST /system/service/restart`)
 
