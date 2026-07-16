@@ -15,6 +15,7 @@ import { TimelineChart } from './components/TimelineChart.js';
 import { TopComputersChart } from './components/TopComputersChart.js';
 import { ActivityLog } from './components/ActivityLog.js';
 import { ComputersPage } from './pages/ComputersPage.js';
+import { OfficeAddinsPage } from './pages/OfficeAddinsPage.js';
 import { SettingsPage } from './pages/SettingsPage.js';
 import { ServicesPage } from './pages/ServicesPage.js';
 import { CriticalServicesPage } from './pages/CriticalServicesPage.js';
@@ -36,7 +37,7 @@ import type { AccessCheck } from './api.js';
 
 const REFRESH_MS = 30_000;
 
-type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'svcports' | 'linkspeed' | 'devices' | 'deviceprinters' | 'printers' | 'network' | 'database' | 'perf' | 'activity' | 'crashes' | 'settings' | 'presentation';
+type View = 'dashboard' | 'summary' | 'events' | 'computers' | 'services' | 'critsvc' | 'ports' | 'svcports' | 'linkspeed' | 'devices' | 'deviceprinters' | 'printers' | 'network' | 'database' | 'perf' | 'activity' | 'crashes' | 'officeaddins' | 'settings' | 'presentation';
 
 export function App() {
   const { t, lang, setLang } = useI18n();
@@ -310,6 +311,7 @@ export function App() {
             <button className={view === 'perf' ? 'active' : ''} onClick={() => setView('perf')}>{t('nav.perf')}</button>
             <button className={view === 'linkspeed' ? 'active' : ''} onClick={() => setView('linkspeed')}>⚡ {t('nav.linkspeed')}</button>
             <button className={view === 'crashes' ? 'active' : ''} onClick={() => setView('crashes')}>💥 {t('nav.crashes')}</button>
+            <button className={view === 'officeaddins' ? 'active' : ''} onClick={() => setView('officeaddins')} title={t('nav.officeaddinsTip')}>🧩 {t('nav.officeaddins')}</button>
             <button className={view === 'activity' ? 'active' : ''} onClick={() => setView('activity')}>{t('nav.activity')}</button>
             <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>{t('nav.settings')}</button>
             <a
@@ -446,7 +448,7 @@ export function App() {
             linkspeed={linkspeedSummary}
             onClickLinkspeed={() => setView('linkspeed')}
             officeAddins={officeAddins}
-            onClickOfficeAddins={() => setView('computers')}
+            onClickOfficeAddins={() => setView('officeaddins')}
           />
           <WanHealth data={wan} />
           <CommsHealth data={comms} open={commsOpen} onOpenChange={setCommsOpen} />
@@ -589,6 +591,11 @@ export function App() {
       {view === 'crashes' && (
         <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
           <CrashesPage />
+        </div>
+      )}
+      {view === 'officeaddins' && (
+        <div className="panels" style={{ gridTemplateColumns: '1fr', gridTemplateRows: '1fr' }}>
+          <OfficeAddinsPage onJumpToComputer={jumpToComputer} />
         </div>
       )}
 
