@@ -5,6 +5,7 @@ import { getPool } from '../db/pool.js';
 import { getAllSettings } from './settings.js';
 import { logActivity } from './activity-log.js';
 import { tryWithHostLock, keyForComputerId } from './host-lock.js';
+import { evaluateAndSendOfficeAddinAlerts } from './alerts.js';
 
 // Zjišťuje, které doplňky Office si klientská aplikace sama zakázala.
 //
@@ -339,6 +340,11 @@ export async function runOfficeAddinScanOnce(): Promise<{ pcs: number; scanned: 
     if (busy > 0) logActivity('info', 'office', `Sken doplňků Office: ${busy} PC přeskočeno (zaneprázdněno), zkusí se příště`);
     if (withIssues > 0) logActivity('info', 'office', `Sken doplňků Office: ${withIssues} PC se zakázaným doplňkem · ${scanned} oskenováno · ${targets.length} PC celkem`);
     lastResult = { pcs: targets.length, scanned, withIssues, navDisabled };
+
+    // Alerty až po dopsání všech PC — mail má odejít z kompletního obrazu, ne z půlky
+    // sweepu. Vlastní chyby si řeší uvnitř, takže selhání SMTP nikdy neshodí sken.
+    await evaluateAndSendOfficeAddinAlerts().catch((e) => console.error('Office add-in alerts failed', e));
+
     return lastResult;
   } finally {
     running = false;

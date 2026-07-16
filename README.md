@@ -135,7 +135,7 @@ ITDashboard/
   apps/
     desktop/                       # Electron + React UI (Dashboard, Events, Computers, Services, Critical services, Ports, Devices, Tiskárny, Stav tiskáren, Měření linky, Database, Perf, Activity, Settings)
     server/                        # Fastify API + collectors (eventlog/disk/services/perf/reachability/ports/mikrotik/unifi/printer-supplies/shared-printers) + AD sync
-      migrations/                  # MSSQL migrations 001–079
+      migrations/                  # MSSQL migrations 001–080
   packages/
     ad-bridge/                     # AD wrapper (Get-ADComputer)
     eventlog-collector/            # standalone wrapper (currently inlined in server)
@@ -168,7 +168,7 @@ The browser UI talks to API at `http://10.8.2.213:4000` (CORS open). Your dev PC
 
 ## Status
 
-**LIVE since 2026-06-01** (live commit `ba999ab`, migrations 001–079, updated 2026-07-16). Auto-deploy pipeline green. 211 monitored PCs covered by eventlog + disk collectors. See [docs/dashboard.html](docs/dashboard.html) for full feature reference.
+**LIVE since 2026-06-01** (live commit `ba999ab`, migrations 001–080, updated 2026-07-16). Auto-deploy pipeline green. 211 monitored PCs covered by eventlog + disk collectors. See [docs/dashboard.html](docs/dashboard.html) for full feature reference.
 
 **Disabled Office add-ins (2026-07-16, LIVE `ba999ab`, migration 078):** Office **silently disables an add-in after it crashes** (`Resiliency\DisabledItems`) and reports it **nowhere** — no Event Log entry, no dialog. The app looks healthy while quietly not doing its job. Found via Navision: a disabled **NAV Excel add-in** made "export to Excel" open an **empty workbook** (NAV only writes a `.xltx` template carrying the connection; the add-in fetches the rows over OData). It worked for a colleague on the same Microsoft 365 because `DisabledItems` lives in **HKCU — per user, not per Office version**. New collector `office-addins-collector.ts` reads **HKEY_USERS** via **WMI StdRegProv over a DCOM CimSession**, across **Excel/Word/Outlook/PowerPoint**; new tables `office_addin_scans` + `office_disabled_addins`; settings `officeaddins.enabled` (**off by default**) / `officeaddins.interval_sec` (6 h); endpoints `GET /office-addins`, `GET /office-addins/status`, `POST /office-addins/scan`; 🧩 column on **Počítače** + 🧩 homepage tile. **Limitation by design:** only **logged-on** users are readable (`NTUSER.DAT` is locked while loaded, so the offline C$ route used by crash dumps does not work here) — a logged-off PC scans as `no_users` = **unknown, not clean**, and is kept out of the OK count. Coverage fills in as people sit at their machines. **Verified live 2026-07-16** (first manual scan): `pcs=93 scanned=65 withIssues=22 navDisabled=0` — the DCOM/HKU read works. That run also proved the decode wrong twice, fixed in **migration 079**: `DisabledItems` also records **disabled documents** (real finds: `c:\mail\*.pdf`, a `.doc` in Word's cache), which were being counted as add-ins and inflated the numbers; and the regex scrape glued header garbage onto names. The value has a fixed structure (`type · cbPath · cbName · path · name`, `12+cbPath+cbName == size`, confirmed to the byte) and is now parsed by length prefixes, with `item_kind` = `addin`|`document` — **only `addin` counts**. 19 PCs returned `no_users` (nobody logged on — unknown, not clean); only the domain controllers errored (service account is not admin there, as with the other per-PC collectors).
 

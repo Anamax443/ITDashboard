@@ -1,6 +1,6 @@
 # Architecture
 
-> **Document state:** 2026-07-16 · live commit `ba999ab` · migrations 001–079.
+> **Document state:** 2026-07-16 · live commit `ba999ab` · migrations 001–080.
 
 ## Components
 
@@ -616,6 +616,15 @@ Both are gone. The value is parsed by its length prefixes, and a value whose len
 **Escaping is a silent failure mode too.** The PowerShell is generated in a TS template literal (TS → PS → regex). PowerShell does not treat `\` as an escape, so a malformed registry path never throws — it just never matches, and every PC would cheerfully report "clean". `buildScanScript()` is therefore exported and unit-tested for exactly that.
 
 **What this episode is worth remembering:** those tests were green the whole time the decode was wrong. Structure checks catch structure, not meaning — a collector reading an undocumented format is not verified until someone has read its real output.
+
+**Email alerting (2026-07-16, migration 080).** Without a mail nobody acts: the data would sit in the dashboard until somebody thought to look, which is exactly the failure mode the feature exists to fix. Same agenda shape as disks/services/ports/printers — `alerts.officeaddins.enabled` (off by default), `.recipients`, `.frequency_hours`, `.debounce_minutes`, `.maintenance_window`, state in `office_addin_alert_state`, evaluated at the end of each scan, plus `POST /alerts/officeaddins/test` for an SMTP/recipient check from Settings.
+
+Two deliberate departures from the outage agendas:
+
+- **Own recipient list, and that's the point.** Office add-ins are usually a different person's agenda than disks or printers — helpdesk or the application owner, not the server admin. Empty `alerts.officeaddins.recipients` falls back to the shared `alerts.recipients`, so a single-list install is unaffected.
+- **Throttle defaults to a WEEK (168 h), debounce to 0.** A disabled add-in is a **state, not an outage**: nobody fixes it within the hour, so nagging daily like a downed printer would turn the mail into noise people stop reading. And there is no flapping to debounce — the scan runs every 6 h and the finding is either in the registry or it isn't, so the printer-style debounce window has nothing to filter.
+
+Alerts cover `item_kind='addin'` only — mailing somebody about a PDF that once crashed Word would be noise. The alert key is `computer|app|addin` (lowercased), **not** `value_name`, which is a hash and need not survive a reinstall of the add-in. Re-enabling an add-in drops its state row, so a later relapse alerts again instead of being silently swallowed by a stale `last_sent_at`.
 
 Settings: `officeaddins.enabled` (**off by default**, like every new per-PC sweep) and `officeaddins.interval_sec` (**6 h** — this state changes when an application crashes, not by the minute; scanning more often would only load client DCOM for nothing).
 

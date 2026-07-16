@@ -6,7 +6,7 @@ Po dokončení už nikdy nemusíš na server ručně — každý `git push` do `
 
 **Real-world setup proběhl 2026-06-01.** Tento dokument reflektuje skutečnost, ne ideál.
 
-> **Stav dokumentu:** aktualizováno **2026-07-16**, živý commit `ba999ab`, migrace **001–079**. Rebuild dle tohoto dokumentu postaví systém včetně WAN monitoru (krok 7c), parkovaného service-port maticového scheduleru (krok 7d), link-speed měření (krok 7e, default vypnuté — SMB verdikt + NIC/robocopy orientace) a skenu zakázaných doplňků Office (krok 7f, default vypnuté). Restart NSSM služby jde z appky (Nastavení → ⟳ Restart služby, viz krok 7).
+> **Stav dokumentu:** aktualizováno **2026-07-16**, živý commit `ba999ab`, migrace **001–080**. Rebuild dle tohoto dokumentu postaví systém včetně WAN monitoru (krok 7c), parkovaného service-port maticového scheduleru (krok 7d), link-speed měření (krok 7e, default vypnuté — SMB verdikt + NIC/robocopy orientace) a skenu zakázaných doplňků Office (krok 7f, default vypnuté). Restart NSSM služby jde z appky (Nastavení → ⟳ Restart služby, viz krok 7).
 
 ## Reference deployment values
 

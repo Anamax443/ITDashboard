@@ -1420,6 +1420,39 @@ export function SettingsPage() {
           <PrinterAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
         </Section>
 
+        <Section title={t('settings.section.officeAddinAlerts')} description={t('settings.section.officeAddinAlertsDesc')}>
+          <FieldGroup>
+            <CheckField
+              label={t('settings.field.officeAddinAlertsEnabled')}
+              checked={value('alerts.officeaddins.enabled', '0') === '1'}
+              onChange={(checked) => set('alerts.officeaddins.enabled', checked ? '1' : '0')}
+            />
+            <Field label={t('settings.field.officeAddinFrequency')}>
+              <NumberInput v={value('alerts.officeaddins.frequency_hours', '168')} onChange={(v) => set('alerts.officeaddins.frequency_hours', v)} suffix={t('settings.unit.hour24')} />
+            </Field>
+            <Field label={t('settings.field.officeAddinMaintenance')}>
+              <input
+                type="text"
+                value={value('alerts.officeaddins.maintenance_window', '')}
+                onChange={(e) => set('alerts.officeaddins.maintenance_window', e.target.value)}
+                placeholder="02:00-04:00"
+                style={{ ...fieldStyle, minWidth: 130, fontFamily: 'Consolas, monospace' }}
+              />
+            </Field>
+          </FieldGroup>
+          <Field label={t('settings.field.officeAddinRecipients')}>
+            <textarea
+              value={value('alerts.officeaddins.recipients', '')}
+              onChange={(e) => set('alerts.officeaddins.recipients', e.target.value)}
+              placeholder={t('settings.field.recipientsOverridePlaceholder')}
+              rows={2}
+              style={{ ...fieldStyle, width: '100%', minWidth: 320, fontFamily: 'inherit', resize: 'vertical' }}
+            />
+          </Field>
+          <p style={{ color: 'var(--text-dim)', fontSize: 11, margin: '8px 0 0 0' }}>{t('settings.officeAddinAlerts.help')}</p>
+          <OfficeAddinAlertTestButton onSaveFirst={save} hasUnsaved={hasChanges} />
+        </Section>
+
         <Section title={t('settings.section.freshnessAlerts')} description={t('settings.section.freshnessAlertsDesc')}>
           <FieldGroup>
             <CheckField
@@ -1623,6 +1656,41 @@ function PrinterAlertTestButton({ onSaveFirst, hasUnsaved }: { onSaveFirst: () =
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <button className="refresh-btn" onClick={send} disabled={busy}>
         {busy ? t('settings.field.printerTesting') : t('settings.field.printerTest')}
+      </button>
+      {result && <span style={{ color: 'var(--ok)', fontSize: 12 }}>✓ {result}</span>}
+      {error && <span style={{ color: 'var(--critical)', fontSize: 12 }}>⚠ {error}</span>}
+    </div>
+  );
+}
+
+function OfficeAddinAlertTestButton({ onSaveFirst, hasUnsaved }: { onSaveFirst: () => Promise<void>; hasUnsaved: boolean }) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = async () => {
+    setBusy(true);
+    setResult(null);
+    setError(null);
+    try {
+      if (hasUnsaved) await onSaveFirst();
+      const r = await api.sendOfficeAddinAlertTest();
+      setResult(t('settings.field.officeAddinTestOk')
+        .replace('{recipients}', String(r.recipients))
+        .replace('{addins}', String(r.addins))
+        .replace('{pcs}', String(r.pcs)));
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <button className="refresh-btn" onClick={send} disabled={busy} title={t('settings.field.officeAddinTestTip')}>
+        {busy ? t('settings.field.officeAddinTesting') : t('settings.field.officeAddinTest')}
       </button>
       {result && <span style={{ color: 'var(--ok)', fontSize: 12 }}>✓ {result}</span>}
       {error && <span style={{ color: 'var(--critical)', fontSize: 12 }}>⚠ {error}</span>}

@@ -1009,6 +1009,12 @@ export const api = {
     if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/printers/test → ${r.status}`);
     return body as { ok: true; recipients: number; offline: number };
   },
+  sendOfficeAddinAlertTest: async () => {
+    const r = await fetch(`${API_BASE}/alerts/officeaddins/test`, { method: 'POST' });
+    const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; addins?: number; pcs?: number };
+    if (!r.ok || body.ok === false) throw new Error(body.error || `POST /alerts/officeaddins/test → ${r.status}`);
+    return body as { ok: true; recipients: number; addins: number; pcs: number };
+  },
   sendFreshnessAlertTest: async () => {
     const r = await fetch(`${API_BASE}/alerts/freshness/test`, { method: 'POST' });
     const body = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; recipients?: number; stale?: number };

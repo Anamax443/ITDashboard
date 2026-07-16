@@ -1039,6 +1039,232 @@ export function renderPrinterAlert(down: DownPrinter[], now: number, isTest: boo
 }
 
 // =====================================================================
+// Disabled Office add-in alerting
+// =====================================================================
+//
+// Office disables an add-in after it crashes and tells nobody — no Event Log entry,
+// no dialog. The user just finds Teams gone from Outlook, or an export returning an
+// empty workbook, and (maybe, eventually) complains. This agenda is the "somebody is
+// told" half of that: without it the data sits in the dashboard until someone looks.
+//
+// Own recipient list on purpose (alerts.officeaddins.recipients): Office add-ins are
+// usually somebody else's agenda than disks or printers — helpdesk / application owner
+// rather than the server admin. Empty falls back to the shared alerts.recipients, so a
+// single-list install keeps working unchanged.
+//
+// Cadence differs from the outage agendas deliberately: a disabled add-in is a STATE,
+// not an outage. Nobody fixes it within the hour, so the default throttle is a WEEK
+// (alerts.officeaddins.frequency_hours = 168) — nagging daily like a downed printer
+// would turn these mails into noise people stop reading. Debounce defaults to 0: there
+// is no flapping to filter out (the scan runs every 6 h and the finding is either in the
+// registry or it isn't), so the printer-style debounce has nothing to do here.
+//
+// Only item_kind='addin' is alerted. DisabledItems also records documents that crashed
+// Office (a PDF that upset Word) — mailing somebody about that would be noise.
+
+export interface DisabledAddinAlert {
+  key: string;
+  computer: string;
+  app: string;
+  addin: string;
+  path: string | null;
+  user: string;
+  isNav: boolean;
+  firstSeenAt: Date | null;
+  lastSentAt: Date | null;
+}
+
+// Stable identity of a finding: PC | app | add-in name. Deliberately NOT value_name —
+// that's a hash and need not survive a reinstall of the add-in.
+const addinAlertKey = (computer: string, app: string, addin: string): string =>
+  `${computer}|${app}|${addin}`.toLowerCase().slice(0, 450);
+
+async function loadDisabledAddins(): Promise<DisabledAddinAlert[]> {
+  const pool = await getPool();
+  const rows = (await pool.request().query<{
+    computer_name: string; office_app: string; addin_name: string | null; addin_path: string | null;
+    user_account: string | null; user_sid: string; is_nav: boolean;
+    first_seen_at: Date | null; last_sent_at: Date | null;
+  }>(`
+    SELECT a.computer_name, a.office_app, a.addin_name, a.addin_path,
+           a.user_account, a.user_sid, a.is_nav,
+           st.first_seen_at, st.last_sent_at
+    FROM office_disabled_addins a
+    LEFT JOIN office_addin_alert_state st
+      ON st.alert_key = LOWER(a.computer_name + '|' + a.office_app + '|' + ISNULL(a.addin_name, ''))
+    WHERE a.item_kind = 'addin'
+    ORDER BY a.is_nav DESC, a.computer_name
+  `)).recordset;
+
+  return rows.map((r) => ({
+    key: addinAlertKey(r.computer_name, r.office_app, r.addin_name ?? ''),
+    computer: r.computer_name,
+    app: r.office_app,
+    addin: r.addin_name ?? '(neznámý)',
+    path: r.addin_path,
+    user: r.user_account ?? r.user_sid,
+    isNav: r.is_nav,
+    firstSeenAt: r.first_seen_at,
+    lastSentAt: r.last_sent_at,
+  }));
+}
+
+export async function evaluateAndSendOfficeAddinAlerts(): Promise<void> {
+  const settings = await getAllSettings();
+  if (!boolSetting(settings['alerts.officeaddins.enabled'])) return;
+
+  const pool = await getPool();
+  const candidates = await loadDisabledAddins();
+  const keys = new Set(candidates.map((c) => c.key));
+
+  // Recovery: someone re-enabled the add-in → drop its state so a future relapse
+  // alerts again instead of being silently throttled by a stale last_sent_at.
+  const existing = await pool.request().query<{ alert_key: string }>('SELECT alert_key FROM office_addin_alert_state');
+  for (const s of existing.recordset) {
+    if (!keys.has(s.alert_key)) {
+      await pool.request().input('k', s.alert_key).query('DELETE FROM office_addin_alert_state WHERE alert_key = @k');
+    }
+  }
+
+  const nowDate = new Date();
+  const now = nowDate.getTime();
+
+  for (const c of candidates) {
+    if (c.firstSeenAt == null) {
+      await pool.request().input('k', c.key).input('t', nowDate)
+        .query(`IF NOT EXISTS (SELECT 1 FROM office_addin_alert_state WHERE alert_key=@k)
+                INSERT INTO office_addin_alert_state (alert_key, first_seen_at) VALUES (@k,@t)`);
+      c.firstSeenAt = nowDate;
+    }
+  }
+
+  if (inMaintenanceWindow(settings['alerts.officeaddins.maintenance_window'], nowDate)) return;
+
+  const debounceMs = (Number(settings['alerts.officeaddins.debounce_minutes'] ?? 0) || 0) * 60_000;
+  const freqMs = (Number(settings['alerts.officeaddins.frequency_hours'] ?? 168) || 168) * 3_600_000;
+
+  const toAlert = candidates.filter((c) => shouldAlertNow(c.firstSeenAt, c.lastSentAt, now, debounceMs, freqMs));
+  if (toAlert.length === 0) return;
+
+  try {
+    const recipients = await sendMail(settings, renderOfficeAddinAlert(toAlert, now, false, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.officeaddins.recipients');
+    for (const a of toAlert) {
+      await pool.request().input('k', a.key).input('t', nowDate)
+        .query('UPDATE office_addin_alert_state SET last_sent_at=@t WHERE alert_key=@k');
+    }
+    const pcs = new Set(toAlert.map((a) => a.computer)).size;
+    logActivity('warn', 'alerts', `Office add-in alert email sent to ${recipients} recipient(s) — ${toAlert.length} disabled add-in(s) on ${pcs} PC(s)`);
+  } catch (err) {
+    logActivity('error', 'alerts', `Office add-in alert email failed: ${String(err).split('\n')[0]}`);
+  }
+}
+
+// Manual test from Settings — sends the current state regardless of
+// enable/debounce/maintenance/throttle, so the operator can verify SMTP + recipients.
+export async function sendOfficeAddinAlertTest(): Promise<{ recipients: number; addins: number; pcs: number }> {
+  const settings = await getAllSettings();
+  const candidates = await loadDisabledAddins();
+  const recipients = await sendMail(settings, renderOfficeAddinAlert(candidates, Date.now(), true, (settings['alerts.dashboard_url'] ?? '').trim()), 'alerts.officeaddins.recipients');
+  const pcs = new Set(candidates.map((a) => a.computer)).size;
+  logActivity('info', 'alerts', `Office add-in alert TEST email sent to ${recipients} recipient(s) (${candidates.length} disabled add-in(s))`);
+  return { recipients, addins: candidates.length, pcs };
+}
+
+const APP_EMOJI: Record<string, string> = { Excel: '🟩', Word: '🟦', Outlook: '🟧', PowerPoint: '🟥' };
+
+function addinCard(a: DisabledAddinAlert, now: number): string {
+  const since = a.firstSeenAt ? `zjištěno před ${fmtDuration(now - new Date(a.firstSeenAt).getTime())}` : 'zjištěno nyní';
+  const accent = a.isNav ? '#dc2626' : '#b45309';
+  return `
+        <tr><td style="padding:0 0 12px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;background:#ffffff;border:1px solid #e5e7eb;border-left:4px solid ${accent};border-radius:8px">
+            <tr><td style="padding:14px 16px">
+              <div style="font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:.04em;font-family:${FONT}">${APP_EMOJI[a.app] ?? '🧩'} ${escHtml(a.app)}${a.isNav ? ' · NAV' : ''}</div>
+              <div style="font-size:16px;font-weight:700;color:#111827;font-family:${FONT}">${escHtml(a.addin)}</div>
+              <div style="font-size:13px;color:#6b7280;margin:2px 0 6px;font-family:${FONT}">${escHtml(a.computer)} · ${escHtml(a.user)}</div>
+              ${a.path ? `<div style="font-size:11px;color:#9ca3af;margin:0 0 6px;font-family:monospace;word-break:break-all">${escHtml(a.path)}</div>` : ''}
+              <div style="font-size:13px;color:${accent};font-weight:700;font-family:${FONT}">⚠ ${since}</div>
+            </td></tr>
+          </table>
+        </td></tr>`;
+}
+
+export function renderOfficeAddinAlert(addins: DisabledAddinAlert[], now: number, isTest: boolean, dashboardUrl: string): { subject: string; text: string; html: string } {
+  const has = addins.length > 0;
+  const prefix = subjectPrefix(has, isTest);
+  const pcs = new Set(addins.map((a) => a.computer)).size;
+  const subject = has
+    ? `${prefix}ITDashboard — zakázané doplňky Office (${addins.length} na ${pcs} PC)`
+    : `${prefix}ITDashboard — test alertu doplňků Office (žádný zakázaný doplněk)`;
+
+  const generated = new Date().toLocaleString('cs-CZ', {
+    timeZone: 'Europe/Prague',
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+
+  const lines = addins.map((a) =>
+    `  • ${a.app}: ${a.addin}  —  ${a.computer} (${a.user})${a.isNav ? '  [NAV]' : ''}`,
+  );
+  const text = (has
+    ? `ITDashboard — zakázané doplňky Office\nOffice si sám zakázal ${addins.length} doplněk(ů) na ${pcs} PC. Uživatel o tom neví — aplikace se tváří zdravě, jen doplněk tiše nefunguje.\n\n${lines.join('\n')}\n\nOprava na klientovi: v dané aplikaci Soubor -> Moznosti -> Doplnky -> Spravovat: Zakazane polozky -> Prejit -> Povolit, pak aplikaci restartovat.\n`
+    : 'ITDashboard — test alertu doplňků Office\nŽádný zakázaný doplněk Office není evidován.\n')
+    + (isTest ? '\n(Testovací zpráva spuštěná ručně z Nastavení.)\n' : '')
+    + (dashboardUrl ? `\nOtevřít ITDashboard: ${dashboardUrl}\n` : '')
+    + `Vygenerováno: ${generated}\n`;
+
+  const headerBg = has ? '#b45309' : '#16a34a';
+  const headerSub = has ? '#fef3c7' : '#dcfce7';
+  const headerTitle = has ? '🧩 Zakázané doplňky Office' : '✅ Doplňky Office v pořádku';
+  const headerLine = has
+    ? `${addins.length} doplněk(ů) na ${pcs} PC — uživatelé o tom nevědí`
+    : 'Žádný zakázaný doplněk Office není evidován';
+
+  const body = has
+    ? addins.map((a) => addinCard(a, now)).join('')
+      + `<tr><td style="padding:2px 0 14px"><div style="background:#f9fafb;border:1px solid #e5e7eb;color:#374151;border-radius:6px;padding:10px 14px;font-size:13px;font-family:${FONT}">
+          <b>Oprava na klientovi:</b> v dané aplikaci <b>Soubor → Možnosti → Doplňky</b> → dole „Spravovat: <b>Zakázané položky</b>" → <b>Přejít</b> → označit doplněk → <b>Povolit</b>, pak aplikaci restartovat.
+        </div></td></tr>`
+    : `<tr><td style="padding:4px 0 12px;font-size:14px;color:#374151;font-family:${FONT}">Žádná sledovaná stanice nemá zakázaný doplněk Office. 👍</td></tr>`;
+
+  const testBanner = isTest
+    ? `<tr><td style="padding:0 0 14px"><div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;border-radius:6px;padding:10px 14px;font-size:13px;font-family:${FONT}">ℹ️ Testovací zpráva spuštěná ručně z Nastavení.</div></td></tr>`
+    : '';
+  const ctaButton = dashboardUrl
+    ? `<tr><td style="padding:2px 0 16px"><a href="${escHtml(dashboardUrl)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 20px;border-radius:6px;font-family:${FONT}">Otevřít ITDashboard →</a></td></tr>`
+    : '';
+  const footerAddr = dashboardUrl
+    ? `<a href="${escHtml(dashboardUrl)}" style="color:#6b7280;text-decoration:underline">${escHtml(dashboardUrl)}</a> · `
+    : '';
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 12px">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;border-collapse:collapse">
+        <tr><td style="background:${headerBg};border-radius:10px 10px 0 0;padding:18px 20px">
+          <div style="font-size:18px;font-weight:700;color:#ffffff;font-family:${FONT}">${prefix}${headerTitle}</div>
+          <div style="font-size:13px;color:${headerSub};margin-top:3px;font-family:${FONT}">${headerLine}</div>
+        </td></tr>
+        <tr><td style="background:#ffffff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 10px 10px;padding:18px 20px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            ${testBanner}
+            ${body}
+            ${ctaButton}
+          </table>
+          <div style="margin-top:8px;padding-top:14px;border-top:1px solid #eef0f2;font-size:12px;color:#9ca3af;font-family:${FONT};line-height:1.6">
+            ${footerAddr}Vygenerováno ${generated} · ITDashboard automatický report.<br>
+            Hlásí jen doplňky, ne dokumenty, na kterých Office spadl. Stav se zjišťuje jen u přihlášených uživatelů — PC bez uživatele mají stav neznámý, ne čistý. Příjemci, četnost a okno údržby: Nastavení.
+          </div>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+
+  return { subject, text, html };
+}
+
+// =====================================================================
 // Data-freshness / per-site availability alerting
 // =====================================================================
 //
