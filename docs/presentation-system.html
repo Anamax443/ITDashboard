@@ -387,24 +387,37 @@ function downloadDeck(name){
       <p>When an Office add-in crashes (or a user kills the application), <strong>Office disables it by
          itself</strong> and reports this nowhere — there is nothing in the system logs. The application
          still looks healthy, it just <strong>quietly stops doing its job</strong>. The system reads that
-         list remotely and shows it <strong>per computer</strong> and as a summary on the home page.</p>
+         list remotely and shows it in its <strong>own overview</strong> — which application, which add-in,
+         on which computer and for which user — and as a summary on the home page.</p>
       <p>A typical impact: a disabled <strong>Excel export add-in</strong> means an export from the business
          system opens <strong>empty</strong>. The export doesn't send a finished table — it sends only a
          template with the connection details, and the data is filled in <strong>by the add-in</strong>.
          Meanwhile a colleague on the same Office version has it working: the list of disabled add-ins is
          <strong>separate for every user</strong>.</p>
-      <p class="small muted">Benefit: a silently broken export used to be handled only once someone
+      <p class="small muted">Benefit: a silently broken add-in used to be handled only once someone
          complained — now it is visible up front.</p>
     </div>
-    <div class="card warn">
-      <h3>Honestly: we only know for logged-on users</h3>
-      <p class="small">The list of disabled add-ins lives <strong>inside the user's profile</strong>, so it can
-        be read <strong>only where somebody is currently sitting</strong>. On a logged-off computer the state
-        is <strong>unknown — not clean</strong>, and the system displays it that way.</p>
-      <p class="small muted" style="margin-top:8px">The picture therefore fills in <strong>gradually</strong>
-        during the day, as people work at their computers.</p>
+    <div>
+      <div class="card ok">
+        <h3>First live scan: 8 computers, 11 add-ins</h3>
+        <p class="small">Not the original export case — that one was on <strong>a single computer and is
+          fixed</strong>. What the fleet actually carries is silently disabled <strong>add-ins of business
+          applications</strong>: most of them in the <strong>mail client</strong>, the rest in the
+          <strong>word processor</strong>. Not one user had reported it.</p>
+      </div>
+      <div class="card warn" style="margin-top:12px">
+        <h3>Honestly: we only know for logged-on users</h3>
+        <p class="small">The list of disabled add-ins lives <strong>inside the user's profile</strong>, so it can
+          be read <strong>only where somebody is currently sitting</strong>. On a logged-off computer the state
+          is <strong>unknown — not clean</strong>, and the system displays it that way.</p>
+        <p class="small muted" style="margin-top:8px">The picture therefore fills in <strong>gradually</strong>
+          during the day, as people work at their computers.</p>
+      </div>
     </div>
   </div>
+  <p class="small muted" style="margin-top:14px">Only <strong>add-ins</strong> are counted. Office writes
+    <strong>documents it crashed on</strong> into the same list — that is not an operational problem, just the
+    history of one crash, so they are not counted and are hidden by default.</p>
 </section>
 
 <!-- 8 — TECH + SECURITY -->

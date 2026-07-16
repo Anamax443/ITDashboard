@@ -416,25 +416,38 @@ function downloadDeck(name){
     <div>
       <p>Když doplněk Office spadne (nebo uživatel aplikaci násilně ukončí), <strong>Office si ho sám zakáže</strong>
          a nikam to nenahlásí — v systémových záznamech není nic. Aplikace se dál tváří zdravě,
-         jen <strong>tiše nedělá, co má</strong>. Systém tento seznam čte na dálku a ukazuje ho
-         <strong>u každého počítače</strong> i souhrnně na úvodní stránce.</p>
+         jen <strong>tiše nedělá, co má</strong>. Systém tento seznam čte na dálku a ukazuje ho ve
+         <strong>vlastním přehledu</strong> — která aplikace, který doplněk, na kterém počítači a u kterého
+         uživatele — a souhrnně na úvodní stránce.</p>
       <p>Typický dopad: zakázaný <strong>doplněk pro export do Excelu</strong> znamená, že se export
          z podnikového systému otevře <strong>prázdný</strong>. Export totiž neposílá hotovou tabulku —
          posílá jen šablonu s údaji o připojení a data do ní doplní <strong>až doplněk</strong>.
          Kolegovi se stejnou verzí Office přitom všechno funguje: seznam zakázaných doplňků je
          <strong>u každého uživatele vlastní</strong>.</p>
-      <p class="small muted">Přínos: tiše rozbitý export se dřív řešil, až když si někdo stěžoval —
+      <p class="small muted">Přínos: tiše rozbitý doplněk se dřív řešil, až když si někdo stěžoval —
          teď je vidět dopředu.</p>
     </div>
-    <div class="card warn">
-      <h3>Poctivě: víme to jen u přihlášených</h3>
-      <p class="small">Seznam zakázaných doplňků je <strong>uvnitř profilu uživatele</strong>, takže ho lze
-        přečíst <strong>jen tam, kde někdo právě sedí</strong>. U odhlášeného počítače je stav
-        <strong>neznámý — ne čistý</strong>, a systém to tak i zobrazuje.</p>
-      <p class="small muted" style="margin-top:8px">Obraz se proto dobírá <strong>postupně</strong> během dne,
-        jak lidé u počítačů pracují.</p>
+    <div>
+      <div class="card ok">
+        <h3>První ostrý sken: 8 počítačů, 11 doplňků</h3>
+        <p class="small">Nešlo o ten původní exportní případ — ten byl <strong>na jednom počítači a je
+          opravený</strong>. Reálně se po flotile tiše válí zakázané <strong>doplňky podnikových
+          aplikací</strong>: většina v <strong>poštovním klientovi</strong>, zbytek v <strong>textovém
+          editoru</strong>. Nikdo z uživatelů to nenahlásil.</p>
+      </div>
+      <div class="card warn" style="margin-top:12px">
+        <h3>Poctivě: víme to jen u přihlášených</h3>
+        <p class="small">Seznam zakázaných doplňků je <strong>uvnitř profilu uživatele</strong>, takže ho lze
+          přečíst <strong>jen tam, kde někdo právě sedí</strong>. U odhlášeného počítače je stav
+          <strong>neznámý — ne čistý</strong>, a systém to tak i zobrazuje.</p>
+        <p class="small muted" style="margin-top:8px">Obraz se proto dobírá <strong>postupně</strong> během dne,
+          jak lidé u počítačů pracují.</p>
+      </div>
     </div>
   </div>
+  <p class="small muted" style="margin-top:14px">Do počtů jdou <strong>jen doplňky</strong>. Office si do
+    stejného seznamu zapisuje i <strong>dokumenty, na kterých spadl</strong> — to není provozní problém, jen
+    historie jednoho pádu, takže se nepočítají a standardně se nezobrazují.</p>
 </section>
 
 <!-- 8 — TECH + SECURITY -->
