@@ -1,6 +1,6 @@
 # Architecture
 
-> **Document state:** 2026-07-16 · live commit `4783787` · migrations 001–078.
+> **Document state:** 2026-07-16 · live commit `ba999ab` · migrations 001–078.
 
 ## Components
 
