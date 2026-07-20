@@ -340,6 +340,16 @@ function downloadDeck(name){
          For the technician there is an <strong>HTML report</strong> of "what to check", sorted by IP.</p>
       <p class="small muted">Every run keeps its own <strong>snapshot</strong> — measurement history per run, so you can see
          the trend and whether a fix worked.</p>
+      <p class="small" style="margin-top:10px"><strong>Recent (2026-07-20) — three practical improvements:</strong></p>
+      <ul class="clean small">
+        <li><strong>Right machine, every time</strong> — each measurement is now tied to the actual computer (by its
+            MAC address from DHCP and the name the PC reports about itself), not a stale inventory IP. Previously a
+            result could be wrongly credited to a switched-off laptop whose IP had since been handed to another device.</li>
+        <li><strong>Accurate upload speed</strong> — a technical limitation used to understate it by roughly
+            <strong>3×</strong>; it is now measured correctly.</li>
+        <li><strong>Stop means stop</strong> — the Stop button now halts the measurement immediately, instead of
+            waiting for the whole machine to finish.</li>
+      </ul>
     </div>
     <div class="card warn">
       <h3>The very first run found a fault</h3>

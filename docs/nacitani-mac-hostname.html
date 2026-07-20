@@ -214,6 +214,20 @@
       (identita). Manažerský souhrn navíc telefony (randomizovaná MAC) z „techniky" vylučuje.</li>
   </ul>
 
+  <div class="panel">
+    <b>Stejný princip identity přes MAC teď používá i modul Měření linky (⚡) <span class="badge b-dev">2026-07-20</span></b>
+    <ul style="margin:8px 0 0">
+      <li>Výsledek měření se přiřazuje <b>stroji, který na dané IP skutečně odpověděl</b>: identitu bere z
+        <b>živého DHCP leasu</b> (klíč <span class="mono">MAC</span>) a z názvu, kterým se stroj sám hlásí přes
+        DCOM (<span class="mono">Win32_ComputerSystem.Name</span>). Inventář podle IP
+        (<span class="mono">computers.ip_address</span>) je jen <span class="dim">záloha</span>.</li>
+      <li>Tím se ošetří případ, kdy <b>vypnuté PC drží v inventáři starou IP</b>, kterou mezitím DHCP přidělil
+        jinému zařízení — bez toho by se měření živého stroje <span class="warn">omylem připsalo vypnutému PC</span>.</li>
+      <li>Je to <span class="ok">stejný model jako u Zařízení</span>: <b>MAC = trvalá identita</b>, IP je jen zápůjčka.
+        Živý commit <code>f93cd9f</code>.</li>
+    </ul>
+  </div>
+
   <div class="foot">
     ITDashboard · aplikační server <code>10.8.2.213</code> · DB <code>10.8.2.225</code> ·
     ip-scan na routeru nasazen (<code>b370537</code>); zbytek = PTR zóny / SNMP na tiskárnách / ruční název.

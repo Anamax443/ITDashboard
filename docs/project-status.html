@@ -154,6 +154,14 @@
     <strong>Migrace:</strong> nyní 001–079 — přidána <strong>078</strong> (zakázané doplňky Office: <code>office_addin_scans</code>, <code>office_disabled_addins</code>, nastavení <code>officeaddins.*</code>) a <strong>079</strong> (<code>item_kind</code> + <code>raw_type</code>, odlišení dokumentu od doplňku a přepočet počtů jen na doplňky).
   </div>
 
+  <h2>Poslední změny (2026-07-20) — Měření linky: identita, přesnost, promptní Stop ⚡</h2>
+  <p class="sub" style="margin:0 0 .75rem">Tři opravy modulu <strong>Měření linky</strong> — <strong>komu se měření připíše</strong>, <strong>jak přesně se měří upload</strong> a <strong>jak rychle jde běh zastavit</strong>. <strong>Bez migrace</strong> (jen změny kódu, žádná DB migrace).</p>
+  <ul>
+    <li><strong>Identita měřeného stroje</strong> <span class="pill">f93cd9f</span> — jméno se bere z <strong>živého DHCP leasu</strong> (klíč = <strong>MAC</strong>) a z názvu, kterým se stroj <strong>sám hlásí přes DCOM</strong> (<code>Win32_ComputerSystem.Name</code>); inventář (<code>computers.ip_address</code>) je jen <strong>záloha</strong>. Řeší <strong>připsání měření vypnutému PC</strong>, jehož IP mezitím DHCP přidělil jinému zařízení. V activity logu <strong>⚠ upozornění při neshodě s inventářem</strong> (signál staré IP).</li>
+    <li><strong>Přesnost SMB uploadu</strong> <span class="pill">bc196a9</span> — SMB kopíruje po <strong>8 MB blocích</strong> místo výchozích <strong>64 KB</strong> Node streamu; dřív byl single-stream upload <strong>round-trip-bound</strong> a podhodnocený <strong>zhruba 3×</strong> (<strong>↑230 → ↑730 Mb/s</strong> na stejné lince). Download i <code>robocopy</code> tím netrpěly.</li>
+    <li><strong>Promptní Stop</strong> <span class="pill">1a8e85f</span> — tlačítko <strong>Stop</strong> přeruší <strong>i běžící přenos</strong> a killne <code>robocopy</code>/DCOM (<code>AbortController</code>), nečeká na dokončení celého PC; <strong>přerušený mezivýsledek se nearchivuje</strong>.</li>
+  </ul>
+
   <h2>Poslední změny (2026-07-01) — Měření linky: průběžný plánovač ⚡</h2>
   <p class="sub" style="margin:0 0 .75rem">Plánovač modulu <strong>Měření linky</strong> je nově <strong>průběžný (rolling)</strong> místo nárazového sweepu. Živý commit <span class="pill">1687930</span>. <strong>Bez migrace</strong> (nová nastavení jsou plain settings s code-defaulty).</p>
   <ul>

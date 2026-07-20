@@ -368,7 +368,7 @@ export function LinkSpeedPage({ onJumpToComputer }: { onJumpToComputer?: (q: str
             <div style={{ fontSize: 10.5, color: 'var(--text-dim)', marginTop: 4 }}>{t('linkspeed.cyclesDefault')}: {status?.defaultCycles ?? '—'}</div>
             <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
               <button className="refresh-btn" onClick={run} disabled={running || !targets.trim()} style={{ fontWeight: 600 }}>{running ? `… ${t('linkspeed.running')}` : `▶ ${t('linkspeed.run')}`}</button>
-              {running && <button className="refresh-btn" onClick={() => api.linkSpeedStop().then(loadStatus).catch(() => {})} style={{ color: 'var(--critical)' }}>■ {t('linkspeed.stop')}</button>}
+              {running && <button className="refresh-btn" onClick={() => api.linkSpeedStop().then(loadStatus).catch(() => {})} title={t('linkspeed.stopHint')} style={{ color: 'var(--critical)' }}>■ {t('linkspeed.stop')}</button>}
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11.5, color: 'var(--text-dim)', cursor: 'pointer' }} title={t('linkspeed.ignoreExclHint')}>
               <input type="checkbox" checked={ignoreExcl} onChange={(e) => setIgnoreExcl(e.target.checked)} />
