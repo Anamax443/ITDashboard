@@ -56,7 +56,12 @@ async function readOpts(): Promise<{ cycles: number; filename: string; okMbps: n
   return { cycles, filename, okMbps, pauseMs, methods };
 }
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((r) => {
+  if (signal?.aborted) return r();
+  const onAbort = () => { clearTimeout(timer); r(); };
+  const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); r(); }, ms);
+  signal?.addEventListener('abort', onAbort, { once: true });
+});
 
 // Is the current local time inside the [start,end] "HH:MM" window (empty = always)?
 function withinWindow(startStr: string | undefined, endStr: string | undefined): boolean {
@@ -190,25 +195,29 @@ async function ensureChunkSource(sizeMB: number): Promise<string> {
 // Run robocopy and return wall-clock ms for the whole directory copy, or null on a hard
 // error. Robocopy exit codes 0-7 mean success (1 = files copied); >=8 is a real failure —
 // so we can't rely on the process exit code the way execFile does.
-function runRobocopy(srcDir: string, dstDir: string): Promise<number | null> {
+function runRobocopy(srcDir: string, dstDir: string, signal?: AbortSignal): Promise<number | null> {
   return new Promise((resolve) => {
+    if (signal?.aborted) return resolve(null);
     const t0 = Date.now();
     const p = spawn('robocopy', [srcDir, dstDir, '/MT:16', '/NP', '/R:0', '/W:0', '/NJH', '/NJS', '/NDL', '/NFL'], { windowsHide: true });
-    p.on('error', () => resolve(null));
-    p.on('close', (code) => resolve((code ?? 16) < 8 ? Date.now() - t0 : null));
+    const onAbort = () => { try { p.kill(); } catch { /* already exited */ } };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    const done = (v: number | null) => { signal?.removeEventListener('abort', onAbort); resolve(v); };
+    p.on('error', () => done(null));
+    p.on('close', (code) => done(signal?.aborted ? null : ((code ?? 16) < 8 ? Date.now() - t0 : null)));
   });
 }
 
 // robocopy /MT up (→ client C$) + down (→ back to .213), Mb/s from wall time.
-async function roboMeasure(target: string, sizeMB: number, remoteBase: string): Promise<{ up: number | null; down: number | null }> {
+async function roboMeasure(target: string, sizeMB: number, remoteBase: string, signal?: AbortSignal): Promise<{ up: number | null; down: number | null }> {
   const bytes = sizeMB * 1024 * 1024;
   const srcDir = await ensureChunkSource(sizeMB);
   const remoteDir = `${remoteBase}\\rc`;
   const backDir = `${LOCAL_DIR}\\rcback-${target.replace(/[^\w.-]/g, '_')}`;
   await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});
   await fs.rm(backDir, { recursive: true, force: true }).catch(() => {});
-  const upMs = await runRobocopy(srcDir, remoteDir);
-  const downMs = upMs == null ? null : await runRobocopy(remoteDir, backDir);
+  const upMs = await runRobocopy(srcDir, remoteDir, signal);
+  const downMs = upMs == null ? null : await runRobocopy(remoteDir, backDir, signal);
   await fs.rm(backDir, { recursive: true, force: true }).catch(() => {});
   return { up: upMs == null ? null : mbps(bytes, upMs), down: downMs == null ? null : mbps(bytes, downMs) };
 }
@@ -224,7 +233,7 @@ async function roboMeasure(target: string, sizeMB: number, remoteBase: string): 
 // to null, never throws. Machine name is emitted first so a NIC name containing a '|'
 // can't corrupt it. Returns an object (machine possibly null) whenever the session opened
 // at all — a null result specifically means the host didn't answer DCOM.
-function readHostInfo(host: string, ip: string | null): Promise<{ mbps: number | null; name: string | null; machine: string | null } | null> {
+function readHostInfo(host: string, ip: string | null, signal?: AbortSignal): Promise<{ mbps: number | null; name: string | null; machine: string | null } | null> {
   const ps = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -250,11 +259,15 @@ try {
 } finally { Remove-CimSession $s }
 `;
   return new Promise((resolve) => {
+    if (signal?.aborted) return resolve(null);
     const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, timeout: 12000 });
+    const onAbort = () => { try { p.kill(); } catch { /* already exited */ } };
+    signal?.addEventListener('abort', onAbort, { once: true });
     let out = '';
     p.stdout.on('data', (b) => (out += b.toString('utf8')));
-    p.on('error', () => resolve(null));
+    p.on('error', () => { signal?.removeEventListener('abort', onAbort); resolve(null); });
     p.on('close', () => {
+      signal?.removeEventListener('abort', onAbort);
       const line = out.trim().split(/\r?\n/).find((l) => l.includes('|'));
       if (!line) return resolve(null);
       const parts = line.split('|');
@@ -281,7 +294,7 @@ async function archive(r: LinkSpeedResult, runId: string | null = null): Promise
 // One measurement (no concurrency guard) — N cycles of write-to-C$ + read-back, keep
 // the BEST up/down of the cycles (transient AV/CPU dips don't understate capacity),
 // plus a ping RTT. The test file (linkspeed.filename) is deleted afterwards.
-async function measure(target: string, sizeMB: number, cycles: number, filename: string, ep: { ip: string | null; hostname: string | null }, methods: LinkMethods, onCycle?: (done: number) => void): Promise<LinkSpeedResult> {
+async function measure(target: string, sizeMB: number, cycles: number, filename: string, ep: { ip: string | null; hostname: string | null }, methods: LinkMethods, onCycle?: (done: number) => void, signal?: AbortSignal): Promise<LinkSpeedResult> {
   const bytes = sizeMB * 1024 * 1024;
   const remoteDir = `\\\\${target}\\C$\\tmp\\itdash-speedtest`;
   const remoteFile = `${remoteDir}\\${filename}`;
@@ -294,10 +307,15 @@ async function measure(target: string, sizeMB: number, cycles: number, filename:
   let nicMbps: number | null = null, nicName: string | null = null;
   let hostname = ep.hostname;
   if (methods.nic) {
-    const info = await readHostInfo(target, ep.ip).catch(() => null);
+    const info = await readHostInfo(target, ep.ip, signal).catch(() => null);
     if (info) { nicMbps = info.mbps; nicName = info.name; if (info.machine) hostname = info.machine; }
   }
   const base = { target, ip: ep.ip, hostname, sizeMB, cycles, measuredAt: new Date().toISOString() };
+  // A "Stop" mid-measurement aborts in-flight transfers / child processes (see
+  // stopLinkSpeed) and surfaces here — return a "zastaveno" marker (which the batch loop
+  // drops instead of archiving) rather than a misleading 0/slow/error row.
+  const stopped = (): LinkSpeedResult => ({ ...base, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, nicMbps, nicName, roboUpMbps: null, roboDownMbps: null, error: 'zastaveno' });
+  if (signal?.aborted) return stopped();
 
   const needsShare = methods.smb || methods.robocopy;
   try {
@@ -308,11 +326,12 @@ async function measure(target: string, sizeMB: number, cycles: number, filename:
       if (methods.smb) {
         const src = await ensureSource(sizeMB);
         for (let i = 0; i < cycles; i++) {
+          if (signal?.aborted) break;   // Stop takes effect between cycles at the latest…
           const t1 = Date.now();
-          await pipeline(createReadStream(src, { highWaterMark: SMB_CHUNK }), createWriteStream(remoteFile, { highWaterMark: SMB_CHUNK }));
+          await pipeline(createReadStream(src, { highWaterMark: SMB_CHUNK }), createWriteStream(remoteFile, { highWaterMark: SMB_CHUNK }), { signal });   // …and mid-transfer via the signal
           const upMs = Date.now() - t1;
           const t2 = Date.now();
-          await pipeline(createReadStream(remoteFile, { highWaterMark: SMB_CHUNK }), createWriteStream(localBack, { highWaterMark: SMB_CHUNK }));
+          await pipeline(createReadStream(remoteFile, { highWaterMark: SMB_CHUNK }), createWriteStream(localBack, { highWaterMark: SMB_CHUNK }), { signal });
           const downMs = Date.now() - t2;
           const u = mbps(bytes, upMs) ?? 0, d = mbps(bytes, downMs) ?? 0;
           if (u > bU) { bU = u; bUms = upMs; }
@@ -320,8 +339,9 @@ async function measure(target: string, sizeMB: number, cycles: number, filename:
           onCycle?.(i + 1);   // report cycle progress for the live terminal
         }
       }
-      if (methods.robocopy) { const rc = await roboMeasure(target, sizeMB, remoteDir); roboUp = rc.up; roboDown = rc.down; }
+      if (methods.robocopy && !signal?.aborted) { const rc = await roboMeasure(target, sizeMB, remoteDir, signal); roboUp = rc.up; roboDown = rc.down; }
     }
+    if (signal?.aborted) { await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {}); await fs.rm(localBack, { force: true }).catch(() => {}); return stopped(); }
     const latencyMs = await pingLatency(target, 1000);
     await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});
     await fs.rm(localBack, { force: true }).catch(() => {});
@@ -329,6 +349,7 @@ async function measure(target: string, sizeMB: number, cycles: number, filename:
   } catch (e) {
     await fs.rm(remoteDir, { recursive: true, force: true }).catch(() => {});
     await fs.rm(localBack, { force: true }).catch(() => {});
+    if (signal?.aborted) return stopped();   // pipeline threw an ABORT_ERR — a stop, not a failure
     return { ...base, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, nicMbps, nicName, roboUpMbps: null, roboDownMbps: null, error: String(e).split('\n')[0]!.slice(0, 200) };
   }
 }
@@ -367,10 +388,12 @@ export interface BatchState {
 }
 let batch: BatchState = { running: false, total: 0, done: 0, current: null, cycleDone: 0, cycleTotal: 0, sizeMB: 0, startedAt: null, results: [] };
 let stopRequested = false;
+let abort: AbortController | null = null;   // aborts the in-flight transfer / child processes of the CURRENT PC
 export function getLinkSpeedStatus(): BatchState { return batch; }
-// Abort a running batch after the current PC finishes (an in-flight transfer isn't
-// cut mid-stream). Returns false if nothing is running.
-export function stopLinkSpeed(): boolean { if (!batch.running) return false; stopRequested = true; return true; }
+// Stop a running batch PROMPTLY: set the flag (skips remaining PCs) AND abort the current
+// PC's in-flight SMB transfer, robocopy and DCOM read immediately — no waiting out the rest
+// of its cycles. Returns false if nothing is running.
+export function stopLinkSpeed(): boolean { if (!batch.running) return false; stopRequested = true; abort?.abort(); return true; }
 
 // "10.8.2.*", "10.8.2.180-182", bare IPs/hostnames, comma/space/newline separated.
 // "all" must be pre-expanded by the caller (to active computer names) and passed in.
@@ -393,6 +416,7 @@ export function parseTargets(raw: string, allNames: string[]): string[] {
 export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cyclesOverride?: number): Promise<void> {
   if (batch.running) return;
   stopRequested = false;
+  abort = new AbortController();   // fresh controller per batch; stopLinkSpeed() fires it
   batch = { running: true, total: targets.length, done: 0, current: null, cycleDone: 0, cycleTotal: 0, sizeMB, startedAt: new Date().toISOString(), results: [] };
   const runId = batch.startedAt!;   // "otisk" — every target in this batch shares it
   const { cycles: cyclesSetting, filename, okMbps, pauseMs, methods } = await readOpts();
@@ -407,7 +431,7 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
       if (stopRequested) break;
       // Idle gap between PCs (not before the first) — eases sustained load on .213's
       // uplink and leaves room for other collectors. Interruptible via stopRequested.
-      if (idx > 0 && pauseMs > 0) { await sleep(pauseMs); if (stopRequested) break; }
+      if (idx > 0 && pauseMs > 0) { await sleep(pauseMs, abort?.signal); if (stopRequested) break; }
       batch.current = t;
       batch.cycleDone = 0; batch.cycleTotal = methods.smb ? cycles : 0;   // reset cycle progress for this target
       const ep = await resolveEndpoint(t);   // capture IP + hostname even for skipped hosts
@@ -420,12 +444,14 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
         // isn't mistaken for a port problem. Still grab the NIC speed if alive.
         batch.cycleTotal = 0;
         r = { target: t, ip: ep.ip, hostname: ep.hostname, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, nicMbps: null, nicName: null, roboUpMbps: null, roboDownMbps: null, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
-        if (methods.nic && alive) { const info = await withHostLock(await hostKey(t), () => readHostInfo(t, ep.ip)).catch(() => null); if (info) { r.nicMbps = info.mbps; r.nicName = info.name; if (info.machine) r.hostname = info.machine; } }
+        if (methods.nic && alive) { const info = await withHostLock(await hostKey(t), () => readHostInfo(t, ep.ip, abort?.signal)).catch(() => null); if (info) { r.nicMbps = info.mbps; r.nicName = info.name; if (info.machine) r.hostname = info.machine; } }
       } else {
         // Serialize per PC identity so no other heavy op skews the transfer.
         const key = await hostKey(t);
-        r = await withHostLock(key, () => measure(t, sizeMB, cycles, filename, ep, methods, (d) => { batch.cycleDone = d; }));
+        r = await withHostLock(key, () => measure(t, sizeMB, cycles, filename, ep, methods, (d) => { batch.cycleDone = d; }, abort?.signal));
       }
+      // Stopped mid-PC: drop the partial result (don't archive/log a "zastaveno" row) and bail now.
+      if (r.error === 'zastaveno') break;
       await archive(r, runId);
       batch.results.push(r);
       batch.done++;
@@ -451,10 +477,11 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
       const msg = r.error ? `${t}${name}: ${r.error}${staleNote}` : `${t}${name}: ${parts.join(' · ') || '—'} Mb/s${r.latencyMs != null ? ` · ${r.latencyMs} ms` : ''}${slow ? ' — POMALÉ' : ''}${staleNote}`;
       logActivity(isErr ? 'error' : slow || stale ? 'warn' : 'info', 'linkspeed', msg);
     }
-    logActivity('info', 'linkspeed', `Měření dokončeno: ${nOk} OK · ${nSlow} pomalé · ${nOff} offline · ${nErr} chyba`);
+    logActivity('info', 'linkspeed', `Měření ${stopRequested ? 'zastaveno' : 'dokončeno'}: ${nOk} OK · ${nSlow} pomalé · ${nOff} offline · ${nErr} chyba`);
   } finally {
     batch.running = false;
     batch.current = null;
+    abort = null;
   }
 }
 
