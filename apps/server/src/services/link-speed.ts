@@ -102,23 +102,44 @@ const IP_RE = /^\d{1,3}(\.\d{1,3}){3}$/;
 // Resolve a target string into BOTH its current IP and its hostname, so every result
 // carries both regardless of what was entered. A hostname target is forward-resolved
 // to its live IP (DNS/WINS) — that IP reveals which segment/interface answered (e.g.
-// wifi vs docked cable). An IP target's name comes from the inventory. Best-effort:
-// unresolved parts stay null.
-async function resolveEndpoint(target: string): Promise<{ ip: string | null; hostname: string | null }> {
+// wifi vs docked cable). Best-effort: unresolved parts stay null.
+//
+// For an IP target the name is resolved from the LIVE DHCP lease (dhcp_leases, keyed by
+// MAC and fed by the routers) first, and only then from the AD inventory — because
+// `computers.ip_address` goes stale the moment a PC powers off: the reachability collector
+// keeps its last IP (COALESCE, never nulled), the router then hands that IP to a different
+// device, and a batch measuring the IP would inherit the powered-off PC's name. The lease
+// tracks the actual current tenant of the IP. `inventoryName` is returned alongside so the
+// caller can flag "inventory says X but we measured Y" (a stale-IP signal).
+async function resolveEndpoint(target: string): Promise<{ ip: string | null; hostname: string | null; inventoryName: string | null }> {
   const t = (target || '').trim();
   const isIp = IP_RE.test(t);
   let ip: string | null = isIp ? t : null;
   let hostname: string | null = isIp ? null : t;
+  let inventoryName: string | null = null;
   if (!ip && t) { try { ip = (await dnsLookup(t)).address; } catch { /* unresolved name */ } }
   if (!hostname && ip) {
-    try {
-      const pool = await getPool();
-      const row = (await pool.request().input('ip', ip)
-        .query<{ name: string }>(`SELECT TOP 1 name FROM computers WHERE ip_address=@ip AND name IS NOT NULL`)).recordset[0];
-      hostname = row?.name ?? null;
-    } catch { /* inventory lookup failed — leave null */ }
+    const pool = await getPool().catch(() => null);
+    // AD inventory name for that IP (may be stale — see above). Fetched independently so a
+    // failure of the lease lookup below can't also suppress this fallback.
+    if (pool) {
+      try {
+        const inv = (await pool.request().input('ip', ip)
+          .query<{ name: string }>(`SELECT TOP 1 name FROM computers WHERE ip_address=@ip AND name IS NOT NULL`)).recordset[0];
+        inventoryName = inv?.name ?? null;
+      } catch { /* inventory lookup failed */ }
+      try {
+        // Live tenant of this IP per the routers (freshest lease wins) — the authority.
+        const lease = (await pool.request().input('ip', ip)
+          .query<{ host_name: string | null }>(
+            `SELECT TOP 1 host_name FROM dhcp_leases
+             WHERE ip_address=@ip AND host_name IS NOT NULL AND host_name <> ''
+             ORDER BY last_seen DESC`)).recordset[0];
+        hostname = lease?.host_name ?? inventoryName;
+      } catch { hostname = inventoryName; /* no lease table/row — use inventory */ }
+    }
   }
-  return { ip, hostname };
+  return { ip, hostname, inventoryName };
 }
 
 // Cache a random source file of the requested size on .213 (reused across runs).
@@ -184,17 +205,26 @@ async function roboMeasure(target: string, sizeMB: number, remoteBase: string): 
   return { up: upMs == null ? null : mbps(bytes, upMs), down: downMs == null ? null : mbps(bytes, downMs) };
 }
 
-// Read the negotiated link speed of the NIC that owns the target IP, via a DCOM CIM
-// session (same transport the disk/eventlog collectors use — plain Get-CimInstance
-// would use WinRM, which most domain PCs don't have). Best-effort: any failure (DC
-// denies DCOM, host offline, no matching adapter) resolves to null, never throws.
-function readNicSpeed(host: string, ip: string | null): Promise<{ mbps: number | null; name: string | null } | null> {
+// Over ONE DCOM CIM session (same transport the disk/eventlog collectors use — plain
+// Get-CimInstance would use WinRM, which most domain PCs don't have), read BOTH:
+//   • the machine's own name (Win32_ComputerSystem.Name) — the ground truth for "who
+//     actually answered on this IP", immune to a stale inventory IP after a DHCP
+//     reassignment (a powered-off PC keeps its last IP in `computers`, which then gets
+//     handed to a different device — that mismatch is exactly what we correct here);
+//   • the negotiated link speed of the NIC that owns the target IP.
+// Best-effort: any failure (DC denies DCOM, host offline, no matching adapter) resolves
+// to null, never throws. Machine name is emitted first so a NIC name containing a '|'
+// can't corrupt it. Returns an object (machine possibly null) whenever the session opened
+// at all — a null result specifically means the host didn't answer DCOM.
+function readHostInfo(host: string, ip: string | null): Promise<{ mbps: number | null; name: string | null; machine: string | null } | null> {
   const ps = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $opt = New-CimSessionOption -Protocol Dcom
 $s = New-CimSession -ComputerName '${host}' -SessionOption $opt -ErrorAction Stop
 try {
+  $cs = Get-CimInstance -CimSession $s Win32_ComputerSystem -ErrorAction SilentlyContinue
+  $machine = if ($cs) { $cs.Name } else { '' }
   $ip = '${ip ?? ''}'
   $na = $null
   if ($ip) {
@@ -206,7 +236,9 @@ try {
     $na = Get-CimInstance -CimSession $s Win32_NetworkAdapter -Filter 'NetConnectionStatus=2' -ErrorAction SilentlyContinue |
       Where-Object { $_.Speed -gt 0 } | Sort-Object Speed -Descending | Select-Object -First 1
   }
-  if ($na) { "$([int64]$na.Speed)|$($na.Name)" } else { "" }
+  $spd = if ($na) { [int64]$na.Speed } else { 0 }
+  $nic = if ($na) { $na.Name } else { '' }
+  "$machine|$spd|$nic"
 } finally { Remove-CimSession $s }
 `;
   return new Promise((resolve) => {
@@ -217,9 +249,11 @@ try {
     p.on('close', () => {
       const line = out.trim().split(/\r?\n/).find((l) => l.includes('|'));
       if (!line) return resolve(null);
-      const [bps, ...rest] = line.split('|');
-      const speed = Number(bps);
-      resolve({ mbps: Number.isFinite(speed) && speed > 0 ? Math.round(speed / 1e6) : null, name: rest.join('|').trim() || null });
+      const parts = line.split('|');
+      const machine = (parts[0] ?? '').trim() || null;
+      const speed = Number(parts[1]);
+      const nic = parts.slice(2).join('|').trim() || null;   // NIC name last — tolerant of a stray '|'
+      resolve({ mbps: Number.isFinite(speed) && speed > 0 ? Math.round(speed / 1e6) : null, name: nic, machine });
     });
   });
 }
@@ -244,12 +278,18 @@ async function measure(target: string, sizeMB: number, cycles: number, filename:
   const remoteDir = `\\\\${target}\\C$\\tmp\\itdash-speedtest`;
   const remoteFile = `${remoteDir}\\${filename}`;
   const localBack = `${LOCAL_DIR}\\back-${target.replace(/[^\w.-]/g, '_')}.bin`;
-  const base = { target, ip: ep.ip, hostname: ep.hostname, sizeMB, cycles, measuredAt: new Date().toISOString() };
-
   // NIC negotiated speed is transport-independent (DCOM, not C$) — read it first and
-  // keep it even if the SMB/robocopy part later fails (e.g. C$ denied). Best-effort.
+  // keep it even if the SMB/robocopy part later fails (e.g. C$ denied). The same session
+  // also returns the machine's OWN name: when present it overrides the (possibly stale)
+  // inventory/lease name, so the result is always attributed to the box we actually
+  // measured — not the previous tenant of a reassigned DHCP IP. Best-effort.
   let nicMbps: number | null = null, nicName: string | null = null;
-  if (methods.nic) { const nic = await readNicSpeed(target, ep.ip).catch(() => null); if (nic) { nicMbps = nic.mbps; nicName = nic.name; } }
+  let hostname = ep.hostname;
+  if (methods.nic) {
+    const info = await readHostInfo(target, ep.ip).catch(() => null);
+    if (info) { nicMbps = info.mbps; nicName = info.name; if (info.machine) hostname = info.machine; }
+  }
+  const base = { target, ip: ep.ip, hostname, sizeMB, cycles, measuredAt: new Date().toISOString() };
 
   const needsShare = methods.smb || methods.robocopy;
   try {
@@ -372,7 +412,7 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
         // isn't mistaken for a port problem. Still grab the NIC speed if alive.
         batch.cycleTotal = 0;
         r = { target: t, ip: ep.ip, hostname: ep.hostname, sizeMB, upMbps: null, downMbps: null, upMs: null, downMs: null, latencyMs: null, cycles: 0, nicMbps: null, nicName: null, roboUpMbps: null, roboDownMbps: null, error: alive ? 'SMB/445 blokováno' : 'offline', measuredAt: new Date().toISOString() };
-        if (methods.nic && alive) { const nic = await withHostLock(await hostKey(t), () => readNicSpeed(t, ep.ip)).catch(() => null); if (nic) { r.nicMbps = nic.mbps; r.nicName = nic.name; } }
+        if (methods.nic && alive) { const info = await withHostLock(await hostKey(t), () => readHostInfo(t, ep.ip)).catch(() => null); if (info) { r.nicMbps = info.mbps; r.nicName = info.name; if (info.machine) r.hostname = info.machine; } }
       } else {
         // Serialize per PC identity so no other heavy op skews the transfer.
         const key = await hostKey(t);
@@ -392,8 +432,16 @@ export async function runLinkSpeedBatch(targets: string[], sizeMB: number, cycle
       if (r.upMbps != null) parts.push(`↑${r.upMbps} ↓${r.downMbps}`);
       if (r.roboUpMbps != null) parts.push(`RC↑${r.roboUpMbps} ↓${r.roboDownMbps}`);
       if (r.nicMbps != null) parts.push(`port ${r.nicMbps}`);
-      const msg = r.error ? `${t}: ${r.error}` : `${t}: ${parts.join(' · ') || '—'} Mb/s${r.latencyMs != null ? ` · ${r.latencyMs} ms` : ''}${slow ? ' — POMALÉ' : ''}`;
-      logActivity(isErr ? 'error' : slow ? 'warn' : 'info', 'linkspeed', msg);
+      // Stale-IP signal: the box that actually answered names itself differently than the
+      // AD inventory has recorded for this IP → the inventory row still points at a PC that
+      // has since powered off and given up its DHCP lease. Only flag when the device really
+      // responded (name confirmed over SMB/DCOM), never on an offline guess.
+      const responded = !off && (r.nicMbps != null || !r.error);
+      const stale = responded && ep.inventoryName && r.hostname && ep.inventoryName.toLowerCase() !== r.hostname.toLowerCase();
+      const name = r.hostname ? ` [${r.hostname}]` : '';
+      const staleNote = stale ? ` · ⚠ inventář uvádí ${ep.inventoryName} (stará IP)` : '';
+      const msg = r.error ? `${t}${name}: ${r.error}${staleNote}` : `${t}${name}: ${parts.join(' · ') || '—'} Mb/s${r.latencyMs != null ? ` · ${r.latencyMs} ms` : ''}${slow ? ' — POMALÉ' : ''}${staleNote}`;
+      logActivity(isErr ? 'error' : slow || stale ? 'warn' : 'info', 'linkspeed', msg);
     }
     logActivity('info', 'linkspeed', `Měření dokončeno: ${nOk} OK · ${nSlow} pomalé · ${nOff} offline · ${nErr} chyba`);
   } finally {
