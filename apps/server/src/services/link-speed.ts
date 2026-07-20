@@ -79,6 +79,14 @@ function withinWindow(startStr: string | undefined, endStr: string | undefined):
 
 const LOCAL_DIR = 'C:\\tmp\\itdash-speedtest';
 
+// Single-stream SMB is round-trip-bound on the WRITE (upload) side: Node's default 64 KB
+// stream chunk means one small SMB write per round trip, which caps upload far below the
+// link — the tell is upload measuring ~3× slower than download (reads are prefetched by
+// the SMB client, so they don't suffer). Copy in large chunks so each SMB op moves ~8 MB,
+// like a native copy (robocopy / Copy-Item) does, and the SMB upload figure reflects the
+// real link instead of Node's stream overhead.
+const SMB_CHUNK = 8 * 1024 * 1024;
+
 export interface LinkSpeedResult {
   target: string;        // exactly what was entered (IP or hostname)
   ip: string | null;     // resolved current IP of the target
@@ -301,10 +309,10 @@ async function measure(target: string, sizeMB: number, cycles: number, filename:
         const src = await ensureSource(sizeMB);
         for (let i = 0; i < cycles; i++) {
           const t1 = Date.now();
-          await pipeline(createReadStream(src), createWriteStream(remoteFile));
+          await pipeline(createReadStream(src, { highWaterMark: SMB_CHUNK }), createWriteStream(remoteFile, { highWaterMark: SMB_CHUNK }));
           const upMs = Date.now() - t1;
           const t2 = Date.now();
-          await pipeline(createReadStream(remoteFile), createWriteStream(localBack));
+          await pipeline(createReadStream(remoteFile, { highWaterMark: SMB_CHUNK }), createWriteStream(localBack, { highWaterMark: SMB_CHUNK }));
           const downMs = Date.now() - t2;
           const u = mbps(bytes, upMs) ?? 0, d = mbps(bytes, downMs) ?? 0;
           if (u > bU) { bU = u; bUms = upMs; }
