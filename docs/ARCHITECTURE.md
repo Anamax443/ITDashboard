@@ -342,6 +342,12 @@ Scanned / ARP-discovered devices arrive with **no host name** (ARP yields only I
 
 Operators can also **manually edit a device's name**, stored per-MAC in `device_categories` (**migration 046**). The `category` column was made **nullable** by that migration so a **name-only row** (a custom name with no category) is valid.
 
+### Randomized / locally-administered MAC flag (client-side, no migration)
+
+Because the inventory is **keyed by MAC as a permanent identity**, it matters that not every MAC *is* permanent. **Windows 11 and phones randomize their Wi‑Fi MAC per network**, and **virtual NICs** (Hyper‑V / VMware / docker) use **locally-administered** addresses — neither is a burned-in hardware MAC, so its OUI carries no real vendor and it is not a durable identity. Such an address is trivially detectable: the **U/L bit** (`0x02`) of the first octet is set (the second hex digit of the first octet is `2`/`6`/`A`/`E` for unicast).
+
+This is handled **entirely on the client** as a pure function `isRandomMac(mac)` in `apps/desktop/src/api.ts` (unit-tested in `api.test.ts`): it returns `true` when the first octet's U/L bit is set, and `false` for synthetic `IP-<ip>` rows and partial MACs. The Devices matrix renders a **🎲** marker with an explanatory CS+EN tooltip (`devices.randomMacTip`) on those rows. **No collector, server, DB or migration change is needed** — a randomized MAC has the local bit set so it **can never collide with a real (universally-administered) vendor OUI** (`PRINTER_OUI`, `svcports.voip_ouis`), which means `suggestCategory` and the AD-pairing OUTER APPLY already behave correctly on their own. This is consistent with the data-authority model (router/DHCP = 1st authority for IP/presence via the real wired MAC, AD = 2nd for identity) and with the Manager Summary, which already excludes phones (randomized MAC) from "equipment". **Wired Ethernet never randomizes**, so domain desktops are unaffected; the flag chiefly surfaces Wi‑Fi laptops and BYOD phones.
+
 ### MikroTik FTP file source + per-site data-freshness alert (migrations 056–057)
 
 The REST pull is live but fragile (it depends on the router's API being reachable at the exact moment of a collect) and it cannot dump the active **ip-scan** to a file. So the inventory gained a second, **file-based** transport that is the **primary** lease/ARP source, with REST kept as a **supplement** (for ip-scan NETBIOS names) until explicitly retired.

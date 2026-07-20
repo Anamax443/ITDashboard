@@ -42,7 +42,7 @@
 <body>
 <main>
   <h1>ITDashboard <span class="badge live">LIVE</span></h1>
-  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-07-16</span> <span class="pill">commit 9f4b2a4</span></p>
+  <p class="sub">Interní IT provozní dashboard pro doménu AXINETWORK — eventlog analytika, AD-synchronizovaný inventář, monitoring disků a klasifikace dostupnosti pro ~225 doménových strojů. <span class="pill">Status k 2026-07-20</span> <span class="pill">commit HASH</span></p>
 
   <h2>Stav nasazení</h2>
   <div class="grid">
@@ -108,6 +108,15 @@
     <tr><td>Sken podsítí (Devices)</td><td>Settings → rozsahy skenu (CIDR/wildcard, volitelně <code>Site=</code>, <code>!</code> vyloučí podsíť). Aktivní sken běží z aplikačního serveru; vzdálené podsítě přes ARP routerů. Nic v <code>.env</code>.</td></tr>
   </table>
   <p><strong>Povinné klíče pro nové prostředí</strong> (<code>[REQUIRED]</code> v <code>.env.example</code>): <code>SQL_HOST</code>, <code>SQL_INSTANCE</code>, <code>SQL_DATABASE</code>, <code>AD_LDAP_URL</code>, <code>AD_LDAP_DOMAIN</code>, <code>AD_LDAP_BASE_DN</code>, <code>AD_EDIT_GROUP</code>. Pro DHCP inventář navíc <code>MIKROTIK_SECRET</code> (klíč pro šifrování hesla k routerům).</p>
+
+  <h2>Poslední změny (2026-07-20) — Náhodná / lokálně spravovaná MAC 🎲</h2>
+  <p class="sub" style="margin:0 0 .75rem">Inventář je klíčovaný MAC adresou jako <strong>trvalou identitou</strong> — jenže <strong>Windows 11 a mobily randomizují MAC u Wi‑Fi</strong> (nová adresa per síť) a virtuální adaptéry používají lokálně spravované adresy. Takové MAC nejsou hardwarové: výrobce z nich nepoznáme a nejsou trvalou identitou. Nově je systém <strong>pozná a v matici Zařízení označí 🎲</strong>. Commit <span class="pill">HASH</span>. <strong>Bez migrace</strong> (jen klient), nasazení čeká.</p>
+  <ul>
+    <li><strong>Detekce:</strong> čistá funkce <code>isRandomMac()</code> (klient) testuje <em>U/L bit</em> (<code>0x02</code> v prvním oktetu — druhá hexa číslice prvního oktetu je <code>2</code>/<code>6</code>/<code>A</code>/<code>E</code>). U takového řádku se vedle MAC zobrazí <strong>🎲</strong> s nápovědou (CS+EN): není to HW adresa, výrobce nepoznáme, není to trvalá identita.</li>
+    <li><strong>Drátové PC se to netýká</strong> — Ethernet MAC nerandomizuje nikdy. Reálně to kouše u notebooků na Wi‑Fi a hlavně u BYOD mobilů (Android 10+/iOS 14+ randomizují per‑SSID by default).</li>
+    <li><strong>Bez zásahu do serveru/collectoru:</strong> randomizovaná MAC má lokální bit → nikdy netrefí reálné (universálně spravované) OUI, takže návrh kategorie i párování na AD fungují správně samy.</li>
+    <li><strong>Ověřeno:</strong> 6 nových unit testů (<code>api.test.ts</code> 45/45), <code>tsc --noEmit</code> + <code>vite build</code> čisté.</li>
+  </ul>
 
   <h2>Poslední změny (2026-07-16) — Zakázané doplňky Office 🧩</h2>
   <p class="sub" style="margin:0 0 .75rem">Nová agenda <strong>„Zakázané doplňky Office"</strong>: Office si po pádu doplněk sám vypne a <strong>nikam to nenahlásí</strong> — aplikace se tváří zdravě, jen tiše nedělá, co má. Samostatná záložka <strong>🧩 Doplňky</strong> + sloupec v Počítačích + homepage dlaždice. Živý commit <span class="pill">9f4b2a4</span>. Zásahy do DB — <strong>migrace 078 a 079</strong>. Defaultně <strong>vypnuto</strong>.</p>

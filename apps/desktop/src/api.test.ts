@@ -14,6 +14,7 @@ import {
   levelName,
   isSnoozeActive,
   isSyntheticMac,
+  isRandomMac,
 } from './api.js';
 
 // Minimal builders — only the fields the pure functions actually read.
@@ -227,6 +228,28 @@ describe('isSyntheticMac', () => {
     expect(isSyntheticMac(null)).toBe(false);
     expect(isSyntheticMac(undefined)).toBe(false);
     expect(isSyntheticMac('')).toBe(false);
+  });
+});
+
+describe('isRandomMac', () => {
+  it('burned-in vendor MAC (U/L bit clear) → not random', () => {
+    expect(isRandomMac('94:DD:F8:30:6E:B0')).toBe(false); // 0x94
+    expect(isRandomMac('00:07:4D:11:22:33')).toBe(false); // Zebra OUI, 0x00
+    expect(isRandomMac('AC:3F:A4:00:00:01')).toBe(false); // 0xAC (bit1 clear)
+  });
+  it('locally-administered MAC (U/L bit set) → random', () => {
+    // Second hex digit 2 / 6 / A / E = unicast locally-administered = randomized.
+    expect(isRandomMac('DA:A1:19:AA:BB:CC')).toBe(true); // 0xDA
+    expect(isRandomMac('A6:12:34:56:78:9A')).toBe(true); // 0xA6
+    expect(isRandomMac('02:00:00:00:00:01')).toBe(true); // 0x02
+    expect(isRandomMac('7e-45-c2-10-20-30')).toBe(true); // hyphen form, 0x7E
+  });
+  it('synthetic / partial / empty → not random', () => {
+    expect(isRandomMac('IP-10.90.182.250')).toBe(false);
+    expect(isRandomMac('DA:A1:19')).toBe(false); // partial, no full octet run
+    expect(isRandomMac(null)).toBe(false);
+    expect(isRandomMac(undefined)).toBe(false);
+    expect(isRandomMac('')).toBe(false);
   });
 });
 

@@ -189,6 +189,31 @@
     Doménová PC jsou pořešená přes AD bez ohledu na lokalitu.
   </div>
 
+  <h2>5) Náhodné (lokálně spravované) MAC <span class="badge b-dev">2026-07-20</span></h2>
+  <p class="sub" style="margin:0 0 10px">Inventář je klíčovaný MAC adresou jako <em>trvalou identitou</em>.
+    Ne každá MAC ale trvalá je: <b>Windows 11 a mobily randomizují MAC u Wi‑Fi</b> (nová adresa per síť) a
+    <b>virtuální adaptéry</b> (Hyper‑V/VMware/docker) používají lokálně spravované adresy. Takové MAC nejsou
+    hardwarové — proto z nich <span class="warn">nejde poznat výrobce</span> a <span class="warn">nejsou trvalou
+    identitou zařízení</span>.</p>
+  <div class="panel">
+    <b>Jak to systém pozná:</b> u lokálně spravované adresy je nastavený <b>U/L bit</b> (<code>0x02</code> v prvním
+    oktetu — druhá hexa číslice prvního oktetu je <code>2</code>, <code>6</code>, <code>A</code> nebo <code>E</code>).
+    Čistá funkce <code>isRandomMac()</code> (klient) to otestuje a v matici Zařízení se u takového řádku vedle MAC
+    zobrazí <b>🎲</b> s nápovědou. <span class="dim">Jen klient — žádná migrace, žádný zásah do collectoru/serveru.</span>
+  </div>
+  <ul>
+    <li><b>Drátový Ethernet MAC nerandomizuje nikdy</b> → stolní doménová PC mají reálnou HW adresu a
+      <span class="ok">tohle se jich netýká</span>. Kouše to u <b>notebooků na Wi‑Fi</b> a hlavně u
+      <b>BYOD mobilů</b> (Android 10+/iOS 14+ randomizují per‑SSID by default).</li>
+    <li>I randomizovaná Wi‑Fi MAC je defaultně <b>stabilní per‑SSID</b> (nemění se každé připojení), takže na
+      naší síti pořád funguje jako konzistentní klíč — jen není vázaná na hardware ani výrobce.</li>
+    <li><b>Párování a návrhy zůstávají správně samy:</b> randomizovaná MAC má lokální bit, takže
+      <span class="ok">nikdy netrefí reálné (universálně spravované) OUI</span> — návrh kategorie podle OUI ani
+      párování na AD se tím nerozbijí.</li>
+    <li>Model autority beze změny: <b>drát/DHCP = 1. autorita</b> (IP/přítomnost, reálná MAC), <b>AD = 2.</b>
+      (identita). Manažerský souhrn navíc telefony (randomizovaná MAC) z „techniky" vylučuje.</li>
+  </ul>
+
   <div class="foot">
     ITDashboard · aplikační server <code>10.8.2.213</code> · DB <code>10.8.2.225</code> ·
     ip-scan na routeru nasazen (<code>b370537</code>); zbytek = PTR zóny / SNMP na tiskárnách / ruční název.

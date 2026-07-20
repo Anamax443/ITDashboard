@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { DeviceItem, PrinterSuppliesResult } from '../api.js';
-import { api, timeAgo, deviceDegraded, deviceProblemThresholds, isSyntheticMac, API_BASE } from '../api.js';
+import { api, timeAgo, deviceDegraded, deviceProblemThresholds, isSyntheticMac, isRandomMac, API_BASE } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { ExportMenu, type ExportColumn } from '../components/ExportMenu.js';
 import { buildDeviceReportHtml, type ReportTableColumn } from '../lib/deviceReport.js';
@@ -483,7 +483,12 @@ export function DevicesPage({ onJumpToComputer, initialOnlyPrinters, onOnlyPrint
                       </span>
                     )}
                   </td>
-                  <td style={{ color: 'var(--text-dim)', fontSize: 10, fontFamily: 'Consolas, monospace' }} title={isSyntheticMac(d.mac_address) ? t('devices.macUnknown') : undefined}>{isSyntheticMac(d.mac_address) ? '—' : d.mac_address}</td>
+                  <td style={{ color: 'var(--text-dim)', fontSize: 10, fontFamily: 'Consolas, monospace' }} title={isSyntheticMac(d.mac_address) ? t('devices.macUnknown') : undefined}>
+                    {isSyntheticMac(d.mac_address) ? '—' : d.mac_address}
+                    {isRandomMac(d.mac_address) && (
+                      <span title={t('devices.randomMacTip')} style={{ marginLeft: 5, cursor: 'help', color: 'var(--warn, #d08700)', fontFamily: 'sans-serif' }}>🎲</span>
+                    )}
+                  </td>
                   <td style={{ fontSize: 11 }}>
                     {d.source === 'share' ? (
                       <span style={{ color: 'var(--accent)', fontWeight: 600 }} title={t('devices.sharedTip')}>🖨 USB{d.comment ? ` · ${d.comment}` : ''}</span>

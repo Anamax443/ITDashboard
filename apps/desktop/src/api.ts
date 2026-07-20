@@ -111,6 +111,23 @@ export function isSyntheticMac(mac: string | null | undefined): boolean {
   return !!mac && mac.startsWith('IP-');
 }
 
+/**
+ * True when a MAC is *locally administered* — the U/L bit (0x02) of the first
+ * octet is set. That marks an OS-assigned address, not a burned-in hardware one:
+ * chiefly Windows 11 / phones' Wi-Fi MAC randomization (a per-SSID random MAC),
+ * but also virtual NICs (Hyper-V, VMware, docker). For such rows the vendor/OUI
+ * is meaningless (no real manufacturer prefix) and the MAC is not a durable
+ * hardware identity, so the UI flags it. Wired Ethernet keeps its real MAC, so
+ * desktops are unaffected. Synthetic "IP-" rows and partial MACs are not random.
+ */
+export function isRandomMac(mac: string | null | undefined): boolean {
+  if (!mac || isSyntheticMac(mac)) return false;
+  const hex = mac.replace(/[^0-9a-fA-F]/g, '');
+  if (hex.length < 12) return false; // need a full 48-bit MAC to read the first octet
+  const firstOctet = parseInt(hex.slice(0, 2), 16);
+  return Number.isFinite(firstOctet) && (firstOctet & 0x02) === 0x02;
+}
+
 export interface ServiceProblem {
   id: number;
   computer_id: number;

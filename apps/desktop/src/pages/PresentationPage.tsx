@@ -124,7 +124,7 @@ const CS_BODY = `
     </div>
     <div>
       <div class="card sky"><h3>Robustní sběr</h3><p class="small">Data se čtou jednak živě přes API, jednak ze souborových snímků, které si síťový prvek sám pravidelně vytváří. Snímek funguje i jako <strong>signál aktuálnosti</strong> — když přestane „dýchat", systém pozná, že je něco špatně, a upozorní.</p></div>
-      <div class="card ok" style="margin-top:14px"><h3>Identita = MAC</h3><p class="small">Zařízení si drží kategorii, jméno i historii IP adres, i když mu IP změní. „MAC = rodné číslo, IP = dočasná adresa."</p></div>
+      <div class="card ok" style="margin-top:14px"><h3>Identita = MAC</h3><p class="small">Zařízení si drží kategorii, jméno i historii IP adres, i když mu IP změní. „MAC = rodné číslo, IP = dočasná adresa."</p><p class="small" style="margin-top:8px;opacity:.75">🎲 <b>Náhodné MAC</b> (Wi‑Fi ve Windows 11 / mobily) systém <b>pozná a označí</b>, aby se nezaměnily za trvalou identitu. Drátových zařízení se to netýká.</p></div>
     </div>
   </div>
 </section>
@@ -308,7 +308,7 @@ const EN_BODY = `
     </div>
     <div>
       <div class="card sky"><h3>Robust collection</h3><p class="small">Data is read both live over an API and from file snapshots the network device writes for itself on a schedule. The snapshot doubles as a <strong>freshness signal</strong> — when it stops "breathing", the system knows something is wrong and raises an alert.</p></div>
-      <div class="card ok" style="margin-top:14px"><h3>Identity = MAC</h3><p class="small">A device keeps its category, name and IP history even when its IP changes. "MAC = the permanent ID, IP = the temporary address."</p></div>
+      <div class="card ok" style="margin-top:14px"><h3>Identity = MAC</h3><p class="small">A device keeps its category, name and IP history even when its IP changes. "MAC = the permanent ID, IP = the temporary address."</p><p class="small" style="margin-top:8px;opacity:.75">🎲 <b>Randomized MACs</b> (Windows 11 / phone Wi‑Fi) are <b>detected and flagged</b> so they aren't mistaken for a permanent identity. Wired devices are unaffected.</p></div>
     </div>
   </div>
 </section>
