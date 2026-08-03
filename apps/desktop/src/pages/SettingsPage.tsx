@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api, timeAgo } from '../api.js';
-import type { DomainProfileStatus } from '../api.js';
+import type { DomainProfileStatus, SystemIdentity } from '../api.js';
 import { HelpBox } from '../components/HelpBox.js';
 import { useI18n } from '../i18n.js';
 import type { TKey } from '../i18n.js';
@@ -390,6 +390,7 @@ export function SettingsPage() {
   const [reachRunning, setReachRunning] = useState(false);
   const [reachResult, setReachResult] = useState<string | null>(null);
   const [blockFilter, setBlockFilter] = useState('');
+  const [identity, setIdentity] = useState<SystemIdentity | null>(null);
   const ret = useRetentionRun();
   // Deep-link helper: clear the block filter so the target section is visible, then
   // scroll to it. Used by the "↗ Retenční politika / Notifikace" links in sections.
@@ -403,6 +404,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     api.settings().then((s) => setSettings(s)).catch((e) => setError(String(e)));
+    api.systemIdentity().then((i) => setIdentity(i)).catch(() => { /* non-critical banner */ });
   }, []);
 
   const runReachability = async () => {
@@ -482,6 +484,26 @@ export function SettingsPage() {
         </div>
       </div>
       <div className="panel-body" style={{ padding: 24 }}>
+
+        {identity && (
+          <div
+            title={t('settings.identity.tip')}
+            style={{
+              margin: '0 0 18px', padding: '10px 14px', borderRadius: 6,
+              border: '1px solid var(--border)', background: 'var(--surface-2, rgba(255,255,255,0.03))',
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12,
+            }}
+          >
+            <span style={{ color: 'var(--text-dim)' }}>🔑 {t('settings.identity.label')}</span>
+            <span style={{ fontFamily: 'Consolas, monospace', fontWeight: 600, color: 'var(--accent)' }}>
+              {identity.account}
+            </span>
+            {identity.isManagedOrMachine && (
+              <span style={{ color: 'var(--text-dim)' }}>({t('settings.identity.gmsa')})</span>
+            )}
+            <span style={{ color: 'var(--text-dim)', flexBasis: '100%' }}>{t('settings.identity.hint')}</span>
+          </div>
+        )}
 
         <HelpBox title={t('settings.helpTitle')}>
           <p>{t('settings.helpBody')}</p>

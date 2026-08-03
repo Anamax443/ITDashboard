@@ -790,6 +790,16 @@ export interface PcLogonEventItem {
   logoff_at: string | null;
 }
 
+// The Windows account the API process (= every remote collector) runs as.
+export interface SystemIdentity {
+  account: string;
+  user: string;
+  domain: string | null;
+  isManagedOrMachine: boolean;
+  serviceName: string;
+  host: string;
+}
+
 export interface ActivityHistoryItem {
   id: number;
   ts: string;
@@ -886,6 +896,7 @@ export const api = {
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),
   comms: () => jget<CommsResult>('/system/comms'),
+  systemIdentity: () => jget<SystemIdentity>('/system/identity'),
   officeAddins: () => jget<OfficeAddinsResult>('/office-addins'),
   officeAddinsScan: () => jpost<{ started: boolean }>('/office-addins/scan'),
   wan: () => jget<WanStatus>('/system/wan'),

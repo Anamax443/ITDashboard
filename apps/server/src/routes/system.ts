@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import { getPool } from '../db/pool.js';
 import { getAllSettings, setSetting } from '../services/settings.js';
 import { logActivity } from '../services/activity-log.js';
@@ -276,6 +277,24 @@ export async function registerSystemRoutes(app: FastifyInstance) {
   // NSSM's process tree. It waits ~2 s (so this HTTP response flushes first), then stops
   // and starts the service. `net` is synchronous, so `net start` waits for the stop to
   // finish. Needs the service account's already-granted stop/start rights on the service.
+  // The Windows account THIS API process runs as. Every remote collector
+  // (disk / services / eventlog / logon) runs under this identity — none pass
+  // per-call credentials — so when a collector reports "Access is denied" this is
+  // the account that needs the right (Event Log Readers for the Security log,
+  // local admin for WMI/CIM). Surfaced at the very top of Settings. Best-effort:
+  // reads the process env a Windows service inherits from its logon account.
+  app.get('/system/identity', async () => {
+    let fallbackUser = 'unknown';
+    try { fallbackUser = os.userInfo().username; } catch { /* gMSA context can throw */ }
+    const user = process.env.USERNAME || fallbackUser;
+    const domain = process.env.USERDOMAIN || null;
+    const account = domain ? `${domain}\\${user}` : user;
+    // gMSA and machine (LocalSystem) accounts end with '$'.
+    const isManagedOrMachine = /\$$/.test(user);
+    const serviceName = process.env.ITDASHBOARD_SERVICE_NAME || 'ITDashboardAPI';
+    return { account, user, domain, isManagedOrMachine, serviceName, host: os.hostname() };
+  });
+
   app.post('/system/service/restart', async () => {
     const svc = (process.env.ITDASHBOARD_SERVICE_NAME || 'ITDashboardAPI').replace(/[^\w.-]/g, '');
     const inner = `ping 127.0.0.1 -n 3 >nul & net stop ${svc} & net start ${svc}`;

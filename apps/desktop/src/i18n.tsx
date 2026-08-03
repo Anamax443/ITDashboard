@@ -942,6 +942,10 @@ const dict = {
     'settings.reach.reachable': 'dostupných',
     'settings.check.adsync': 'AD sync (defaultně off v periodic)',
     'settings.check.logon': 'Logon history (přihlášení ze Security logu)',
+    'settings.identity.label': 'Služba běží pod účtem:',
+    'settings.identity.gmsa': 'gMSA / systémový účet',
+    'settings.identity.hint': 'Pod tímto účtem jedou všechny vzdálené collectory (disk, služby, eventlog, přihlášení) — nepředávají vlastní přihlášení. Když collector hlásí „Access denied", oprávnění potřebuje TENTO účet: Event Log Readers pro Security log (login history), lokální admin pro WMI (disk/služby).',
+    'settings.identity.tip': 'Identita procesu API — účet, který potřebuje práva na cílových strojích.',
 
     'settings.thresholdMode.pct': 'Pouze procenta volného',
     'settings.thresholdMode.gb': 'Pouze GB volného',
@@ -1907,6 +1911,10 @@ const dict = {
     'settings.reach.reachable': 'on network',
     'settings.check.adsync': 'AD sync (off by default in periodic)',
     'settings.check.logon': 'Logon history (logins from the Security log)',
+    'settings.identity.label': 'Service runs as account:',
+    'settings.identity.gmsa': 'gMSA / system account',
+    'settings.identity.hint': 'All remote collectors (disk, services, eventlog, logon) run under this account — none pass their own credentials. When a collector reports "Access denied", THIS account needs the right: Event Log Readers for the Security log (logon history), local admin for WMI (disk/services).',
+    'settings.identity.tip': 'Identity of the API process — the account that needs permissions on target machines.',
 
     'settings.thresholdMode.pct': 'Percent free only',
     'settings.thresholdMode.gb': 'GB free only',
