@@ -1,6 +1,7 @@
 import { getPool } from '../db/pool.js';
 import { logActivity } from './activity-log.js';
 import { collectFromPC, insertEvents } from './eventlog-collector.js';
+import { collectLogonEvents, upsertLogonEvents } from './logon-collector.js';
 import { fetchPcScan, upsertDisk, upsertPcInfo } from './disk-collector.js';
 import { fetchServices, replaceProblems, replaceCritical } from './services-collector.js';
 import { fetchPerfEvents, insertPerfEvents } from './perf-collector.js';
@@ -24,6 +25,7 @@ interface ComputerRow {
   id: number;
   name: string;
   last_collected_at: Date | null;
+  last_logon_collected_at: Date | null;
 }
 
 const inFlight = new Set<number>();
@@ -38,7 +40,7 @@ export async function refreshSinglePc(computerId: number): Promise<SingleRefresh
     const pool = await getPool();
     const r = await pool.request()
       .input('id', computerId)
-      .query<ComputerRow>(`SELECT TOP 1 id, name, last_collected_at FROM computers WHERE id = @id`);
+      .query<ComputerRow>(`SELECT TOP 1 id, name, last_collected_at, last_logon_collected_at FROM computers WHERE id = @id`);
     const target = r.recordset[0];
     if (!target) {
       logActivity('warn', 'refresh-pc', `Computer ${computerId} not found`);
@@ -149,6 +151,25 @@ export async function refreshSinglePc(computerId: number): Promise<SingleRefresh
       portDetail = String(err).split('\n')[0]?.slice(0, 200) ?? 'unknown';
     }
     steps.push({ step: 'ports', ok: portOk, detail: portDetail, durationMs: Date.now() - t5 });
+
+    // 6) Logon history (interactive 4624/4634 from the Security log). Cold-starts
+    // 24h back; degrades to "0 sessions" where Audit Logon is off (not an error).
+    const t6 = Date.now();
+    let logonDetail = '';
+    let logonOk = false;
+    try {
+      const since = target.last_logon_collected_at ?? new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const events = await collectLogonEvents(target.name, since);
+      const res = await upsertLogonEvents(target.id, events);
+      await pool.request().input('id', target.id).query(
+        `UPDATE computers SET last_logon_collected_at = SYSUTCDATETIME() WHERE id = @id`,
+      );
+      logonDetail = `+${res.sessions} logon(s), ${res.loggedOff} logoff(s)`;
+      logonOk = true;
+    } catch (err) {
+      logonDetail = String(err).split('\n')[0]?.slice(0, 200) ?? 'unknown';
+    }
+    steps.push({ step: 'logon', ok: logonOk, detail: logonDetail, durationMs: Date.now() - t6 });
 
     const allOk = steps.every((s) => s.ok);
     const durationMs = Date.now() - t0;

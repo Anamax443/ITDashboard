@@ -113,7 +113,7 @@ async function readNum(key: string, fallback: number): Promise<number> {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-export type RetentionStepName = 'events_purge' | 'activity_log_purge' | 'pc_user_history_purge' | 'perf_purge' | 'ad_sync_runs_purge' | 'dhcp_leases_purge' | 'device_ip_history_purge' | 'ping_samples_purge' | 'events_dedup';
+export type RetentionStepName = 'events_purge' | 'activity_log_purge' | 'pc_user_history_purge' | 'pc_logon_events_purge' | 'perf_purge' | 'ad_sync_runs_purge' | 'dhcp_leases_purge' | 'device_ip_history_purge' | 'ping_samples_purge' | 'events_dedup';
 
 export async function runRetentionOnce(
   triggerSource: 'manual' | 'scheduled' = 'manual',
@@ -141,6 +141,7 @@ async function runRetentionInner(
   const eventsDays = await readNum('events.retention_days', 90);
   const activityDays = await readNum('activity.retention_days', 30);
   const pcUserDays = await readNum('pcUserHistory.retention_days', 90);
+  const pcLogonDays = await readNum('pcLogonHistory.retention_days', 90);
   const perfDays = await readNum('perf.retention_days', 180);
   const adRunsDays = await readNum('adsync.runs_retention_days', 90);
   // Device-inventory steps mirror the collector's inline pruning. Read raw (not via
@@ -149,7 +150,7 @@ async function runRetentionInner(
   const leaseDaysRaw = Number(await getSetting('devices.lease_retention_days').catch(() => undefined));
   const histDaysRaw = Number(await getSetting('devices.history_retention_days').catch(() => undefined));
   const lossHours = await readNum('devices.loss_window_hours', 24);
-  logActivity('info', 'retention', `Starting (${triggerSource}) — events>${eventsDays}d, activity>${activityDays}d, pc_user_history>${pcUserDays}d, perf>${perfDays}d, ad_sync_runs>${adRunsDays}d`);
+  logActivity('info', 'retention', `Starting (${triggerSource}) — events>${eventsDays}d, activity>${activityDays}d, pc_user_history>${pcUserDays}d, pc_logon_events>${pcLogonDays}d, perf>${perfDays}d, ad_sync_runs>${adRunsDays}d`);
 
   const steps: RetentionRunReport['steps'] = [];
 
@@ -172,6 +173,13 @@ async function runRetentionInner(
     if (pcUserRes.ok) logActivity('success', 'retention', `pc_user_history purge: ${pcUserRes.rowsAffected} rows removed (${(pcUserRes.durationMs/1000).toFixed(1)}s)`);
     else              logActivity('error',   'retention', `pc_user_history purge failed: ${pcUserRes.error}`);
     steps.push({ name: 'pc_user_history_purge', ok: pcUserRes.ok, rowsAffected: pcUserRes.rowsAffected, durationMs: pcUserRes.durationMs, detail: `> ${pcUserDays}d`, error: pcUserRes.error });
+  }
+
+  if (shouldRun('pc_logon_events_purge')) {
+    const pcLogonRes = await callPurge('sp_purge_pc_logon_events', pcLogonDays);
+    if (pcLogonRes.ok) logActivity('success', 'retention', `pc_logon_events purge: ${pcLogonRes.rowsAffected} rows removed (${(pcLogonRes.durationMs/1000).toFixed(1)}s)`);
+    else               logActivity('error',   'retention', `pc_logon_events purge failed: ${pcLogonRes.error}`);
+    steps.push({ name: 'pc_logon_events_purge', ok: pcLogonRes.ok, rowsAffected: pcLogonRes.rowsAffected, durationMs: pcLogonRes.durationMs, detail: `> ${pcLogonDays}d`, error: pcLogonRes.error });
   }
 
   if (shouldRun('perf_purge')) {

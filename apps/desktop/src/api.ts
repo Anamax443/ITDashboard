@@ -778,6 +778,18 @@ export interface PcUserHistoryItem {
   ip_address: string | null;
 }
 
+// Precise session from the Security log (4624/4634), paired by LogonId.
+// logoff_at is null while the session is still open or the logoff was missed.
+export interface PcLogonEventItem {
+  id: number;
+  user_name: string;
+  domain: string | null;
+  logon_type: number;
+  ip_address: string | null;
+  logon_at: string;
+  logoff_at: string | null;
+}
+
 export interface ActivityHistoryItem {
   id: number;
   ts: string;
@@ -868,6 +880,8 @@ export const api = {
   inactiveStats: () => jget<InactiveStats>('/computers/inactive-stats'),
   userHistory: (computerId: number, days = 90) =>
     jget<{ items: PcUserHistoryItem[] }>(`/computers/${computerId}/user-history?days=${days}`),
+  logonHistory: (computerId: number, days = 90) =>
+    jget<{ items: PcLogonEventItem[] }>(`/computers/${computerId}/logon-history?days=${days}`),
   refreshPc: (computerId: number) => jpost<SingleRefreshResult>(`/computers/${computerId}/refresh`),
   syncComputers: () => jpost<SyncResult>('/computers/sync'),
   collectorStatus: () => jget<CollectorStatus>('/collector/status'),

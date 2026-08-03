@@ -115,6 +115,27 @@ export async function registerComputersRoutes(app: FastifyInstance) {
     reply.send({ items: r.recordset });
   });
 
+  // Precise interactive logon/logoff sessions from the Security log (4624/4634),
+  // paired by LogonId. Complements /user-history (WMI snapshot). Empty for a PC
+  // where Audit Logon is off or the account can't read the Security log — the UI
+  // treats that as "no precise data", not a failure.
+  app.get('/computers/:id/logon-history', async (req, reply) => {
+    const params = z.object({ id: z.coerce.number().int() }).parse(req.params);
+    const q = z.object({ days: z.coerce.number().int().min(1).max(3650).default(90) }).parse(req.query);
+    const pool = await getPool();
+    const r = await pool.request()
+      .input('cid', params.id)
+      .input('days', q.days)
+      .query<{ id: number; user_name: string; domain: string | null; logon_type: number; ip_address: string | null; logon_at: string; logoff_at: string | null }>(`
+        SELECT id, user_name, domain, logon_type, ip_address, logon_at, logoff_at
+        FROM pc_logon_events
+        WHERE computer_id = @cid
+          AND logon_at >= DATEADD(DAY, -@days, SYSUTCDATETIME())
+        ORDER BY logon_at DESC;
+      `);
+    reply.send({ items: r.recordset });
+  });
+
   app.get('/computers/sync/history', async () => {
     const items = await getSyncHistory(20);
     return { items };

@@ -1,4 +1,5 @@
 import { runCollectorOnce, type CollectorRunResult } from './eventlog-collector.js';
+import { runLogonCollectorOnce, type LogonCollectResult } from './logon-collector.js';
 import { runDiskCollectorOnce } from './disk-collector.js';
 import { runServicesScanOnce } from './services-collector.js';
 import { runPerfCollectorOnce, type PerfCollectResult } from './perf-collector.js';
@@ -6,7 +7,7 @@ import { syncComputersFromAD, type SyncResult as AdSyncResult } from './ad-sync.
 import { logActivity } from './activity-log.js';
 import { getAllSettings } from './settings.js';
 
-type CheckName = 'eventlog' | 'disk' | 'services' | 'perf' | 'adsync';
+type CheckName = 'eventlog' | 'logon' | 'disk' | 'services' | 'perf' | 'adsync';
 type CheckSelection = Record<CheckName, boolean>;
 
 interface CheckWindow {
@@ -33,6 +34,7 @@ export interface ServicesScanResult {
 
 export interface RunChecksResult {
   eventlog: CollectorRunResult | null;
+  logon: LogonCollectResult | null;
   disk: DiskCollectResult | null;
   services: ServicesScanResult | null;
   perf: PerfCollectResult | null;
@@ -49,7 +51,7 @@ const CHECKS: Array<{
   label: string;
   settingKey: string;
   defaultEnabled: boolean;
-  run: (triggerSource: 'manual' | 'scheduled') => Promise<CollectorRunResult | DiskCollectResult | ServicesScanResult | PerfCollectResult | AdSyncResult | null>;
+  run: (triggerSource: 'manual' | 'scheduled') => Promise<CollectorRunResult | LogonCollectResult | DiskCollectResult | ServicesScanResult | PerfCollectResult | AdSyncResult | null>;
 }> = [
   // AD sync runs first so subsequent collectors see fresh inventory in the same run.
   {
@@ -65,6 +67,15 @@ const CHECKS: Array<{
     settingKey: 'checks.run_eventlog',
     defaultEnabled: true,
     run: (triggerSource) => runCollectorOnce(triggerSource),
+  },
+  // Precise interactive logon/logoff from the Security log — grouped right after
+  // the System/Application eventlog collector since both read event logs.
+  {
+    name: 'logon',
+    label: 'logon',
+    settingKey: 'checks.run_logon',
+    defaultEnabled: true,
+    run: () => runLogonCollectorOnce(),
   },
   {
     name: 'disk',
@@ -160,6 +171,7 @@ export async function runChecksOnce(
 
   try {
     let eventlog: CollectorRunResult | null = null;
+    let logon: LogonCollectResult | null = null;
     let disk: DiskCollectResult | null = null;
     let services: ServicesScanResult | null = null;
     let perf: PerfCollectResult | null = null;
@@ -173,6 +185,7 @@ export async function runChecksOnce(
         continue;
       }
       if (check.name === 'eventlog') eventlog = result as CollectorRunResult;
+      if (check.name === 'logon') logon = result as LogonCollectResult;
       if (check.name === 'disk') disk = result as DiskCollectResult;
       if (check.name === 'services') services = result as ServicesScanResult;
       if (check.name === 'perf') perf = result as PerfCollectResult;
@@ -181,7 +194,7 @@ export async function runChecksOnce(
 
     const durationMs = Date.now() - t0;
     logActivity('success', 'checks', `Checks done (${(durationMs / 1000).toFixed(1)}s)`);
-    return { eventlog, disk, services, perf, adsync, durationMs, selected };
+    return { eventlog, logon, disk, services, perf, adsync, durationMs, selected };
   } catch (err) {
     logActivity('error', 'checks', `Checks failed: ${String(err).split('\n')[0]}`);
     throw err;
@@ -197,7 +210,7 @@ async function runScheduledChecksIfAllowed(): Promise<void> {
 }
 
 export async function runAllChecksOnce(triggerSource: 'manual' | 'scheduled'): Promise<RunChecksResult | null> {
-  return runChecksOnce(triggerSource, { eventlog: true, disk: true, services: true, perf: true, adsync: true });
+  return runChecksOnce(triggerSource, { eventlog: true, logon: true, disk: true, services: true, perf: true, adsync: true });
 }
 
 export async function startChecksSchedule(): Promise<void> {

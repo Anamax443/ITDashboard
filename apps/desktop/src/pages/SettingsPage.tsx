@@ -8,6 +8,7 @@ import type { TKey } from '../i18n.js';
 const PERIODIC_CHECKS: { key: string; tkey: TKey }[] = [
   { key: 'checks.run_adsync', tkey: 'settings.check.adsync' },
   { key: 'checks.run_eventlog', tkey: 'settings.check.eventlog' },
+  { key: 'checks.run_logon', tkey: 'settings.check.logon' },
   { key: 'checks.run_disk', tkey: 'settings.check.disk' },
   { key: 'checks.run_services', tkey: 'settings.check.services' },
   { key: 'checks.run_perf', tkey: 'settings.check.perf' },
@@ -257,7 +258,7 @@ interface RetentionReport {
 }
 
 type RetentionStepName =
-  | 'events_purge' | 'activity_log_purge' | 'pc_user_history_purge' | 'perf_purge'
+  | 'events_purge' | 'activity_log_purge' | 'pc_user_history_purge' | 'pc_logon_events_purge' | 'perf_purge'
   | 'ad_sync_runs_purge' | 'dhcp_leases_purge' | 'device_ip_history_purge'
   | 'ping_samples_purge' | 'events_dedup';
 
@@ -367,6 +368,7 @@ const RETENTION_ROWS = [
   { key: 'events.dedup_lookback_days', def: '90', table: 'events (dedup)', label: 'settings.ret.dedup', unit: 'settings.unit.days', step: 'events_dedup' },
   { key: 'activity.retention_days', def: '30', table: 'activity_log', label: 'settings.ret.activity', unit: 'settings.unit.days', step: 'activity_log_purge' },
   { key: 'pcUserHistory.retention_days', def: '90', table: 'pc_user_history', label: 'settings.ret.pcuser', unit: 'settings.unit.days', step: 'pc_user_history_purge' },
+  { key: 'pcLogonHistory.retention_days', def: '90', table: 'pc_logon_events', label: 'settings.ret.pclogon', unit: 'settings.unit.days', step: 'pc_logon_events_purge' },
   { key: 'perf.retention_days', def: '180', table: 'perf_events', label: 'settings.ret.perf', unit: 'settings.unit.days', step: 'perf_purge' },
   { key: 'adsync.runs_retention_days', def: '90', table: 'ad_sync_runs', label: 'settings.ret.adruns', unit: 'settings.unit.days', step: 'ad_sync_runs_purge' },
   { key: 'devices.lease_retention_days', def: '14', table: 'dhcp_leases', label: 'settings.ret.ghosts', unit: 'settings.unit.days', step: 'dhcp_leases_purge' },
